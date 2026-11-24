@@ -1,0 +1,194 @@
+[
+ {
+  "n": "01",
+  "repo": "thedankest/ccfox",
+  "sha": "b83591afc331fabcdae5918016c0fd20f9016151",
+  "date": "2026-11-09",
+  "dir": "sources/01-thedankest_ccfox",
+  "file": "docs/audit/01-ccfox.md"
+ },
+ {
+  "n": "02",
+  "repo": "balakumardev/foxpilot",
+  "sha": "7d9f08ef8da0c3fd89f454b2be4e7c59939c642e",
+  "date": "2026-11-19",
+  "dir": "sources/02-balakumardev_foxpilot",
+  "file": "docs/audit/02-foxpilot.md"
+ },
+ {
+  "n": "03",
+  "repo": "drubino-mozilla/agent-f",
+  "sha": "9e87e4bec424da3e782fe850e5fed292813aeb12",
+  "date": "2026-10-17",
+  "dir": "sources/03-drubino-mozilla_agent-f",
+  "file": "docs/audit/03-agent-f.md"
+ },
+ {
+  "n": "04",
+  "repo": "boot-industries/claudezilla",
+  "sha": "5e4a23795d5813224b6eda038cc035d7afc8e508",
+  "date": "2026-11-06",
+  "dir": "sources/04-boot-industries_claudezilla",
+  "file": "docs/audit/04-claudezilla.md"
+ },
+ {
+  "n": "05",
+  "repo": "MashdorDev/mcp-bridge-for-firefox",
+  "sha": "a1cb01b79a17f5b3b1f955180d4e4849137eeb89",
+  "date": "2026-11-08",
+  "dir": "sources/05-MashdorDev_mcp-bridge-for-firefox",
+  "file": "docs/audit/05-mcp-bridge-for-firefox.md"
+ },
+ {
+  "n": "06",
+  "repo": "raychao-oao/firefox-bridge",
+  "sha": "e7bfb049801075500e5ddd7fb5cdbfe689f1feff",
+  "date": "2026-10-28",
+  "dir": "sources/06-raychao-oao_firefox-bridge",
+  "file": "docs/audit/06-firefox-bridge.md"
+ },
+ {
+  "n": "07",
+  "repo": "elys0912/InariMCP",
+  "sha": "1ac430daf8ca95e0dfbc72b5083ee1302443376f",
+  "date": "2026-11-22",
+  "dir": "sources/07-elys0912_InariMCP",
+  "file": "docs/audit/07-inarimcp.md"
+ },
+ {
+  "n": "08",
+  "repo": "jhueby/claude-browser-bridge",
+  "sha": "58749d978a26d7b675225d15d6b17591034ab936",
+  "date": "2026-10-07",
+  "dir": "sources/08-jhueby_claude-browser-bridge",
+  "file": "docs/audit/08-claude-browser-bridge.md"
+ },
+ {
+  "n": "09",
+  "repo": "thriftshoppin/claude-firefox-bridge",
+  "sha": "65f7dc32b05fe09f76c2d4bc1774e68c127f3ee0",
+  "date": "2026-10-24",
+  "dir": "sources/09-thriftshoppin_claude-firefox-bridge",
+  "file": "docs/audit/09-claude-firefox-bridge.md"
+ },
+ {
+  "n": "10",
+  "repo": "llyfn/claude-in-firefox",
+  "sha": "989e483d3514c4ff407584cd8952e580af617c1d",
+  "date": "2026-11-11",
+  "dir": "sources/10-llyfn_claude-in-firefox",
+  "file": "docs/audit/10-claude-in-firefox.md"
+ },
+ {
+  "n": "11",
+  "repo": "hamb1y/foxhand",
+  "sha": "ad4a35df50666cd9849daf199441fce467519889",
+  "date": "2026-11-21",
+  "dir": "sources/11-hamb1y_foxhand",
+  "file": "docs/audit/11-foxhand.md"
+ },
+ {
+  "n": "12",
+  "repo": "nanogenomic/ClaudeCodeBrowser",
+  "sha": "96a7fd398f080f30caf34ce4669bee354f1f297f",
+  "date": "2026-08-26",
+  "dir": "sources/12-nanogenomic_ClaudeCodeBrowser",
+  "file": "docs/audit/12-claudecodebrowser.md"
+ },
+ {
+  "n": "13",
+  "repo": "mozilla/firefox-mcp",
+  "sha": "02c5df84e6ec492be07796479df3883ce462e33c",
+  "date": "2026-11-20",
+  "dir": "sources/13-mozilla_firefox-mcp",
+  "file": "docs/audit/13-firefox-mcp.md"
+ },
+ {
+  "n": "14",
+  "repo": "ThinkerYzu/foxmcp",
+  "sha": "cc97d6ae90a9cd2a7bdeb9e38feaf9d29c395921",
+  "date": "2026-11-11",
+  "dir": "sources/14-ThinkerYzu_foxmcp",
+  "file": "docs/audit/14-foxmcp.md"
+ },
+ {
+  "n": "15",
+  "repo": "smankoo/open-browser-control",
+  "sha": "f82b6afad22b483950a6013de375422346828027",
+  "date": "2026-04-19",
+  "dir": "sources/15-smankoo_open-browser-control",
+  "file": "docs/audit/15-open-browser-control.md"
+ },
+ {
+  "n": "16",
+  "repo": "dh1011/firefox-mcp",
+  "sha": "64212a5988eb3384a70ec1e6c88428e65d8ec39c",
+  "date": "2026-11-12",
+  "dir": "sources/16-dh1011_firefox-mcp",
+  "file": "docs/audit/16-firefox-mcp.md"
+ },
+ {
+  "n": "17",
+  "repo": "g-lacerda/browser-control-mcp",
+  "sha": "37fd83486d60ea37122f207b857376fdd8fd7a55",
+  "date": "2026-10-19",
+  "dir": "sources/17-g-lacerda_browser-control-mcp",
+  "file": "docs/audit/17-browser-control-mcp.md"
+ },
+ {
+  "n": "18",
+  "repo": "eyalzh/browser-control-mcp",
+  "sha": "e53f0e50e2778543d2c2b5dadbe565be82920fbf",
+  "date": "2026-08-23",
+  "dir": "sources/18-eyalzh_browser-control-mcp",
+  "file": "docs/audit/18-browser-control-mcp.md"
+ },
+ {
+  "n": "19",
+  "repo": "sinamohsenifar/foxbridge-mcp",
+  "sha": "b46603599a437f4918eae0256fecb78ab2576141",
+  "date": "2026-07-06",
+  "dir": "sources/19-sinamohsenifar_foxbridge-mcp",
+  "file": "docs/audit/19-foxbridge-mcp.md"
+ },
+ {
+  "n": "20",
+  "repo": "ICWR-TEAM/Firefox-Browser-MCP",
+  "sha": "2d475661406eb06788fcc505c39b72e1882c3b90",
+  "date": "2026-11-07",
+  "dir": "sources/20-ICWR-TEAM_Firefox-Browser-MCP",
+  "file": "docs/audit/20-firefox-browser-mcp.md"
+ },
+ {
+  "n": "21",
+  "repo": "korchasa/foxcode",
+  "sha": "6c5d0e74b956ee413ed83f4b4f2a637fad080a9f",
+  "date": "2026-07-04",
+  "dir": "sources/21-korchasa_foxcode",
+  "file": "docs/audit/21-foxcode.md"
+ },
+ {
+  "n": "22",
+  "repo": "Drima-code/drima-browser-mcp",
+  "sha": "b734395f586b9e7a3ed40c72a3c1aa4d5ad7cb7b",
+  "date": "2026-10-21",
+  "dir": "sources/22-Drima-code_drima-browser-mcp",
+  "file": "docs/audit/22-drima-browser-mcp.md"
+ },
+ {
+  "n": "23",
+  "repo": "nullthrix/firefox-mcp-server",
+  "sha": "f678ce9c11f2d9eb02b2c4f56a86c948558b127f",
+  "date": "2026-11-22",
+  "dir": "sources/23-nullthrix_firefox-mcp-server",
+  "file": "docs/audit/23-firefox-mcp-server.md"
+ },
+ {
+  "n": "24",
+  "repo": "claude-in-chrome",
+  "sha": "1ffca150e4069d30b1489a66b08b20a7715eb609c54920b425d0c6e5684af243",
+  "date": "2026-11-23",
+  "dir": null,
+  "file": "docs/audit/24-claude-in-chrome.md"
+ }
+]

@@ -1,0 +1,5 @@
+# build output, test artifacts and tool state
+dist/
+test-results/
+node_modules/
+.claude/
