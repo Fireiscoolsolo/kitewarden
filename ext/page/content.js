@@ -384,8 +384,8 @@
     if (isChoice(el)) return step({ kind: 'check', ...at, value: String(el.checked) });
     if (el instanceof HTMLSelectElement) return step(el.multiple ? { kind: 'manual', text: 'Choose in a list with several choices' } : { kind: 'choose', ...at, value: line(el.selectedOptions[0]?.label, 200) });
     if (el.type === 'file') return step({ kind: 'manual', text: 'Choose a file' });
-    const personal = ['email', 'tel'].includes(el.type) || PERSONAL.test(el.autocomplete ?? '');
-    step(personal ? { kind: 'fill', ...at, ask: true } : { kind: 'fill', ...at, value: String(el.value ?? el.innerText).slice(0, 10_000) });
+    // The text itself stays in the page: a replay asks for it.
+    step({ kind: 'fill', ...at, sensitive: ['email', 'tel'].includes(el.type) || PERSONAL.test(el.autocomplete ?? '') });
   }
 
   function record({ on, kind }) {

@@ -404,7 +404,7 @@ try {
     n(steps.join(' | '));
     assert.deepEqual(steps, [
       `1. Be on ${A.origin}/form`,
-      '2. Enter "quarterly numbers" in textbox "Search"',
+      '2. Enter a value that you give each time in textbox "Search"',
       '3. Enter a value that you give each time in textbox "Email"',
       '4. Fill in textbox "Password" yourself (secret, not recorded)',
       '5. Enter a value that you give each time in textbox "API key"',
@@ -416,20 +416,22 @@ try {
       `11. Be on ${A.origin}/form`,
     ]);
     assert.ok(!(await storage()).includes('quarterly'), 'nothing is stored before Save');
+    assert.ok(!(await sb.eval('return document.documentElement.outerHTML + [...document.querySelectorAll("input")].map((i) => i.value).join()')).includes('quarterly'), 'the typed text is nowhere in the sidebar');
     assert.equal(await f.page('return document.documentElement.lastElementChild.tagName'), 'BODY', 'the pill is gone');
   });
 
   await check('FC-AGT-07', 'the review: delete steps, change a value, save; storage holds no secret', async () => {
     for (const i of [10, 9]) await sb.click('#wf-edit .del-step', i);
     for (let i = 0; i < 3; i++) await sb.click('#wf-edit .del-step', 2); // email, password, key
-    await sb.eval('const i = [...document.querySelectorAll("#wf-edit label")].find((l) => l.textContent === "Value").querySelector("input"); i.value = "edited text"; i.dispatchEvent(new Event("input"))');
+    await sb.click('#wf-edit .literal');
+    await sb.eval('const i = document.querySelector("#wf-edit .literal-text"); i.value = "edited text"; i.dispatchEvent(new Event("input"))');
     await sb.eval('const i = document.getElementById("wf-title"); i.value = "Save a form"; i.dispatchEvent(new Event("input"))');
     await press('#wf-edit', 'Save');
     await until('listed', async () => /Save a form/.test(await sb.text('#wf-list')));
     const s = await storage();
     assert.ok(s.includes('edited text'));
-    for (const secret of ['hunter2secret', 'ghp_', 'person@example', 'secret=tail']) assert.ok(!s.includes(secret), secret);
-    assert.deepEqual([...new Set(JSON.parse(s).workflows[0].steps.flatMap(Object.keys))].sort(), ['kind', 'name', 'nth', 'of', 'origin', 'path', 'role', 'value'], 'no approval, grant or ref');
+    for (const secret of ['quarterly', 'hunter2secret', 'ghp_', 'person@example', 'secret=tail']) assert.ok(!s.includes(secret), secret);
+    assert.deepEqual([...new Set(JSON.parse(s).workflows[0].steps.flatMap(Object.keys))].sort(), ['kind', 'literal', 'name', 'nth', 'of', 'origin', 'path', 'role', 'value'], 'no approval, grant or ref');
   });
 
   await check('FC-AGT-07', 'replay with level read is refused, and nothing happens in the page', async (n) => {
@@ -538,7 +540,7 @@ try {
     assert.equal(readFileSync(file, 'utf8'), text);
     n(text.split('\n').filter((l) => /^\d\./.test(l)).join(' '));
     assert.match(text, /disable-model-invocation: true/);
-    for (const s of ['hunter2', 'ghp_', 'person@', 'Allow']) assert.ok(!text.includes(s));
+    for (const s of ['quarterly', 'hunter2', 'ghp_', 'person@', 'Allow']) assert.ok(!text.includes(s));
     await press('#wf-list', 'Save as skill…');
     await sb.click('#wf-skill .skill-show');
     await until('asked', async () => /exists\. Replace it\?/.test(await sb.text('#wf-skill')));

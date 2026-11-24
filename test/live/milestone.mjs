@@ -138,7 +138,8 @@ try {
   await until('review', async () => /Review the recording/.test(await sb.text('#wf-edit')));
   const recorded = await sb.eval('return [...document.querySelectorAll("#wf-edit .step strong")].map((e) => e.textContent)');
   await sb.click('#wf-edit .del-step', 2); // the password step
-  await sb.eval('const i = [...document.querySelectorAll("#wf-edit label")].find((l) => l.textContent === "Value").querySelector("input"); i.value = "edited text"; i.dispatchEvent(new Event("input"))');
+  await sb.click('#wf-edit .literal');
+  await sb.eval('const i = document.querySelector("#wf-edit .literal-text"); i.value = "edited text"; i.dispatchEvent(new Event("input"))');
   await sb.eval('const i = document.getElementById("wf-title"); i.value = "Milestone"; i.dispatchEvent(new Event("input"))');
   await press('#wf-edit', 'Save');
   await until('saved', async () => /Milestone/.test(await sb.text('#wf-list')));

@@ -23,12 +23,29 @@ export function cleanStep(raw) {
   const step = { ...base, role: raw.role.slice(0, 40), name: raw.name.slice(0, 125), nth: count(raw.nth, 0), of: count(raw.of, 1) };
   if (!VALUE.includes(kind)) return step;
   const value = typeof raw.value === 'string' ? raw.value.slice(0, 10_000) : null;
+  if (kind === 'fill') {
+    // A text of an earlier version stays until the user decides, and nothing uses it.
+    if (raw.old === true && value !== null && raw.literal !== true) return { ...step, ask: true, old: true, value };
+    // Only the user's own choice in the editor stores a text, and never one of a field that is known to be sensitive.
+    if (raw.literal === true && value !== null && raw.sensitive !== true && !looksSecret(value)) return { ...step, literal: true, value };
+    return { ...step, ask: true, ...(raw.sensitive === true && { sensitive: true }) };
+  }
   if (raw.ask === true || value === null || looksSecret(value)) return { ...step, ask: true };
   if (kind === 'check' && value !== 'true' && value !== 'false') return { ...step, ask: true };
   return { ...step, value };
 }
 
 export const cleanSteps = (list) => (Array.isArray(list) ? list : []).slice(0, LIMITS.steps).map(cleanStep).filter(Boolean);
+
+/** A step as an earlier version stored it: its text had no mark of the user's choice. */
+const fromStore = (s) => (s?.kind === 'fill' && typeof s.value === 'string' && s.literal !== true ? { ...s, old: true } : s);
+
+/** A workflow from storage. A step that this version does not understand is kept as it is, in `rest`, and not used. */
+function loadWorkflow(w) {
+  const steps = (Array.isArray(w.steps) ? w.steps : []).map(fromStore);
+  const rest = [...(w.rest ?? []), ...steps.filter((s) => !cleanStep(s))];
+  return { ...w, steps: cleanSteps(steps), ...(rest.length && { rest }) };
+}
 
 /** One line for a person. */
 export function stepText(s) {
@@ -37,7 +54,7 @@ export function stepText(s) {
   switch (s.kind) {
     case 'page': return `Be on ${s.origin}${s.path}`;
     case 'click': return `Click ${target}`;
-    case 'fill': return `Enter ${value} in ${target}`;
+    case 'fill': return `Enter ${value} in ${target}${s.old ? ' (an earlier version stored a text; decide in Edit)' : ''}`;
     case 'choose': return `Choose ${value} in ${target}`;
     case 'check': return s.ask ? `Set ${target} to ${value}` : `${s.value === 'true' ? 'Check' : 'Uncheck'} ${target}`;
     case 'secret': return `Fill in ${target} yourself (secret, not recorded)`;
@@ -99,7 +116,7 @@ export class Workflows {
   }
 
   async load() {
-    this.saved = (await this.store.get({ workflows: [] })).workflows.filter((w) => w && originOf(w.origin) === w.origin).map((w) => ({ ...w, steps: cleanSteps(w.steps) }));
+    this.saved = (await this.store.get({ workflows: [] })).workflows.filter((w) => w && originOf(w.origin) === w.origin).map(loadWorkflow);
     this.onChange();
   }
 
@@ -140,7 +157,9 @@ export class Workflows {
   onStep(raw, tabId, url) {
     const r = this.rec;
     if (!r || r.paused || tabId !== r.tabId || originOf(url) !== r.origin || !this.#granted(tabId, r.origin)) return;
-    const step = cleanStep(raw);
+    // The page side sends no text, and one that came anyway is dropped here. Marks of the user's choice count only in save().
+    const { literal, old, ...seen } = raw ?? {};
+    const step = cleanStep(seen.kind === 'fill' ? { ...seen, value: undefined } : seen);
     if (!step || step.kind === 'page') return;
     const last = r.steps.at(-1);
     const again = last.kind === step.kind && step.kind !== 'click' && step.kind !== 'manual' && last.role === step.role && last.name === step.name && last.nth === step.nth;
@@ -192,10 +211,12 @@ export class Workflows {
     if (!old) throw new ToolError('not_found', 'That recording is gone.');
     const name = oneLine(title, 80);
     const clean = cleanSteps(steps).filter((s) => s.kind !== 'page' || s.origin === old.origin);
+    const secret = Array.isArray(steps) ? steps.findIndex((s) => s?.kind === 'fill' && s.literal === true && looksSecret(s.value)) : -1;
+    if (secret >= 0) throw new ToolError('not_allowed', `The text of step ${secret + 1} looks like a credential and is not stored. Choose to ask each time.`);
     if (!name) throw new ToolError('invalid_argument', 'Give the workflow a name.');
     if (!clean.length) throw new ToolError('invalid_argument', 'The workflow has no steps.');
     if (id === null && this.saved.length >= LIMITS.workflows) throw new ToolError('limit_reached', `There are ${LIMITS.workflows} workflows. Delete one first.`);
-    const w = { id: id ?? this.uuid(), title: name, origin: old.origin, created: old.created ?? this.now(), steps: clean };
+    const w = { id: id ?? this.uuid(), title: name, origin: old.origin, created: old.created ?? this.now(), steps: clean, ...(old.rest && { rest: old.rest }) };
     this.saved = id === null ? [w, ...this.saved] : this.saved.map((x) => (x.id === id ? w : x));
     if (id === null) this.draft = null;
     await this.store.set({ workflows: this.saved });
@@ -216,7 +237,7 @@ export class Workflows {
   }
 
   view() {
-    const shown = (w) => ({ ...w, steps: w.steps.map((s) => ({ ...s, line: stepText(s) })) });
+    const shown = ({ rest, ...w }) => ({ ...w, unknown: rest !== undefined, steps: w.steps.map((s) => ({ ...s, line: stepText(s) })) });
     return { saved: this.saved.map(shown), draft: this.draft && shown(this.draft), rec: this.rec && { tabId: this.rec.tabId, paused: this.rec.paused, steps: this.rec.steps.map(stepText) } };
   }
 }

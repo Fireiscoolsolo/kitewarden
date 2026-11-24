@@ -15,10 +15,36 @@ const labeled = (text, node) => el('label', {}, text, node);
 
 // Editor
 
+/** A text is asked for at each replay, unless the user decides here to store one. */
+function textChoice(s) {
+  const choose = (patch) => {
+    for (const k of ['old', 'literal', 'value', 'shown']) delete s[k];
+    Object.assign(s, patch);
+    drawEditor();
+  };
+  if (s.old) {
+    return [
+      el('p', { className: 'note warn', textContent: 'An earlier version stored a text for this step. It is not used until you decide.' }),
+      ...(s.shown ? [el('pre', { textContent: s.value })] : []),
+      el('p', { className: 'row' },
+        button(s.shown ? 'Hide text' : 'Show text', () => choose({ old: true, value: s.value, shown: !s.shown }), 'old-show'),
+        button('Keep this text in the workflow', () => choose({ literal: true, value: s.value }), 'old-keep'),
+        button('Delete it and ask each time', () => choose({ ask: true }), 'old-drop')),
+    ];
+  }
+  if (s.sensitive) return [el('p', { className: 'sub', textContent: 'A personal field: the value is asked for at each replay.' })];
+  const store = input({ type: 'checkbox', className: 'literal', checked: s.literal === true }, (on) => choose(on ? { literal: true, ask: false, value: '' } : { ask: true }));
+  return [
+    el('label', { className: 'check' }, store, 'Store a text in the workflow instead of asking each time'),
+    ...(s.literal ? [labeled('Text to store (not for secrets)', input({ className: 'literal-text', value: s.value }, (v) => (s.value = v)))] : []),
+  ];
+}
+
 function stepRow(s, i) {
   const line = el('div', { className: 'step' }, el('strong', { textContent: `${i + 1}. ${s.line}` }));
   if (s.role !== undefined) line.append(labeled('Element name', input({ value: s.name }, (v) => (s.name = v))));
-  if (['fill', 'choose', 'check'].includes(s.kind)) {
+  if (s.kind === 'fill') line.append(...textChoice(s));
+  if (['choose', 'check'].includes(s.kind)) {
     if (!s.ask) line.append(labeled('Value', input({ value: s.value }, (v) => (s.value = v))));
     const ask = input({ type: 'checkbox', checked: s.ask === true }, (v) => {
       s.ask = v;
@@ -50,7 +76,7 @@ function drawEditor() {
   box.replaceChildren(
     el('h3', { textContent: edit.id ? 'Edit workflow' : 'Review the recording' }),
     ...(edit.why ? [el('p', { className: 'sub', textContent: edit.why })] : []),
-    el('p', { className: 'sub', textContent: 'Secret fields are not recorded. Values that look like credentials, and personal fields, are asked each time. Nothing is stored before Save.' }),
+    el('p', { className: 'sub', textContent: 'Typed text and secret fields are not recorded: a replay asks for them. Nothing is stored before Save. A text that looks like a credential is not stored even if you choose to.' }),
     labeled('Name', input({ id: 'wf-title', value: edit.title, maxLength: 80 }, (v) => (edit.title = v))),
     ...edit.steps.map(stepRow),
     el('p', { className: 'row' },
