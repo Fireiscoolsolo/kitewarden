@@ -4,7 +4,7 @@ Readers are later implementation runs. They use this document instead of the sou
 
 ## Product
 
-Firefox Companion (working name, see decision D9) is an original Firefox-native Claude sidebar plus MCP bridge for stable Firefox on Windows 11 (160.0.1 installed here). Claude works only with tabs the user explicitly grants, in the existing signed-in profile. Claude in Chrome (source 24) is the workflow benchmark. The result covers the combined useful features of the 23 reference projects. Nothing is implemented yet.
+Firefox Companion (working name, see decision D9) is an original Firefox-native Claude sidebar plus MCP bridge for stable Firefox on Windows 11 (160.0.1 installed here). Claude works only with tabs the user explicitly grants, in the existing signed-in profile. Claude in Chrome (source 24) is the workflow benchmark. The result covers the combined useful features of the 23 reference projects. Prompt 2 built the browser bridge slice; see docs/project-state.md.
 
 ## Document outline (exact level-2 headings, in this order)
 
@@ -37,7 +37,7 @@ Firefox Companion (working name, see decision D9) is an original Firefox-native 
 - Platform prerequisites: Firefox version floor, permissions, APIs, Windows parts and P facts.
 - Target: one or more components below, plus the MCP tool name in backticks when it is a tool. Use `none` for excluded rows.
 - Acceptance test: one concrete, observable check that can fail (setup, action, expected result). For excluded rows, test the refusal or the absence.
-- Status: `planned`, `planned-adapted: <what differs>`, `deferred: <reason>`, `excluded: <reason>`, `platform-blocked: <reason>`. Nothing is implemented, so no other value.
+- Status: `planned`, `planned-adapted: <what differs>`, `deferred: <reason>`, `excluded: <reason>`, `platform-blocked: <reason>`, and since Prompt 2 `implemented: <evidence>` (the acceptance test of the row was shown) and `partial: <what was shown, what is missing or open>`.
 - The Firefox fit in the findings judges the upstream implementation. Decide the Firefox Companion status from the capability itself: a tool that upstream runs through Playwright, Marionette or BiDi can still be planned-adapted with WebExtension APIs. Check the fit against PLATFORM_FACTS.md (for example tabs.saveAsPDF exists, although 13-F12 says a WebExtension cannot print to PDF).
 - Security defects in sources become acceptance tests (Origin and token checks, loopback or pipe only, no all-interfaces bind, no unauthenticated command endpoint, password masking on every read and key path, page script cannot click an approval, no hidden test actions in the release build).
 

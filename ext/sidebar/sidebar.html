@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Firefox Companion</title>
+    <link rel="stylesheet" href="sidebar.css" />
+    <script type="module" src="sidebar.mjs"></script>
+  </head>
+  <body>
+    <div id="cards" aria-live="polite"></div>
+
+    <section aria-labelledby="link-title">
+      <h1 id="link-title" role="status">Starting</h1>
+      <p id="link-detail" class="sub"></p>
+      <p class="row">
+        <button id="connect" hidden>Connect</button>
+        <button id="disconnect" hidden>Disconnect</button>
+        <button id="pause" aria-pressed="false">Pause</button>
+        <!-- Last, so that it moves no other button when it appears. -->
+        <button id="retry" hidden>Retry now</button>
+      </p>
+      <p id="message" role="status"></p>
+    </section>
+
+    <section aria-labelledby="h-attach">
+      <h2 id="h-attach">This tab</h2>
+      <p id="tab"></p>
+      <p class="fields">
+        <label>For <select id="session"></select></label>
+        <label>
+          Level
+          <select id="level">
+            <option value="read">Read</option>
+            <option value="act">Read and click</option>
+          </select>
+        </label>
+        <button id="attach">Attach</button>
+      </p>
+    </section>
+
+    <section aria-labelledby="h-grants">
+      <h2 id="h-grants">Attached tabs</h2>
+      <ul id="grants"></ul>
+      <p class="row"><button id="revoke-all" hidden>Revoke all</button></p>
+    </section>
+
+    <section aria-labelledby="h-sessions">
+      <h2 id="h-sessions">Clients</h2>
+      <ul id="sessions"></ul>
+    </section>
+
+    <section id="try" aria-labelledby="h-try" hidden>
+      <h2 id="h-try">Try it</h2>
+      <p class="fields">
+        <label>Tab <select id="try-tab"></select></label>
+      </p>
+      <p class="row">
+        <button id="try-read">Read page</button>
+        <button id="try-shot">Screenshot</button>
+      </p>
+      <p class="fields">
+        <label>Element <select id="try-ref"></select></label>
+        <button id="try-click" disabled>Click</button>
+      </p>
+      <p id="try-state" role="status"></p>
+      <img id="try-image" alt="Screenshot of the attached tab" hidden />
+      <pre id="try-output" tabindex="0" aria-label="Page outline"></pre>
+    </section>
+
+    <details>
+      <summary>Screenshots</summary>
+      <p class="sub">
+        Firefox lets an add-on take pictures of a tab only after you press its toolbar button on that tab, or if it may
+        access all sites. Attached tabs stay the only ones that are captured.
+      </p>
+      <p class="row"><button id="screens">Allow screenshots of attached tabs</button></p>
+    </details>
+
+    <details>
+      <summary>Activity</summary>
+      <ul id="log"></ul>
+    </details>
+  </body>
+</html>

@@ -8,7 +8,7 @@ const inbox = path.dirname(path.resolve(process.argv[1]));
 const root = path.dirname(inbox);
 const manifest = JSON.parse(fs.readFileSync(path.join(inbox, 'manifest.json'), 'utf8'));
 const PARITY = path.join(root, 'docs/feature-parity.md');
-const STATUSES = ['planned', 'planned-adapted', 'deferred', 'excluded', 'platform-blocked'];
+const STATUSES = ['implemented', 'partial', 'planned', 'planned-adapted', 'deferred', 'excluded', 'platform-blocked'];
 const HEADS = ['Architecture', 'Permission boundaries', 'Tool inventory', 'Features', 'Tests', 'Claimed but not verified', 'Firefox implementation notes'];
 const PERM = ['Manifest permissions:', 'Host permissions:', 'Per-tab or per-site grant:', 'Authentication:', 'Sensitive-action gating:', 'Gaps:'];
 const tracked = new Map();
@@ -138,7 +138,7 @@ function checkParity(groups) {
   for (const r of rows) {
     if (r.length !== 8) continue;
     if (!TARGETS.some((x) => r[5].includes(x))) errs.push(`${r[0]}: target names no known component`);
-    if (/^(`)?(excluded|platform-blocked|deferred|planned-adapted)/.test(r[7]) && !/: \S{3}/.test(r[7])) errs.push(`${r[0]}: status needs a reason after a colon`);
+    if (/^(`)?(implemented|partial|excluded|platform-blocked|deferred|planned-adapted)/.test(r[7]) && !/: \S{3}/.test(r[7])) errs.push(`${r[0]}: status needs a reason after a colon`);
     if (r[4].length < 8) errs.push(`${r[0]}: platform prerequisites too thin`);
     if (r[2].length < 40) errs.push(`${r[0]}: observable behavior too thin`);
   }
