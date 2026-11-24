@@ -139,7 +139,7 @@ try {
     const perms = await sb.eval('return browser.permissions.getAll()');
     note(`host permissions now: ${perms.origins.join(', ')}`);
     assert.deepEqual((await d.call('tabs_context')).data.tabs, []);
-    assert.equal((await d.call('read_page', { tabId: idA })).code, 'no_grant');
+    assert.equal((await d.call('read_page', { tabId: idA })).code, 'conflict');
   });
 
   // Reading
@@ -156,7 +156,8 @@ try {
     assert.match(outline, /textbox "Name" value="Ada"/);
     assert.equal(outline.match(/value="\[secret\]"/g).length, 2);
     assert.match(outline, new RegExp(`ALPHA-${A.port}`));
-    for (const bad of ['hunter2secret', '493817', 'Hidden link', 'Transparent text', 'FRAME-TEXT']) assert.ok(!outline.includes(bad), bad);
+    for (const bad of ['hunter2secret', '493817', 'Hidden link', 'Transparent text']) assert.ok(!outline.includes(bad), bad);
+    assert.ok(outline.includes('FRAME-TEXT'), 'a frame of the same origin is read');
     assert.equal(outline.match(/<\/page_content>/g).length, 1, 'the imitated end marker is escaped');
     assert.equal(await f.page('return document.documentElement.outerHTML'), before);
     const cut = await c.call('read_page', { tabId: idA, max_chars: 200 });
@@ -271,10 +272,14 @@ try {
     await until('read', async () => (await sb.text('#try-state')) === 'Done');
     await sb.click('#try-click');
     await until('refused', async () => /read_only_grant/.test(await sb.text('#try-state')));
+    await c.call('tabs_release', { tabId: idA });
     await attach('client-two', 'read', null);
     const o = (await d.call('read_page', { tabId: idA })).text;
     assert.equal((await d.call('computer', { action: 'left_click', tabId: idA, ref: refOf(o, 'Count up') })).code, 'read_only_grant');
     assert.equal(await card(), null);
+    await d.call('tabs_release', { tabId: idA });
+    await attach('client-one', 'act', null);
+    outline = (await c.call('read_page', { tabId: idA })).text;
   });
 
   await check('D3', 'what may not be clicked: script link, disabled button, covered button, element swapped after approval, stale ref', async (note) => {
@@ -333,7 +338,7 @@ try {
     const o = await until('the new tab is listed', async () => ((await owned())?.state === 'active' ? owned() : null));
     assert.deepEqual([o.owned, o.level, o.url], [true, 'act', `${A.origin}/second`]);
     assert.match((await c.call('read_page', { tabId: r.opened_tab })).text, /Second page/);
-    assert.equal((await d.call('read_page', { tabId: r.opened_tab })).code, 'no_grant');
+    assert.equal((await d.call('read_page', { tabId: r.opened_tab })).code, 'conflict');
     await sb.eval('await browser.tabs.remove(arguments[0])', r.opened_tab);
     await until('its grant is gone', async () => !(await owned()));
     await f.select(handleA);
@@ -386,7 +391,7 @@ try {
     assert.ok(red[0] > 200 && red[1] < 60, 'red square');
     assert.ok(white.every((v) => v > 230), 'background');
     assert.ok(secret.every((v) => v < 40), 'the password field is covered');
-    assert.ok(frame.every((v) => v < 40), 'the frame is covered');
+    assert.ok(frame.every((v) => v > 200), 'a frame of the granted origin is shown');
     writeFileSync(path.join(out, 'screenshot.jpg'), Buffer.from(image(r), 'base64'));
     assert.ok(!(await f.page('return document.documentElement.outerHTML')).includes('popover'), 'the cover is gone');
     await f.navigate(`${A.origin}/wide?again`);
@@ -442,7 +447,7 @@ try {
     await sb.click('#grants .approve', nth);
     await until('approved', async () => (await c.call('tabs_context')).data.tabs[0].state === 'active');
     assert.match((await c.call('read_page', { tabId: idA })).text, new RegExp(`ALPHA-${B.port}`));
-    assert.equal((await d.call('read_page', { tabId: idA })).code, 'grant_suspended', 'the other session was not approved');
+    assert.equal((await d.call('read_page', { tabId: idA })).code, 'conflict');
     await f.navigate('about:support');
     assert.equal((await c.call('read_page', { tabId: idA })).code, 'grant_suspended');
     await f.navigate(`${A.origin}/`);
@@ -496,6 +501,7 @@ try {
   });
 
   await check('FC-CONN', 'disconnecting one client ends its call and its grants; the other client goes on', async () => {
+    await c.call('tabs_release', { tabId: idA });
     await attach('client-two', 'read', null);
     const wait = d.call('wait_for', { tabId: idA, text: 'NEVER', timeout_s: 20 });
     await sleep(400);
@@ -503,9 +509,10 @@ try {
     await sb.click('#sessions .end', i);
     const r = await wait;
     assert.equal(r.code, 'stopped');
+    await attach('client-one', 'act', null);
     assert.equal((await c.call('read_page', { tabId: idA })).code, null);
     assert.equal((await d.call('read_page', { tabId: idA })).code, 'session_ended');
-    assert.equal((await d.call('read_page', { tabId: idA })).code, 'no_grant');
+    assert.equal((await d.call('read_page', { tabId: idA })).code, 'conflict');
   });
 
   // Host loss and recovery

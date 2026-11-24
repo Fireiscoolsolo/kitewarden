@@ -47,11 +47,14 @@ const note = (re) => until(`note ${re}`, async () => re.test((await sb.text('#ch
 const idle = () => until('the run ended', () => sb.eval('return document.getElementById("stop").hidden'), 15_000);
 const type = (text) => sb.eval('document.getElementById("prompt").value = arguments[0]', text);
 async function say(text) {
+  seenAnswers = (await answers()).length;
   await type(text);
   await sb.click('#send');
+  await until('the run shows', () => sb.eval('return !document.getElementById("stop").hidden || /not_connected/.test(document.getElementById("message").textContent)'), 4000, 10).catch(() => {});
 }
+let seenAnswers = 0;
 const answers = () => sb.eval('return [...document.querySelectorAll("#chat-items .assistant")].map((e) => e.textContent)');
-const answer = async (re) => until(`answer ${re}`, async () => (await answers()).findLast((a) => re.test(a)), 15_000);
+const answer = async (re) => until(`answer ${re}`, async () => (await answers()).slice(seenAnswers).findLast((a) => re.test(a)), 15_000);
 /** Presses a button by its text inside a part. */
 async function press(part, text) {
   const i = await until(`button ${text}`, async () => {
@@ -287,7 +290,10 @@ try {
     client = new McpClient(home, { name: 'standalone' });
     await client.init();
     await until('client', async () => /standalone/.test(await sb.text('#sessions')));
+    const before0 = await f.handle();
+    const other = await f.tab(`${A.origin}/second`);
     await sb.attach('standalone', 'act', null);
+    await f.select(before0);
     await sb.click('[data-show="chat"]');
     await say('click Count up');
     await sb.waitCard();
@@ -295,7 +301,7 @@ try {
     await until('closed', () => f.chrome('return !(window.SidebarController ?? window.SidebarUI).isOpen'));
     const tabs = await client.call('tabs_context');
     assert.equal(tabs.data.tabs.length, 1);
-    assert.match((await client.call('read_page', { tabId: tabs.data.tabs[0].tabId })).text, /ALPHA-3000/);
+    assert.match((await client.call('read_page', { tabId: tabs.data.tabs[0].tabId })).text, /Second page 3000/);
     assert.equal(claudes(), 1, 'the run goes on');
     const badge = await f.chrome('return document.getElementById("bridge_firefox-companion_invalid-BAP").getAttribute("badge")');
     assert.equal(badge, '?');
@@ -304,6 +310,9 @@ try {
     const before = A.reports.length;
     await sb.answerCard(true);
     await until('clicked', () => A.reports.length === before + 1);
+    await f.select(other);
+    await f.m.send('WebDriver:CloseWindow');
+    await f.select(before0);
     await idle();
   });
 
@@ -340,7 +349,7 @@ try {
     await answer(/^Earlier you wrote: .*markdown.*recall$/);
     await idle();
     const kept = JSON.parse(await storage());
-    assert.deepEqual(Object.keys(kept).map((k) => k.replace(/^chat:.*/, 'chat')).filter((k, i, all) => all.indexOf(k) === i).sort(), ['chat', 'chats', 'connect', 'log'], 'no grant, ticket or draft is kept');
+    assert.deepEqual(Object.keys(kept).map((k) => k.replace(/^chat:.*/, 'chat')).filter((k, i, all) => all.indexOf(k) === i).sort(), ['chat', 'chats', 'connect', 'log', 'profile'], 'no grant, ticket or draft is kept');
     assert.ok(!/[0-9a-f]{64}/.test(JSON.stringify(kept)), 'no ticket');
   });
 

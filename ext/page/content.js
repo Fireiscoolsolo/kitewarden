@@ -438,6 +438,7 @@
     for (let n = 1; n <= m.count; n++) {
       const down = hit.dispatchEvent(new PointerEvent('pointerdown', { ...mouse, buttons: held })) && hit.dispatchEvent(new MouseEvent('mousedown', { ...init, buttons: held, detail: n }));
       if (down && n === 1 && button === 0) (hit.closest('a, button, input, select, textarea, [tabindex], [contenteditable]') ?? el).focus?.({ preventScroll: true });
+      watch.seen.focus = document.activeElement; // that was us
       hit.dispatchEvent(new PointerEvent('pointerup', mouse));
       hit.dispatchEvent(new MouseEvent('mouseup', { ...init, detail: n }));
       if (button === 0 && !m.modifiers.length) hit.click();

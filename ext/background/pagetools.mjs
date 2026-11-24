@@ -267,7 +267,7 @@ const refFor = async (r, call, origin, a) => a.ref ?? (await atPoint(r, call, or
 async function effect(r, call, f, id, extra = {}) {
   const after = await r.page(call, f.origin, { cmd: 'after' }, f.frame).catch(() => null);
   // The question may reach the next document, which knows nothing of the action.
-  const page = after?.id !== id ? 'navigated' : after.changed ? 'changed' : extra.opened != null ? 'opened a tab' : NO_EFFECT;
+  const page = after?.id !== id ? 'navigated' : extra.opened != null ? 'opened a tab' : after.changed ? 'changed' : NO_EFFECT;
   return { dispatched: true, trusted_event: false, observed: page !== NO_EFFECT, page, ...(page === NO_EFFECT && { hint: BACKEND }), ...(after?.dialogs?.length && { dialogs: after.dialogs }) };
 }
 
