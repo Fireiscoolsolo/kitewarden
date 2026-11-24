@@ -21,6 +21,7 @@ const home = installHome();
 const fx = await fixture(3000);
 const f = await Firefox.start();
 let code = 1;
+let p;
 try {
   result.firefox = f.version;
   const sb = new Sidebar(f, await f.install(path.join(root, 'dist/extension')));
@@ -55,7 +56,12 @@ try {
 3. Call read_page on that tab.
 4. Click the button "Count up" exactly once with computer left_click. The user approves it.
 5. Call read_page again and answer with one line: the word that starts with ALPHA-, then the number that the page shows after the button.`;
-    const p = spawn('claude', ['-p', '--model', 'haiku', '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--mcp-config', mcp, '--setting-sources', '', '--tools', '', '--allowedTools', 'mcp__firefox-companion', '--no-session-persistence', '--max-turns', '30'], { cwd: work, env });
+    // The first two lines are the documented path of the AC-08 record; the rest keeps the run small and apart.
+    p = spawn('claude', [
+      '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
+      '--strict-mcp-config', '--mcp-config', mcp,
+      '--model', 'haiku', '--setting-sources', '', '--tools', '', '--allowedTools', 'mcp__firefox-companion', '--no-session-persistence', '--max-turns', '30',
+    ], { cwd: work, env });
     const events = [];
     createInterface({ input: p.stdout }).on('line', (l) => {
       try {
@@ -66,7 +72,7 @@ try {
     });
     let stderr = '';
     p.stderr.on('data', (d) => (stderr += d));
-    p.stdin.end(prompt);
+    p.stdin.end(JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: prompt }] } }) + '\n');
     const ended = new Promise((r) => p.on('exit', r));
     let running = true;
     ended.then(() => (running = false));
@@ -82,12 +88,26 @@ try {
       await sleep(200);
     }
     const last = events.findLast((e) => e.type === 'result');
-    result.model = events.find((e) => e.type === 'system' && e.subtype === 'init')?.model;
-    result.tools = events.filter((e) => e.type === 'assistant').flatMap((e) => e.message.content).filter((x) => x.type === 'tool_use').map((x) => x.name.replace('mcp__firefox-companion__', '') + (x.input.action ? ` ${x.input.action}` : ''));
+    const init = events.find((e) => e.type === 'system' && e.subtype === 'init');
+    const blocks = (type) => events.filter((e) => e.type === type).flatMap((e) => e.message.content);
+    const uses = blocks('assistant').filter((x) => x.type === 'tool_use');
+    const first = blocks('user').find((x) => x.type === 'tool_result' && x.tool_use_id === uses[0]?.id);
+    result.model = init?.model;
+    result.mcp_servers = init?.mcp_servers;
+    result.tools = uses.map((x) => x.name.replace('mcp__firefox-companion__', '') + (x.input.action ? ` ${x.input.action}` : ''));
+    result.connection_status = JSON.parse([first?.content].flat().map((x) => x?.text ?? x).join(''));
+    result.streamed_parts = events.filter((e) => e.type === 'stream_event').length;
     result.answer = last?.result;
     result.cost_usd = last?.total_cost_usd;
     result.page_reports = fx.reports;
     console.log(`part 2: ${result.model}; calls: ${result.tools.join(', ')}; answer: ${result.answer}; page: ${fx.reports.join(', ')}${stderr ? `; stderr: ${stderr.slice(0, 300)}` : ''}`);
+    assert.deepEqual(init.mcp_servers.map((s) => [s.name, s.status]), [['firefox-companion', 'connected']], 'only this MCP server');
+    assert.ok(init.tools.every((t) => t.startsWith('mcp__firefox-companion__')), `only its tools: ${init.tools}`);
+    assert.equal(result.tools[0], 'connection_status');
+    assert.equal(result.connection_status.state, 'connected');
+    assert.match(result.connection_status.session.label, /^Client claude-code/);
+    assert.ok(result.streamed_parts > 0, 'partial messages arrive');
+    assert.deepEqual(result.tools.filter((t) => t === 'computer left_click').length, 1);
     assert.deepEqual(fx.reports, ['count=1;trusted=false']);
     assert.match(result.answer, new RegExp(`ALPHA-${fx.port}.*1`, 's'));
     code = 0;
@@ -96,6 +116,7 @@ try {
   result.error = e.message;
   console.error(e);
 } finally {
+  p?.kill(); // a failed check must not leave a model running
   await f.quit();
   await fx.close();
   await home.close();
