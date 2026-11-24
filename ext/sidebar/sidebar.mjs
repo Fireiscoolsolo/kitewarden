@@ -35,7 +35,12 @@ function drawLink() {
 
 // Approval cards
 
-const WANTS = { left_click: 'click', form_input: 'fill in a field', navigate: 'open an address', gif_creator: 'record pictures' };
+const WANTS = {
+  left_click: 'click', right_click: 'click with the right button', middle_click: 'click with the middle button', double_click: 'double-click', triple_click: 'click three times', left_click_drag: 'drag',
+  type: 'type', key: 'press keys', form_input: 'fill in a field', form_fill: 'fill in fields', file_upload: 'upload files', navigate: 'open an address', gif_creator: 'record pictures', request_user: 'hand this tab to you',
+  tabs_create: 'open a tab', tabs_close: 'close your tab', closed_tabs: 'reopen a tab', windows_create: 'open a window', resize_window: 'change a window', search_bookmarks: 'search your bookmarks',
+  add_bookmark: 'add a bookmark', search_history: 'search your history', download_start: 'download a file',
+};
 const cards = new Map();
 
 function drawCards() {
@@ -48,11 +53,11 @@ function drawCards() {
     if (cards.has(a.id)) continue;
     const title = el('h2', { id: `t-${a.id}`, textContent: `${a.sessionLabel} wants to ${WANTS[a.tool]}` });
     const facts = el('dl');
-    for (const [k, v] of [['Target', a.target], [a.tool === 'navigate' ? 'Note' : 'Value', a.value], ['Link',a.link && a.link + (a.download ? ' (download)' : '')], ['Tab', a.tabTitle], ['Site', a.origin], ['Its reason', a.reason]]) {
+    for (const [k, v] of [['Target', a.target], [a.tool === 'navigate' ? 'Note' : 'Value', a.value], ['Link',a.link && a.link + (a.download ? ' (download)' : '')], ['Tab', a.tabTitle], ['Site', a.origin], ['Frame of', a.frame], ['Its reason', a.reason]]) {
       if (v) facts.append(el('dt', { textContent: k }), el('dd', { textContent: v }));
     }
     const answer = (allow) => () => send('answer', { card: a.id, allow });
-    const card = el('section', { className: 'card' }, title, facts, el('p', { className: 'row' }, onPress(el('button', { textContent: 'Allow once', className: 'allow' }), answer(true)), onPress(el('button', { textContent: 'Deny', className: 'deny' }), answer(false))));
+    const card = el('section', { className: 'card' }, title, facts, el('p', { className: 'row' }, onPress(el('button', { textContent: a.tool === 'request_user' ? 'Done' : 'Allow once', className: 'allow' }), answer(true)), onPress(el('button', { textContent: a.tool === 'request_user' ? 'Cancel' : 'Deny', className: 'deny' }), answer(false))));
     card.setAttribute('role', 'group');
     card.setAttribute('aria-labelledby', title.id);
     cards.set(a.id, card);
@@ -70,12 +75,34 @@ function drawAttach() {
   const origin = tab && originOf(tab.url);
   part('tab', { title: oneLine(tab?.title), origin }, (d) => [el('strong', { textContent: d.title || 'No tab' }), el('br'), d.origin ?? 'This page cannot be attached.']);
   $('attach').disabled = !origin;
+  $('private-row').hidden = !tab?.incognito;
   options('session', ui.state.sessions.map((s) => [s.id, s.label]));
 }
 
 function attach() {
-  const choice = { session: $('session').value, level: $('level').value };
-  withSite((tab) => run('grant', { ...tab, ...choice }, 'Attached.'));
+  const choice = { session: $('session').value, level: $('level').value, private: $('private-ok').checked && current()?.incognito === true };
+  $('private-ok').checked = false; // each private grant is its own choice
+  withSite((tab) => give('grant', { ...tab, ...choice }));
+}
+
+/** A grant, and the choice to move the tab when another session has it. */
+async function give(type, data) {
+  const r = await run(type, data, 'Attached.');
+  $('move').hidden = r.error?.code !== 'conflict';
+  moving = r.error?.code === 'conflict' ? () => run(type, { ...data, move: true }, 'Moved here.') : null;
+  return r;
+}
+let moving = null;
+
+/** Frames of other sites in a tab, which the user may allow one site at a time. */
+async function showFrames(grant) {
+  const r = await send('frames', { grant });
+  const list = r.result?.frames ?? [];
+  const sites = [...new Set(list.filter((f) => !f.granted && /^https?:/.test(f.origin)).map((f) => f.origin))];
+  $('frames').replaceChildren(
+    el('p', { className: 'sub', textContent: r.error ? `${r.error.code}: ${r.error.message}` : sites.length ? 'Frames of other sites in this tab:' : 'There are no frames of other sites that could be allowed.' }),
+    ...sites.map((origin) => el('p', { className: 'row' }, onPress(el('button', { textContent: `Allow frames of ${origin}`, className: 'allow-frame' }), () => browser.permissions.request({ origins: [hostPattern(origin)] }).then((ok) => ok && run('approve_frames', { grant, origin }, 'Frames allowed.').then(() => $('frames').replaceChildren()))))),
+  );
 }
 
 function approveOrigin(grant, origin) {
@@ -85,14 +112,16 @@ function approveOrigin(grant, origin) {
 function drawGrants() {
   const data = ui.state.grants.map((g) => {
     const tab = ui.tabs.find((t) => t.id === g.tabId);
-    return { ...g, title: oneLine(tab?.title, 60), now: tab ? originOf(tab.url) : null, label: sessionLabel(g.sessionId) };
+    return { ...g, title: oneLine(tab?.title, 60), now: tab ? originOf(tab.url) : null, label: sessionLabel(g.sessionId), stopped: ui.state.stoppedTabs.includes(g.tabId) };
   });
   part('grants', data, (list) =>
     list.length
       ? list.map((g) => {
-          const li = el('li', {}, el('strong', { textContent: g.title || `Tab ${g.tabId}` }), el('span', { className: 'sub', textContent: `${g.origins.join(', ')} · ${g.level === 'act' ? 'read and act' : 'read'} · ${g.label} · ${g.state === 'active' ? 'active' : g.reason === 'permission' ? 'suspended: Firefox took the permission away' : g.state === 'pending' ? 'loading' : 'suspended: other site'}` }));
+          const li = el('li', {}, el('strong', { textContent: g.title || `Tab ${g.tabId}` }), el('span', { className: 'sub', textContent: `${g.origins.join(', ')} · ${g.frames.length ? `frames of ${g.frames.join(', ')} · ` : ''}${g.private ? 'private · ' : ''}${g.stopped ? 'with you · ' : ''}${g.level === 'act' ? 'read and act' : 'read'} · ${g.label} · ${g.state === 'active' ? 'active' : g.reason === 'permission' ? 'suspended: Firefox took the permission away' : g.state === 'pending' ? 'loading' : 'suspended: other site'}` }));
           const row = el('p', { className: 'row' });
           if (g.state === 'suspended' && g.now) row.append(onPress(el('button', { textContent: `Approve ${g.now}`, className: 'approve' }), () => approveOrigin(g.id, g.now)));
+          if (g.state === 'active') row.append(onPress(el('button', { textContent: 'Frames…', className: 'frames' }), () => showFrames(g.id)));
+          row.append(g.stopped ? onPress(el('button', { textContent: 'Give back', className: 'give-back' }), () => run('resume_tab', { tabId: g.tabId }, 'Given back.')) : onPress(el('button', { textContent: 'Take over', className: 'take-over' }), () => run('stop_tab', { tabId: g.tabId }, 'You have this tab.').then(report)));
           row.append(onPress(el('button', { textContent: 'Revoke', className: 'revoke' }), () => run('revoke', { grant: g.id }, 'Revoked.')));
           li.append(row);
           return li;
@@ -148,6 +177,34 @@ async function tryClick() {
   if (r) $('try-state').textContent = `Clicked ${r.clicked}. Page: ${r.page}.`;
 }
 
+/** What a stop ended, and what may have taken effect. */
+function report(r) {
+  const list = r?.calls ?? [];
+  $('halt-report').replaceChildren(...(list.length ? [el('ul', {}, ...list.map((c) => el('li', { textContent: `${c.session}: ${c.tool}, ${c.state}. ${c.may_have_taken_effect ? `May already have taken effect: ${c.may_have_taken_effect}. Check the page.` : 'Not carried out.'}` })))] : [el('p', { className: 'sub', textContent: 'Nothing was under way.' })]));
+}
+
+function drawControl() {
+  const s = ui.state;
+  $('halt').hidden = Boolean(s.halted);
+  $('resume-work').hidden = !s.halted;
+  if (s.halted) {
+    $('link-title').textContent = 'Stopped by you';
+    $('link-detail').textContent = 'Every call is refused until you press Resume work.';
+  }
+  part('requests', s.requests, (list) => list.map((q) => el('section', { className: 'card' }, el('h2', { textContent: `${q.session} asks for a tab` }), el('p', { textContent: q.reason }), el('p', { className: 'row' },
+    ...['read', 'act'].filter((l) => l === 'read' || q.level === 'act').map((level) => onPress(el('button', { textContent: level === 'act' ? 'Give this tab, read and act' : 'Give this tab, read', className: `give-${level}` }), () => withSite((tab) => give('request_answer', { request: q.id, ...tab, level, private: $('private-ok').checked && current()?.incognito === true })))),
+    onPress(el('button', { textContent: 'Refuse', className: 'refuse' }), () => run('request_answer', { request: q.id, deny: true }, 'Refused.'))))));
+  part('lost', { lost: s.lost, sessions: s.sessions.map((x) => [x.id, x.label, x.kind]) }, ({ lost, sessions }) => lost.flatMap((l) => sessions.filter(([, label, kind]) => kind === l.kind && label.includes(l.name)).map(([id, label]) => el('p', { className: 'row' }, onPress(el('button', { textContent: `Attach the same ${l.tabs} tabs again to ${label}`, className: 'regrant' }), () => run('regrant', { lost: l.id, session: id }).then((r) => !r.error && ($('message').textContent = `Attached ${r.given.length}, left out ${r.left_out}.`)))))));
+  part('now', s.activity, (list) => list.map((c) => el('li', { textContent: `${c.session}: ${c.tool}${c.tabId === null ? '' : ` in tab ${c.tabId}`}, ${c.state}` })));
+  part('folders', s.folders, (list) => (list.length ? list.map((f) => el('li', {}, f, ' ', onPress(el('button', { textContent: 'Remove' }), () => run('remove_folder', { path: f }, 'Removed.')))) : [el('li', { className: 'sub', textContent: 'None: every upload is refused.' })]));
+  part('switches', s.switches, (on) => ['bookmarks', 'history', 'downloads'].map((name) => {
+    const box = el('input', { type: 'checkbox', checked: on[name] === true, id: `switch-${name}` });
+    onPress(box, () => (box.checked ? browser.permissions.request({ permissions: [name] }).then((ok) => run('set_switch', { name, on: ok }, ok ? 'On.' : 'Firefox did not allow it.')) : run('set_switch', { name, on: false }, 'Off.')));
+    return el('label', { className: 'check' }, box, `Clients may ask for ${name}`);
+  }));
+  if (document.activeElement !== $('profile-label')) $('profile-label').value = s.profile.label ?? '';
+}
+
 function drawLog() {
   part('log', ui.state.log, (list) => [...list].reverse().map((l) => el('li', { textContent: `${new Date(l.at).toLocaleTimeString()}  ${sessionLabel(l.session)}  ${l.tool}  ${l.origin ?? '-'}  ${l.decision}` })));
 }
@@ -162,6 +219,7 @@ async function draw() {
   drawGrants();
   drawSessions();
   drawTry();
+  drawControl();
   drawLog();
   drawChat();
   drawWorkflows();
@@ -186,6 +244,15 @@ onPress($('connect'), () => run('connect'));
 onPress($('disconnect'), () => run('disconnect'));
 onPress($('retry'), () => run('retry'));
 onPress($('pause'), () => run('pause', { on: !ui.state.paused }));
+onPress($('halt'), () => run('halt', {}, 'Stopped.').then(report));
+onPress($('resume-work'), () => run('resume', {}, 'Work may go on.').then(() => $('halt-report').replaceChildren()));
+onPress($('move'), () => {
+  $('move').hidden = true;
+  moving?.();
+});
+onPress($('folder-add'), () => run('add_folder', { path: $('folder-path').value }, 'Added.').then((r) => !r.error && ($('folder-path').value = '')));
+onPress($('profile-save'), () => run('set_label', { label: $('profile-label').value }, 'Saved.'));
+onPress($('groups-ok'), () => browser.permissions.request({ permissions: ['tabGroups'] }));
 onPress($('attach'), attach);
 onPress($('revoke-all'), () => run('revoke_all', {}, 'Revoked.'));
 onPress($('screens'), () => browser.permissions.request({ origins: ['<all_urls>'] }).then((ok) => ($('message').textContent = ok ? 'Screenshots of attached tabs are allowed.' : 'Not allowed.')));

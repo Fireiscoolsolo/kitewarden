@@ -7,17 +7,19 @@ import { stepText } from './workflows.mjs';
 const SESSION = 'sidebar';
 const FIND_MS = 5000;
 const PAGE_MS = 10_000;
+const frameOf = (ref) => Number(/^ref_f(\d+)_/.exec(ref)?.[1] ?? 0);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** The ref of a step's element. The number of equal elements must be the recorded one. */
-export function match(step, list) {
-  const hits = list.filter((e) => e.role === step.role && e.name === step.name);
+export function match(step, list, frame = 0) {
+  const hits = list.filter((e) => e.role === step.role && e.name === step.name && (e.frame ?? 0) === frame);
   if (!hits.length) return { problem: 'not_found' };
   return hits.length === step.of ? { ref: hits[step.nth].ref } : { problem: 'ambiguous' };
 }
 
 const PROBLEM = {
   not_found: 'The element of this step is not on the page.',
+  no_frame: 'The frame of this step is not there, or its site is not allowed in this tab. Allow it under Tabs, Frames.',
   ambiguous: 'The page has another number of such elements than when this was recorded.',
 };
 
@@ -38,11 +40,35 @@ export class Replay {
     return r.result;
   }
 
-  async #read(w, tabId) {
+  /** The elements of a tab and its granted frames, each with its frame. */
+  async #read(w, tabId, slot = 0) {
+    const want = (w.tabs ?? [w.origin])[slot];
     const r = await this.#run('read_page', { tabId, filter: 'interactive', max_chars: 200_000 });
-    if (r.origin !== w.origin) throw new ToolError('origin_changed', `This workflow belongs to ${w.origin}. The tab shows ${r.origin}.`);
+    if (r.origin !== want) throw new ToolError('origin_changed', `This workflow belongs to ${want}. The tab shows ${r.origin}.`);
     if (r.truncated) throw new ToolError('too_large', 'The page is too large to find its elements for sure.');
-    return elements(r.outline);
+    const list = elements(r.outline).map((e) => ({ ...e, frame: frameOf(e.ref) }));
+    list.frames = r.frames;
+    return list;
+  }
+
+  /** The step's element. Its frame must be the only one of that origin which the grant covers now. */
+  #match(s, list) {
+    if (!s.frame) return match(s, list);
+    const of = (list.frames ?? []).filter((f) => f.origin === s.frame.origin);
+    const hits = of.map((f) => match(s, list, f.frame)).filter((m) => m.ref);
+    if (!of.length) return { problem: 'no_frame' };
+    return hits.length === 1 ? hits[0] : { problem: hits.length ? 'ambiguous' : 'not_found' };
+  }
+
+  /** The tab of a step. A later one is an attached tab on the recorded origin that no earlier slot uses. */
+  #tabOf(s) {
+    const slot = s.tab ?? 0;
+    const used = this.state.tabs;
+    if (used[slot] !== undefined) return used[slot];
+    const origin = this.w.tabs[slot];
+    const free = this.router.grants.of(SESSION).filter((g) => g.state === 'active' && g.origins.includes(origin) && !used.includes(g.tabId));
+    if (free.length !== 1) throw new ToolError(free.length ? 'ambiguous' : 'no_grant', free.length ? `Several attached tabs show ${origin}. Keep only the one that this step means.` : `This step needs a tab on ${origin}. Attach it to "This sidebar", then press Retry step.`);
+    return (used[slot] = free[0].tabId);
   }
 
   /** What a replay would do and need now. Acts on nothing. */
@@ -59,8 +85,8 @@ export class Replay {
     }
     let samePage = list !== null; // later pages are not here yet
     const steps = w.steps.map((s, i) => {
-      if (s.kind === 'page' && i > 0) samePage = false;
-      const found = samePage && s.role ? match(s, list).problem ?? 'found' : null;
+      if (s.kind === 'page' && i > 0 && !s.tab) samePage = false;
+      const found = samePage && s.role && !s.tab ? this.#match(s, list).problem ?? 'found' : null;
       const needs = s.kind === 'secret' || s.kind === 'manual' ? 'you' : s.kind === 'page' && i > 0 ? 'nothing' : 'your approval';
       return { line: stepText(s), needs, ask: s.ask === true, found };
     });
@@ -74,7 +100,8 @@ export class Replay {
     if (missing >= 0) throw new ToolError('invalid_argument', `Step ${missing + 1} needs a value.`);
     this.w = structuredClone(w);
     this.values = { ...values };
-    this.state = { title: w.title, tabId, at: 0, status: 'running', message: '', steps: w.steps.map((s) => ({ line: stepText(s), state: 'open' })) };
+    this.w.tabs ??= [w.origin];
+    this.state = { title: w.title, tabId, tabs: [tabId], at: 0, status: 'running', message: '', steps: w.steps.map((s) => ({ line: stepText(s), state: 'open' })) };
     this.#go();
   }
 
@@ -95,7 +122,7 @@ export class Replay {
         return this.#set({ status: 'waiting', message: 'Do this step in the page, then press Continue.' });
       }
       try {
-        await this.#step(s, i, state.tabId);
+        await this.#step(s, i, this.#tabOf(s));
       } catch (e) {
         if (this.state !== state || state.status !== 'running') return; // cancelled meanwhile
         state.steps[i].state = 'failed';
@@ -119,7 +146,7 @@ export class Replay {
     let m;
     for (;;) {
       this.#alive();
-      m = match(s, await this.#read(this.w, tabId));
+      m = this.#match(s, await this.#read(this.w, tabId, s.tab ?? 0));
       if (m.ref || Date.now() > end) break;
       await sleep(250);
     }

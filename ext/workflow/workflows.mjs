@@ -6,6 +6,9 @@ const SESSION = 'sidebar';
 const TARGET = ['click', 'fill', 'choose', 'check', 'secret'];
 const VALUE = ['fill', 'choose', 'check'];
 
+const MAX_TABS = 5;
+const maskPath = (p) => p.split(/[?#]/)[0].split('/').map((x) => (looksSecret(x) ? '…' : x)).join('/').slice(0, 500);
+
 /** One step with known fields only, or null. A value that looks like a credential becomes a question. */
 export function cleanStep(raw) {
   const kind = raw?.kind;
@@ -13,14 +16,19 @@ export function cleanStep(raw) {
   const base = note ? { kind, note } : { kind };
   if (kind === 'page') {
     if (typeof raw.origin !== 'string' || originOf(raw.origin) !== raw.origin || typeof raw.path !== 'string' || !raw.path.startsWith('/')) return null;
-    const path = raw.path.split(/[?#]/)[0].split('/').map((p) => (looksSecret(p) ? '…' : p)).join('/');
-    return { ...base, origin: raw.origin, path: path.slice(0, 500) };
+    const tab = Number.isSafeInteger(raw.tab) && raw.tab > 0 && raw.tab < MAX_TABS ? { tab: raw.tab } : {};
+    return { ...base, ...tab, origin: raw.origin, path: maskPath(raw.path) };
   }
+  const tab = Number.isSafeInteger(raw?.tab) && raw.tab > 0 && raw.tab < MAX_TABS ? { tab: raw.tab } : {};
+  Object.assign(base, tab);
   if (kind === 'manual') return { ...base, text: oneLine(raw.text, 200) || 'Do this step yourself' };
   if (!TARGET.includes(kind) || typeof raw.role !== 'string' || typeof raw.name !== 'string') return null;
   const count = (n, min) => (Number.isSafeInteger(n) && n >= min ? n : min);
-  // Names come as content.js prints them: one line, at most 121 characters.
-  const step = { ...base, role: raw.role.slice(0, 40), name: raw.name.slice(0, 125), nth: count(raw.nth, 0), of: count(raw.of, 1) };
+  // A frame is known by its origin and path. Names come as content.js prints them: one line, at most 121 characters.
+  const f = raw.frame;
+  const inFrame = f && typeof f.origin === 'string' && originOf(f.origin) === f.origin && typeof f.path === 'string' && f.path.startsWith('/') ? { frame: { origin: f.origin, path: maskPath(f.path) } } : {};
+  if (f && !inFrame.frame) return null;
+  const step = { ...base, ...inFrame, role: raw.role.slice(0, 40), name: raw.name.slice(0, 125), nth: count(raw.nth, 0), of: count(raw.of, 1) };
   if (!VALUE.includes(kind)) return step;
   const value = typeof raw.value === 'string' ? raw.value.slice(0, 10_000) : null;
   if (kind === 'fill') {
@@ -51,6 +59,11 @@ function loadWorkflow(w) {
 export function stepText(s) {
   const target = `${s.role} ${JSON.stringify(s.name)}${s.of > 1 ? ` (number ${s.nth + 1} of ${s.of})` : ''}`;
   const value = s.ask ? 'a value that you give each time' : JSON.stringify(s.value);
+  const where = `${s.tab ? ` (tab ${s.tab + 1})` : ''}${s.frame ? ` (frame of ${s.frame.origin})` : ''}`;
+  return stepLine(s, target, value) + where;
+}
+
+function stepLine(s, target, value) {
   switch (s.kind) {
     case 'page': return `Be on ${s.origin}${s.path}`;
     case 'click': return `Click ${target}`;
@@ -82,7 +95,7 @@ export function skillText(w, name) {
       secret: () => `Ask the user to fill in the ${target} in the browser, and wait until they say that it is done. Never ask for the value.`,
       manual: () => `Ask the user to do this in the browser, and wait: ${inertJson(s.text)}.`,
     }[s.kind]();
-    return `${i + 1}. ${what}${s.note ? ` Note of the user: ${inertJson(s.note)}.` : ''}`;
+    return `${i + 1}. ${s.tab ? `In tab ${s.tab + 1} of this workflow: ` : ''}${s.frame ? `In the frame of ${inertJson(s.frame.origin + s.frame.path)}: ` : ''}${what}${s.note ? ` Note of the user: ${inertJson(s.note)}.` : ''}`;
   });
   return `---
 name: ${name}
@@ -107,7 +120,7 @@ ${lines.join('\n')}
 }
 
 export class Workflows {
-  /** `page(tabId, origin, message)` talks to the content script of a tab. */
+  /** `page(tabId, origin, message, frames)` talks to the content script of a tab, and of its frames of these origins. */
   constructor({ store, grants, getTab, page, onChange = () => {}, now = Date.now, uuid = () => crypto.randomUUID() }) {
     Object.assign(this, { store, grants, getTab, page, onChange, now, uuid });
     this.saved = [];
@@ -131,7 +144,8 @@ export class Workflows {
     const origin = tab && originOf(tab.url);
     if (!origin || !this.#granted(tabId, origin)) throw new ToolError('no_grant', 'Attach this tab to "This sidebar" first.');
     this.draft = null;
-    this.rec = { tabId, origin, paused: false, steps: [{ kind: 'page', ...recordedPage(tab.url) }] };
+    if (tab.incognito) throw new ToolError('not_allowed', 'A private tab is not recorded.');
+    this.rec = { tabId, origin, tabs: [{ tabId, origin }], paused: false, steps: [{ kind: 'page', ...recordedPage(tab.url) }] };
     this.onChange();
     const r = await this.#arm();
     if (r?.error) {
@@ -141,9 +155,36 @@ export class Workflows {
     }
   }
 
-  #arm() {
-    const { tabId, origin, paused } = this.rec;
-    return this.page(tabId, origin, { cmd: 'record', on: !paused, kind: 'steps' });
+  /** Tells the content scripts of the recorded tabs and of their granted frames. */
+  async #arm(only = null) {
+    const { tabs, paused } = this.rec;
+    let first;
+    for (const t of tabs) if (only === null || only === t.tabId) first = (await this.page(t.tabId, t.origin, { cmd: 'record', on: !paused, kind: 'steps' }, this.#frames(t.tabId))) ?? first;
+    return first;
+  }
+
+  #frames(tabId) {
+    return this.grants.find(SESSION, tabId)?.frames ?? [];
+  }
+
+  /** Another tab that the user attached to the sidebar joins when the user acts in it. */
+  #slot(tabId, origin) {
+    const { tabs } = this.rec;
+    const i = tabs.findIndex((t) => t.tabId === tabId);
+    if (i >= 0) return tabs[i].origin === origin ? i : -1;
+    if (tabs.length >= MAX_TABS) return -1;
+    tabs.push({ tabId, origin });
+    return tabs.length - 1;
+  }
+
+  /** The user looks at another attached tab: it is armed, so that gestures there count. */
+  async tabShown(tabId) {
+    if (!this.rec || this.rec.tabs.some((t) => t.tabId === tabId)) return;
+    const tab = await this.getTab(tabId).catch(() => null);
+    const origin = tab && !tab.incognito && originOf(tab.url);
+    if (!origin || !this.rec || !this.#granted(tabId, origin) || this.#slot(tabId, origin) < 0) return;
+    this.#push({ kind: 'page', ...recordedPage(tab.url), tab: this.rec.tabs.length - 1 });
+    await this.#arm(tabId);
   }
 
   pause(on) {
@@ -154,15 +195,20 @@ export class Workflows {
   }
 
   /** A step of the content script. Only the recorded tab counts, and only while its grant holds. */
-  onStep(raw, tabId, url) {
+  onStep(raw, tabId, url, frameId = 0, frameOrigin = null) {
     const r = this.rec;
-    if (!r || r.paused || tabId !== r.tabId || originOf(url) !== r.origin || !this.#granted(tabId, r.origin)) return;
+    const slot = r && !r.paused ? r.tabs.findIndex((t) => t.tabId === tabId) : -1;
+    if (slot < 0 || !this.#granted(tabId, r.tabs[slot].origin)) return;
+    const from = originOf(url) ?? frameOrigin;
+    if (frameId ? from !== r.tabs[slot].origin && !this.#frames(tabId).includes(from) : from !== r.tabs[slot].origin) return;
     // The page side sends no text, and one that came anyway is dropped here. Marks of the user's choice count only in save().
-    const { literal, old, ...seen } = raw ?? {};
+    const { literal, old, tab, frame, ...seen } = raw ?? {};
+    if (slot) seen.tab = slot;
+    if (frameId) seen.frame = { origin: from, path: originOf(url) ? new URL(url).pathname : '/' };
     const step = cleanStep(seen.kind === 'fill' ? { ...seen, value: undefined } : seen);
     if (!step || step.kind === 'page') return;
     const last = r.steps.at(-1);
-    const again = last.kind === step.kind && step.kind !== 'click' && step.kind !== 'manual' && last.role === step.role && last.name === step.name && last.nth === step.nth;
+    const again = last.kind === step.kind && step.kind !== 'click' && step.kind !== 'manual' && last.role === step.role && last.name === step.name && last.nth === step.nth && last.tab === step.tab && JSON.stringify(last.frame) === JSON.stringify(step.frame);
     if (again) r.steps.pop();
     this.#push(step);
   }
@@ -175,26 +221,28 @@ export class Workflows {
 
   tabMoved(tabId, url) {
     const r = this.rec;
-    if (!r || tabId !== r.tabId || r.paused || originOf(url) !== r.origin || !this.#granted(tabId, r.origin)) return;
+    const slot = r && !r.paused ? r.tabs.findIndex((t) => t.tabId === tabId) : -1;
+    if (slot < 0 || originOf(url) !== r.tabs[slot].origin || !this.#granted(tabId, r.tabs[slot].origin)) return;
     const page = recordedPage(url);
-    if (r.steps.findLast((s) => s.kind === 'page')?.path !== page.path) this.#push({ kind: 'page', ...page });
+    if (r.steps.findLast((s) => s.kind === 'page' && (s.tab ?? 0) === slot)?.path !== page.path) this.#push({ kind: 'page', ...page, ...(slot && { tab: slot }) });
   }
 
   /** The content script of the new document does not know of the recording yet. */
   tabLoaded(tabId) {
-    if (this.rec?.tabId === tabId && this.#granted(tabId, this.rec.origin)) this.#arm();
+    const t = this.rec?.tabs.find((x) => x.tabId === tabId);
+    if (t && this.#granted(tabId, t.origin)) this.#arm(tabId);
   }
 
   grantEnded(g) {
-    if (this.rec && g.sessionId === SESSION && g.tabId === this.rec.tabId) this.stop('The recording stopped because the tab is no longer attached, its site changed, or everything is paused.');
+    if (this.rec && g.sessionId === SESSION && this.rec.tabs.some((t) => t.tabId === g.tabId)) this.stop('The recording stopped because the tab is no longer attached, its site changed, or everything is paused.');
   }
 
   stop(why = null) {
     if (!this.rec) return;
-    const { tabId, origin, steps } = this.rec;
+    const { origin, steps, tabs } = this.rec;
+    for (const t of tabs) this.page(t.tabId, t.origin, { cmd: 'record', on: false }, this.#frames(t.tabId));
     this.rec = null;
-    this.draft = { title: '', origin, steps, why };
-    this.page(tabId, origin, { cmd: 'record', on: false });
+    this.draft = { title: '', origin, steps, tabs: tabs.map((t) => t.origin), why };
     this.onChange();
   }
 
@@ -210,13 +258,14 @@ export class Workflows {
     const old = id === null ? this.draft : this.saved.find((w) => w.id === id);
     if (!old) throw new ToolError('not_found', 'That recording is gone.');
     const name = oneLine(title, 80);
-    const clean = cleanSteps(steps).filter((s) => s.kind !== 'page' || s.origin === old.origin);
+    const tabs = old.tabs ?? [old.origin];
+    const clean = cleanSteps(steps).filter((s) => (s.tab ?? 0) < tabs.length && (s.kind !== 'page' || s.origin === tabs[s.tab ?? 0]));
     const secret = Array.isArray(steps) ? steps.findIndex((s) => s?.kind === 'fill' && s.literal === true && looksSecret(s.value)) : -1;
     if (secret >= 0) throw new ToolError('not_allowed', `The text of step ${secret + 1} looks like a credential and is not stored. Choose to ask each time.`);
     if (!name) throw new ToolError('invalid_argument', 'Give the workflow a name.');
     if (!clean.length) throw new ToolError('invalid_argument', 'The workflow has no steps.');
     if (id === null && this.saved.length >= LIMITS.workflows) throw new ToolError('limit_reached', `There are ${LIMITS.workflows} workflows. Delete one first.`);
-    const w = { id: id ?? this.uuid(), title: name, origin: old.origin, created: old.created ?? this.now(), steps: clean, ...(old.rest && { rest: old.rest }) };
+    const w = { id: id ?? this.uuid(), title: name, origin: old.origin, tabs, created: old.created ?? this.now(), steps: clean, ...(old.rest && { rest: old.rest }) };
     this.saved = id === null ? [w, ...this.saved] : this.saved.map((x) => (x.id === id ? w : x));
     if (id === null) this.draft = null;
     await this.store.set({ workflows: this.saved });

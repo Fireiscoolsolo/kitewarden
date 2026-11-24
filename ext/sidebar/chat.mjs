@@ -110,7 +110,15 @@ function attachTab(kind) {
 function allow(level) {
   withSite(async (tab) => {
     const chat = await ensure();
-    if (chat) await run('chat_grant', { chat, ...tab, level }, level === 'act' ? 'Claude may read this tab and ask for actions.' : 'Claude may read this tab.');
+    if (!chat) return;
+    const said = level === 'act' ? 'Claude may read this tab and ask for actions.' : 'Claude may read this tab.';
+    const r = await run('chat_grant', { chat, ...tab, level }, said);
+    if (r.error?.code !== 'conflict') return;
+    $('move').hidden = false;
+    $('move').onclick = (e) => {
+      $('move').onclick = null;
+      if (e.isTrusted) run('chat_grant', { chat, ...tab, level, move: true }, said);
+    };
   });
 }
 

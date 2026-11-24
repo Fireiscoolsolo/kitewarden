@@ -8,6 +8,7 @@
   </head>
   <body>
     <div id="cards" aria-live="polite"></div>
+    <div id="requests" aria-live="polite"></div>
 
     <header>
       <h1 id="link-title" role="status">Starting</h1>
@@ -16,10 +17,14 @@
         <button id="connect" hidden>Connect</button>
         <button id="disconnect" hidden>Disconnect</button>
         <button id="pause" aria-pressed="false">Pause</button>
+        <button id="halt">Stop everything</button>
+        <button id="resume-work" hidden>Resume work</button>
         <!-- Last, so that it moves no other button when it appears. -->
         <button id="retry" hidden>Retry now</button>
       </p>
       <p id="message" role="status"></p>
+      <div id="halt-report" role="status"></div>
+      <p class="row"><button id="move" hidden>Move the tab here</button></p>
       <nav aria-label="Parts" class="row">
         <button data-show="chat" aria-current="page">Chat</button>
         <button data-show="tabs">Tabs</button>
@@ -114,6 +119,7 @@
               <option value="act">Read and act</option>
             </select>
           </label>
+          <label id="private-row" class="check" hidden><input id="private-ok" type="checkbox" /> This tab is private. Allow it for this client, which may keep what it reads</label>
           <button id="attach">Attach</button>
         </p>
       </section>
@@ -122,6 +128,8 @@
         <h2 id="h-grants">Attached tabs</h2>
         <ul id="grants"></ul>
         <p class="row"><button id="revoke-all" hidden>Revoke all</button></p>
+        <div id="frames"></div>
+        <div id="lost"></div>
       </section>
 
       <section aria-labelledby="h-sessions">
@@ -146,6 +154,19 @@
         <img id="try-image" alt="Screenshot of the attached tab" hidden />
         <pre id="try-output" tabindex="0" aria-label="Page outline"></pre>
       </section>
+
+      <details id="d-data">
+        <summary>Browser data, uploads, profile</summary>
+        <p class="sub">Off at first. Every use asks you again.</p>
+        <div id="switches"></div>
+        <h3>Folders for uploads</h3>
+        <p class="sub">Only files in these folders can be uploaded, each time after your approval.</p>
+        <ul id="folders"></ul>
+        <label>Folder <input id="folder-path" placeholder="C:\Users\you\Documents\share" /></label>
+        <p class="row"><button id="folder-add">Add folder</button></p>
+        <label>Name of this Firefox profile <input id="profile-label" maxlength="40" /></label>
+        <p class="row"><button id="profile-save">Save name</button><button id="groups-ok">Allow names for tab groups</button></p>
+      </details>
 
       <details id="d-screens">
         <summary>Screenshots</summary>
@@ -183,6 +204,7 @@
     <main data-panel="activity" hidden>
       <section aria-labelledby="h-log">
         <h2 id="h-log">Activity</h2>
+        <ul id="now" aria-live="polite" aria-label="Working now"></ul>
         <ul id="log"></ul>
       </section>
     </main>

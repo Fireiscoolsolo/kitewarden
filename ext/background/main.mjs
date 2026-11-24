@@ -89,7 +89,23 @@ let log = [];
 let saveLog = null;
 
 const gif = new Gif({ onChange: changed, onStop: (tabId) => pill(tabId, null) });
-const recorderPage = (tabId, origin, message) => api.page(tabId, { ...message, origin }, () => true);
+/** The tab itself, and every frame of an origin that the sidebar's grant covers. The content script checks the origin. */
+async function recorderPage(tabId, origin, message, frames = []) {
+  const top = await api.page(tabId, { ...message, origin }, () => true);
+  if (message.cmd === 'record') {
+    const enter = async (parent, parentOrigin, depth) => {
+      const r = await api.page(tabId, { cmd: 'children', origin: parentOrigin }, () => true, parent);
+      for (const c of r?.children ?? []) {
+        const w = await api.page(tabId, { cmd: 'where' }, () => true, c.frame);
+        if (!w?.origin || (w.origin !== origin && !frames.includes(w.origin))) continue;
+        await api.page(tabId, { ...message, origin: w.origin }, () => true, c.frame);
+        if (depth < LIMITS.frameDepth) await enter(c.frame, w.origin, depth + 1);
+      }
+    };
+    await enter(0, origin, 1).catch(() => {});
+  }
+  return top;
+}
 const workflows = new Workflows({ store: browser.storage.local, grants, getTab: api.getTab, page: recorderPage, onChange: changed });
 
 const router = new Router({
@@ -433,6 +449,7 @@ browser.tabs.onUpdated.addListener((tabId, change) => {
   workflows.tabLoaded(tabId);
   if (workflows.rec?.tabId !== tabId && gif.view().some((g) => g.on && g.tabId === tabId)) pill(tabId, 'GIF');
 }, { properties: ['url', 'status'] });
+browser.tabs.onActivated.addListener(({ tabId }) => workflows.tabShown(tabId));
 browser.tabs.onRemoved.addListener((tabId) => router.tabClosed(tabId));
 browser.tabs.onCreated.addListener((tab) => router.tabOpened(tab));
 browser.permissions.onRemoved.addListener(() => router.permissionsRemoved());
