@@ -792,14 +792,16 @@
   /** Files that the user approved, into a file input or onto a drop zone. */
   function upload(m) {
     const el = approved(m);
-    const data = new DataTransfer();
+    const input = el instanceof HTMLInputElement && el.type === 'file';
+    // The page sees dropped files only in a DataTransfer of its own realm. The user approved giving them to this page.
+    const data = input ? new DataTransfer() : new window.wrappedJSObject.DataTransfer();
     for (const f of m.files) {
       const file = new File([f.bytes], f.name, { type: f.type });
       if (f.relative) Object.defineProperty(file.wrappedJSObject ?? file, 'webkitRelativePath', { value: f.relative, configurable: true });
       data.items.add(file);
     }
     observe();
-    if (el instanceof HTMLInputElement && el.type === 'file') {
+    if (input) {
       if (el.matches(':disabled')) fail('not_actionable', 'The field is disabled.');
       if (m.files.length > 1 && !el.multiple && !el.webkitdirectory) fail('not_actionable', 'The field takes one file.');
       el.files = data.files;

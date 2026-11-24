@@ -32,6 +32,48 @@ window.clickAll = () => { for (const e of document.querySelectorAll('body *:not(
 </script>`,
   );
 
+const REPORT = "const report = (what) => fetch('/report?' + encodeURIComponent(what), { method: 'POST', keepalive: true });";
+
+/** A frame: its button reports to the server of its own origin. */
+const inner = (port) => page('Inner', `<button id="go">Inner go ${port}</button><input aria-label="Inner text"><input type="password" value="hunter2secret"><script>${REPORT}
+document.getElementById('go').addEventListener('click', () => report('inner'));
+document.querySelector('input').addEventListener('input', (e) => report('inner=' + e.target.value));</script>`);
+
+const control = (port, other) =>
+  page('Control', `<h1>Control</h1>
+<label>Controlled <input id="ctl"></label> <output id="model"></output>
+<button id="spa">Next view</button><div id="view"></div>
+<div id="host"></div>
+<iframe id="same" src="/inner" width="300" height="60" title="same"></iframe><iframe id="other" src="${other}/inner" width="300" height="60" title="other"></iframe>
+<div id="drag" draggable="true">Drag me</div><div id="drop" tabindex="0" style="width:200px;height:40px;background:#eee">Drop here</div>
+<input type="file" aria-label="One file"><input type="file" aria-label="A folder" webkitdirectory><div id="zone" tabindex="0" style="width:200px;height:40px">Zone</div>
+<button id="ask">Ask</button><button id="menu">Menu</button>
+<form id="f"><label>Enter here <input id="q"></label><button>Send form</button></form>
+<label>Slow <input id="slow"></label><label>Secret <input type="password" id="pw"></label>
+<div id="list" tabindex="0" style="height:60px;width:200px;overflow:auto"><div style="height:900px">Long</div></div>
+<select aria-label="Pick" multiple><option>One</option><option>Two</option><option>Three</option></select><input type="range" aria-label="Volume" min="0" max="10" value="1">
+<button id="dead">Dead</button><a href="/second">Away</a><div style="height:1500px"></div>
+<script>${REPORT}
+// Like a framework: it knows only values that it saw through an input event.
+{ const el = document.getElementById('ctl'); const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value'); let seen = '';
+  Object.defineProperty(el, 'value', { get() { return d.get.call(el); }, set(v) { seen = String(v); d.set.call(el, v); } });
+  el.addEventListener('input', () => { const v = d.get.call(el); if (v === seen) return; seen = v; document.getElementById('model').textContent = 'model:' + v; }); }
+document.getElementById('spa').addEventListener('click', () => { history.pushState({}, '', '/control/next'); document.getElementById('view').innerHTML = '<button id="second">Second view</button>'; document.getElementById('second').onclick = () => report('second view'); });
+{ const r = document.getElementById('host').attachShadow({ mode: 'closed' }); r.innerHTML = '<button>Shadow go</button>'; r.querySelector('button').onclick = () => report('shadow'); }
+document.getElementById('drag').addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', 'payload'));
+document.getElementById('drop').addEventListener('dragover', (e) => e.preventDefault());
+document.getElementById('drop').addEventListener('drop', (e) => { e.preventDefault(); report('dropped ' + e.dataTransfer.getData('text/plain')); });
+for (const i of document.querySelectorAll('input[type=file]')) i.addEventListener('change', async () => report('files ' + (await Promise.all([...i.files].map(async (x) => (x.webkitRelativePath || x.name) + ':' + x.size + ':' + (await x.text()).slice(0, 5)))).join(',')));
+document.getElementById('zone').addEventListener('dragover', (e) => e.preventDefault());
+document.getElementById('zone').addEventListener('drop', (e) => { e.preventDefault(); report('zone ' + [...e.dataTransfer.files].map((x) => x.name)); });
+document.getElementById('ask').onclick = () => report('confirm=' + confirm('Sure?'));
+document.getElementById('menu').addEventListener('mouseenter', () => report('hover'));
+document.getElementById('menu').addEventListener('contextmenu', (e) => { e.preventDefault(); report('contextmenu'); });
+document.getElementById('menu').addEventListener('dblclick', () => report('dblclick'));
+document.getElementById('f').addEventListener('submit', (e) => { e.preventDefault(); report('submit ' + document.getElementById('q').value); });
+for (const t of ['wheel', 'keydown', 'scroll']) document.getElementById('list').addEventListener(t, (e) => { if (!e.isTrusted) report('untrusted ' + t); });
+</script>`);
+
 const form = (port) =>
   page(
     `Form ${port}`,
@@ -59,7 +101,7 @@ window.hostile = () => {
 </script>`,
   );
 
-export async function fixture(wanted) {
+export async function fixture(wanted, other = 'about:blank') {
   const reports = [];
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x');
@@ -70,6 +112,9 @@ export async function fixture(wanted) {
     res.setHeader('content-type', 'text/html; charset=utf-8');
     const port = server.address().port;
     if (url.pathname === '/frame') res.end(page('frame', 'FRAME-TEXT'));
+    else if (url.pathname === '/inner') res.end(inner(port));
+    else if (url.pathname.startsWith('/control')) res.end(control(port, url.searchParams.get('other') ?? other));
+    else if (url.pathname === '/file.txt') res.writeHead(200, { 'content-type': 'text/plain', 'content-disposition': 'attachment' }).end('download body');
     else if (url.pathname === '/form') res.end(form(port));
     else if (url.pathname === '/done') res.end(page('Done', `<h1>Saved on ${port}</h1><a href="/form">Back</a>`));
     else if (url.pathname === '/second') res.end(page('Second', `<h1>Second page ${port}</h1>`));
