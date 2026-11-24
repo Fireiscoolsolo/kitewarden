@@ -22,9 +22,10 @@ export class Grants {
   }
 
   /** State 'pending' is for a tab that a click just opened and that has not loaded a page yet. */
-  add({ sessionId, tabId, origin, level, state = 'active' }) {
+  add({ sessionId, tabId, origin, level, state = 'active', private: isPrivate = false }) {
     this.remove((g) => g.sessionId === sessionId && g.tabId === tabId);
-    const grant = { id: `g${this.#next++}`, sessionId, tabId, origins: [origin], level, state, reason: null };
+    // `frames`: other origins whose frames the user allowed in this tab.
+    const grant = { id: `g${this.#next++}`, sessionId, tabId, origins: [origin], frames: [], level, state, reason: null, private: isPrivate };
     this.#list.push(grant);
     return grant;
   }

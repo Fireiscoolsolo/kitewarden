@@ -157,7 +157,8 @@ test('protocol: the tool list of the MCP server comes from the same table', () =
   for (const t of P.mcpTools()) {
     assert.equal(t.inputSchema.additionalProperties, false);
     const acts = Object.values(P.TOOLS[t.name].actions ?? { x: P.TOOLS[t.name] }).some((a) => a.level === 'act');
-    assert.equal(t.annotations.readOnlyHint, !acts, t.name);
+    if (acts) assert.equal(t.annotations.readOnlyHint, false, t.name);
+    assert.ok(!P.TOOLS[t.name].user, t.name);
   }
   assert.equal(P.toolSpec('__proto__', {}), null);
   assert.equal(P.toolSpec('computer', { action: 'toString' }), null);

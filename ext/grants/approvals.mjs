@@ -11,15 +11,15 @@ export class Approvals {
 
   /** What the sidebar shows. */
   get cards() {
-    return [...this.#cards.values()].map(({ id, card, shownAt }) => ({ id, ...card, deadline: shownAt === null ? null : shownAt + LIMITS.cardVisibleMs }));
+    return [...this.#cards.values()].map(({ id, card, shownAt, visibleMs }) => ({ id, ...card, deadline: shownAt === null ? null : shownAt + visibleMs }));
   }
 
   /** Resolves to true (allowed) or false (denied or too late). `close` ends it without an answer. */
-  ask(card) {
+  ask(card, { hiddenMs = LIMITS.cardHiddenMs, visibleMs = LIMITS.cardVisibleMs } = {}) {
     const id = `a${this.#next++}`;
     let settle;
     const answer = new Promise((resolve) => (settle = resolve));
-    const entry = { id, card, shownAt: null, settle, timer: this.setTimer(() => this.#end(id, false), LIMITS.cardHiddenMs) };
+    const entry = { id, card, shownAt: null, visibleMs, settle, timer: this.setTimer(() => this.#end(id, false), hiddenMs) };
     this.#cards.set(id, entry);
     this.onChange();
     return { answer, close: () => this.#end(id, false) };
@@ -31,7 +31,7 @@ export class Approvals {
     if (!c || c.shownAt !== null) return;
     c.shownAt = this.now();
     this.clearTimer(c.timer);
-    c.timer = this.setTimer(() => this.#end(id, false), LIMITS.cardVisibleMs);
+    c.timer = this.setTimer(() => this.#end(id, false), c.visibleMs);
     this.onChange();
   }
 

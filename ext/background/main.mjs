@@ -23,16 +23,25 @@ const api = {
   openUrl: (id, url) => browser.tabs.update(id, { url }),
   hasHost: (origin) => (origin ? browser.permissions.contains({ origins: [hostPattern(origin)] }) : Promise.resolve(false)),
   hasAllUrls: () => browser.permissions.contains({ origins: ['<all_urls>'] }),
-  async page(tabId, message, wanted) {
+  async page(tabId, message, wanted, frameId = 0) {
     try {
-      await browser.tabs.executeScript(tabId, { file: '/page/content.js', runAt: 'document_end' });
+      await browser.tabs.executeScript(tabId, { file: '/page/content.js', runAt: 'document_end', frameId, matchAboutBlank: true });
     } catch {
       return { error: 'restricted_page', message: 'Firefox does not let add-ons into this page.' };
     }
     // The user may have revoked or paused while the script went in.
-    return wanted() ? browser.tabs.sendMessage(tabId, message, { frameId: 0 }).catch(() => null) : null;
+    return wanted() ? browser.tabs.sendMessage(tabId, message, { frameId }).catch(() => null) : null;
   },
-  forget: (tabId) => browser.tabs.sendMessage(tabId, { cmd: 'forget' }, { frameId: 0 }).catch(() => {}),
+  forget: (tabId) => browser.tabs.sendMessage(tabId, { cmd: 'forget' }).catch(() => {}), // every frame
+  abort: (tabId, frameId) => browser.tabs.sendMessage(tabId, { cmd: 'abort' }, { frameId }).catch(() => {}),
+  browser,
+  host: (type, data) => ask(type, data),
+  windowState: async (id) => (await browser.windows.get(id)).state,
+  annotate,
+  sessionEnded(s) {
+    // Its tabs stay open and leave the group of the session.
+    if (s.group !== null && s.owned.size) browser.tabs.ungroup([...s.owned]).catch(() => {});
+  },
   captureTab: async (tabId) => {
     const tab = await browser.tabs.get(tabId);
     const scale = Math.min(1, LIMITS.imageEdge / Math.max(tab.width || 1, tab.height || 1));
@@ -49,6 +58,29 @@ async function smallest(take) {
     if (url.length < LIMITS.imageBase64) break;
   }
   return url;
+}
+
+/** The picture with numbers on the given boxes, and its size. */
+async function annotate(dataUrl, marks, css) {
+  const img = await createImageBitmap(await (await fetch(dataUrl)).blob());
+  if (!marks.length) return { dataUrl, width: img.width, height: img.height };
+  const canvas = Object.assign(document.createElement('canvas'), { width: img.width, height: img.height });
+  const g = canvas.getContext('2d');
+  g.drawImage(img, 0, 0);
+  const k = img.width / css.width;
+  g.font = 'bold 13px sans-serif';
+  g.textBaseline = 'top';
+  marks.forEach((m, n) => {
+    const [x, y] = [m.left * k, m.top * k];
+    g.strokeStyle = g.fillStyle = '#e22850';
+    g.lineWidth = 2;
+    g.strokeRect(x, y, m.width * k, m.height * k);
+    g.fillRect(x, y, g.measureText(String(n + 1)).width + 6, 16);
+    g.fillStyle = '#fff';
+    g.fillText(String(n + 1), x + 3, y + 2);
+  });
+  const out = await smallest(async (quality) => canvas.toDataURL('image/jpeg', quality / 100));
+  return { dataUrl: out, width: img.width, height: img.height };
 }
 
 const grants = new Grants();
@@ -99,14 +131,17 @@ const sendTo = (session, body) => native.post({ type: 'to_client', session, body
 const asks = new Map();
 let nextAsk = 1;
 
+const profile = { id: null, label: null };
 const native = new NativeLink({
+  hello: () => ({ profile: profile.id, label: profile.label }),
   open: () => browser.runtime.connectNative(HOST),
   onChange() {
     if (native.connected && chats.current) chats.session(chats.current);
     changed();
   },
   onLost: () => {
-    chats.linkLost();
+    router.rememberLost();
+    chats.linkLost(); // says what had happened, and ends its sessions
     for (const done of [...asks.values()]) done(new ToolError('outcome_unknown', 'The helper stopped before it answered.'));
     for (const s of [...router.sessions.values()]) if (s.kind === 'mcp') router.endSession(s.id);
   },
@@ -188,11 +223,56 @@ const fromSidebar = {
     native.stop();
   },
   retry: () => native.retryNow(),
+  halt() {
+    // It holds as a pause after a restart of Firefox.
+    browser.storage.local.set({ paused: true });
+    const report = router.halt();
+    chats.stopAll();
+    replay.cancel();
+    return report;
+  },
+  resume() {
+    browser.storage.local.set({ paused: router.paused });
+    router.resume();
+  },
+  stop_tab: (m) => ({ calls: router.stopTab(m.tabId) }),
+  resume_tab: (m) => router.resumeTab(m.tabId),
+  approve_frames: (m) => router.approveFrames(m.grant, m.origin),
+  frames(m) {
+    const g = grants.get(m.grant);
+    return g ? router.call(g.sessionId, `frames:${m.id}`, 'list_frames', { tabId: g.tabId }, { user: true }) : {};
+  },
+  regrant: (m) => router.regrant(m.lost, m.session),
+  request_answer: (m) => router.answerRequest(m.request, m.deny ? {} : { tabId: m.tabId, origin: m.origin, level: m.level, private: m.private === true, move: m.move === true }),
+  set_switch(m) {
+    if (!['bookmarks', 'history', 'downloads'].includes(m.name)) throw new ToolError('invalid_argument', 'Unknown switch.');
+    router.switches[m.name] = m.on === true;
+    browser.storage.local.set({ switches: router.switches });
+    changed();
+  },
+  async add_folder(m) {
+    const r = await ask('folder_check', { path: String(m.path) });
+    if (r.code) throw new ToolError(r.code, r.message);
+    router.folders = [...new Set([...router.folders, r.path])];
+    browser.storage.local.set({ folders: router.folders });
+    changed();
+  },
+  remove_folder(m) {
+    router.folders = router.folders.filter((f) => f !== m.path);
+    browser.storage.local.set({ folders: router.folders });
+    changed();
+  },
+  set_label(m) {
+    profile.label = oneLine(m.label, 40) || 'Firefox';
+    browser.storage.local.set({ profile });
+    native.post({ type: 'label', label: profile.label });
+    changed();
+  },
   pause: ({ on }) => {
     browser.storage.local.set({ paused: on === true });
     router.setPaused(on === true);
   },
-  grant: (m) => router.grant({ sessionId: m.session, tabId: m.tabId, origin: m.origin, level: m.level }),
+  grant: (m) => router.grant({ sessionId: m.session, tabId: m.tabId, origin: m.origin, level: m.level, private: m.private === true, move: m.move === true }),
   approve_origin: (m) => router.approveOrigin(m.grant, m.origin),
   revoke: (m) => router.revoke((g) => g.id === m.grant),
   revoke_all: () => router.revoke(() => true),
@@ -220,7 +300,7 @@ const fromSidebar = {
     const sessionId = chats.session(m.chat);
     const g = grants.find(sessionId, m.tabId);
     if (g?.state === 'active' && g.origins.includes(m.origin) && (g.level === 'act' || m.level === 'read')) return;
-    await router.grant({ sessionId, tabId: m.tabId, origin: m.origin, level: m.level });
+    await router.grant({ sessionId, tabId: m.tabId, origin: m.origin, level: m.level, move: m.move === true });
   },
   chat_attach_tab: (m) => chats.attachTab(m.chat, m.kind, m.tabId),
   chat_attach_file: (m) => chats.attachFile(m.chat, { name: m.name, base64: m.base64 }),
@@ -280,8 +360,10 @@ browser.runtime.onConnect.addListener((port) => {
 
 // Content scripts report the user's own gestures, and only while the user records.
 browser.runtime.onMessage.addListener((m, sender) => {
-  if (sender.id !== browser.runtime.id || !sender.tab || sender.frameId !== 0) return;
-  if (m?.type === 'step') workflows.onStep(m.step, sender.tab.id, sender.url);
+  if (sender.id !== browser.runtime.id || !sender.tab) return;
+  if (m?.type === 'step') return void workflows.onStep(m.step, sender.tab.id, sender.url, sender.frameId, sender.origin);
+  if (sender.frameId !== 0) return;
+  if (m?.type === 'take_over') router.stopTab(sender.tab.id);
   else if (m?.type !== 'stop_recording') return;
   else if (m.kind === 'GIF') gif.view().filter((g) => g.tabId === sender.tab.id).forEach((g) => gif.stop(g.session, g.tabId, 'You stopped it in the page.'));
   else if (workflows.rec?.tabId === sender.tab.id) workflows.stop();
@@ -299,6 +381,14 @@ function view() {
     workflows: workflows.view(),
     replay: replay.state,
     gifs: gif.view(),
+    halted: router.halted,
+    activity: router.activity,
+    stoppedTabs: [...router.stoppedTabs.keys()],
+    requests: [...router.requests.values()].filter((x) => x.state === 'pending').map(({ id, session, reason, level }) => ({ id, session: session.label, reason, level })),
+    lost: router.lost.map(({ id, kind, name, grants: g }) => ({ id, kind, name, tabs: g.length })),
+    switches: router.switches,
+    folders: router.folders,
+    profile,
   };
 }
 
@@ -309,10 +399,10 @@ function changed() {
   queueMicrotask(() => {
     queued = false;
     for (const p of ports) p.postMessage({ type: 'state', state: view() });
-    const [text, title] = approvals.cards.length
+    const [text, title] = approvals.cards.length || [...router.requests.values()].some((x) => x.state === 'pending')
       ? ['?', 'An approval is waiting']
-      : router.paused
-        ? ['II', 'Paused']
+      : router.paused || router.halted
+        ? ['II', router.halted ? 'Stopped' : 'Paused']
         : native.connected
           ? ['', 'Connected']
           : ['!', 'Not connected'];
@@ -348,9 +438,14 @@ browser.tabs.onCreated.addListener((tab) => router.tabOpened(tab));
 browser.permissions.onRemoved.addListener(() => router.permissionsRemoved());
 
 router.openSession('sidebar', 'sidebar', 'This sidebar');
-browser.storage.local.get({ connect: false, paused: false, log: [] }).then(async (s) => {
+browser.storage.local.get({ connect: false, paused: false, log: [], switches: {}, folders: [], profile: null }).then(async (s) => {
   log = [...s.log, ...log].slice(-LOG_LINES);
   router.setPaused(s.paused);
+  router.switches = s.switches;
+  router.folders = s.folders;
+  // A random ID of this profile and nothing else. The helper keeps one pipe for each.
+  Object.assign(profile, s.profile ?? { id: crypto.randomUUID(), label: 'Firefox' });
+  if (!s.profile) browser.storage.local.set({ profile });
   await Promise.all([chats.load(), workflows.load()]);
   if (s.connect) native.start();
 });

@@ -35,8 +35,9 @@ beforeEach(() => {
       queryTabs: async () => tabs,
       hasHost: async () => true,
       hasAllUrls: async () => true,
-      page: async (id, m) => ({ id: 'doc', ...{ snapshot: { outline: pageText, truncated: false, fullChars: 5 }, describe: { description: 'button "Go"', fingerprint: 'f' }, click: {}, after_click: { changed: true }, selection: { text: 'SEL', truncated: false } }[m.cmd] }),
+      page: async (id, m) => ({ id: 'doc', ...{ snapshot: { lines: [pageText, '- x'], frames: [], truncated: false, fullChars: 5, ready: 'complete' }, cover: {}, uncover: {}, describe: { description: 'button "Go"', fingerprint: 'f' }, pointer: {}, children: { children: [] }, place: { width: 100, height: 100, scroll: [0, 0, 1] }, after: { changed: true, dialogs: [] }, work: {}, where: { origin: A }, selection: { text: 'SEL', truncated: false } }[m.cmd] }),
       forget: () => {},
+      annotate: async (dataUrl) => ({ dataUrl, width: 100, height: 100 }),
       captureTab: async () => 'data:image/jpeg;base64,UElDVFVSRQ==',
     },
   });
@@ -176,7 +177,8 @@ test('attachments: only tabs attached to this chat, wrapped as data, previewed a
   const other = chats.create();
   for (const kind of ['page', 'selection', 'screenshot']) await assert.rejects(chats.attachTab(c.id, kind, 1), { code: 'no_grant' });
   await router.grant({ sessionId: sidOf(other), tabId: 1, origin: A, level: 'act' });
-  await assert.rejects(chats.attachTab(c.id, 'page', 1), { code: 'no_grant' }, 'the grant of another chat');
+  await assert.rejects(chats.attachTab(c.id, 'page', 1), { code: 'conflict' }, 'the tab of another chat');
+  router.revoke(() => true);
   await router.grant({ sessionId: sidOf(c), tabId: 1, origin: A, level: 'read' });
   await assert.rejects(chats.attachTab(c.id, 'page', 2), { code: 'no_grant' }, 'another tab of the same origin');
   router.setPaused(true);

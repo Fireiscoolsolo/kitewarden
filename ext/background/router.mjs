@@ -1,5 +1,8 @@
 // The one command path. The sidebar and every MCP server end up in `call`, with the same sessions, checks and log.
+// What the tools do is in pagetools.mjs and tabtools.mjs; every rule about who may do it is here.
 import { LIMITS, PROTOCOL, TOOLS, ToolError, VERSION, checkArgs, oneLine, originOf, plainUrl, toolSpec } from '../shared/protocol.mjs';
+import { pageTools, screenshot } from './pagetools.mjs';
+import { tabTools } from './tabtools.mjs';
 
 const SUSPENDED = {
   origin: ['grant_suspended', 'The tab moved to another origin. Ask the user to approve it in the sidebar.'],
@@ -9,46 +12,73 @@ const WHY = {
   paused: 'The user paused Firefox Companion.',
   no_grant: 'The user revoked this tab.',
   session_ended: 'The session ended.',
-  stopped: 'The user stopped this session.',
+  stopped: 'The user stopped this.',
   cancelled: 'The client cancelled the call.',
+  timeout: 'The time of the batch is over.',
   grant_suspended: SUSPENDED.origin[1],
   permission_required: SUSPENDED.permission[1],
 };
+const HANDLERS = { ...pageTools, ...tabTools };
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** The frame that a ref names. 0 is the tab itself. */
+export const frameOfRef = (ref) => Number(/^ref_f(\d+)_/.exec(ref ?? '')?.[1] ?? 0);
 
 export class Router {
   /**
-   * `api` is the browser: getTab, queryTabs, createTab, openUrl, hasHost, hasAllUrls, page, forget, captureTab, captureVisible.
-   * `onGrantEnd` hears of each grant that ended or no longer holds, also by a pause. `gif` keeps the frames of recordings.
+   * `api` is the browser: getTab, queryTabs, createTab, openUrl, hasHost, hasAllUrls, page, forget, captureTab, captureVisible,
+   * annotate, browser, host. `onGrantEnd` hears of each grant that ended or no longer holds, also by a pause. `gif` keeps
+   * the frames of recordings. `switches` are the groups that the user turned on, `folders` those that uploads may come from.
    */
   constructor({ api, grants, approvals, log, gif = null, onGrantEnd = () => {}, onChange = () => {}, now = Date.now, linkStatus = () => ({}) }) {
     Object.assign(this, { api, grants, approvals, log, gif, onGrantEnd, onChange, now, linkStatus });
     this.sessions = new Map();
     this.calls = new Set();
     this.paused = false;
+    this.halted = null; // after an emergency stop: what was under way
+    this.stoppedTabs = new Map(); // tab -> why
     this.clicking = null; // the click under way, to tell whose tab a new tab is
+    this.switches = {};
+    this.folders = [];
+    this.requests = new Map(); // tab requests that wait for the user
+    this.lost = []; // grants that went with a lost link
+    this.urls = new Map(); // last known address of tabs of a session
+    this.turns = new Map(); // tab -> the action before
   }
 
   // Sessions
 
   openSession(id, kind, label) {
-    this.sessions.set(id, { id, kind, owned: new Set(), acted: [] });
+    this.sessions.set(id, { id, kind, owned: new Set(), windows: new Set(), acted: [], shots: new Map(), seen: new Map(), closed: [], downloads: [], group: null, current: null, handover: new Set() });
     this.label(id, label);
   }
 
   /** A client names itself, so its label always says that it is a client and which one. */
   label(id, name) {
     const s = this.sessions.get(id);
+    s.name = oneLine(name, 80);
     s.label = s.kind === 'mcp' ? `Client ${oneLine(name, 50)} (${id.slice(0, 4)})` : name;
     this.onChange();
   }
 
   endSession(id, code = 'session_ended') {
+    const s = this.sessions.get(id);
     if (!this.sessions.delete(id)) return;
     this.#abort((c) => c.session.id === id, code);
+    for (const [k, r] of this.requests) if (r.session === s) this.requests.delete(k);
     this.#forget(this.grants.remove((g) => g.sessionId === id));
+    this.api.sessionEnded?.(s);
     this.onChange();
+  }
+
+  /** The link is lost and agent sessions are about to end: the user may give the same tabs to a new one with one click. */
+  rememberLost() {
+    for (const s of this.sessions.values()) {
+      if (s.kind === 'sidebar') continue;
+      const list = this.grants.of(s.id).filter((g) => !g.private && g.state !== 'pending').map(({ tabId, origins, frames, level }) => ({ tabId, origins: [...origins], frames: [...frames], level }));
+      if (list.length) this.lost = [...this.lost.filter((l) => l.name !== s.name || l.kind !== s.kind), { id: s.id, kind: s.kind, name: s.name, grants: list }];
+    }
   }
 
   // User decisions. Only the sidebar reaches these.
@@ -62,26 +92,117 @@ export class Router {
     this.onChange();
   }
 
-  async grant({ sessionId, tabId, origin, level }) {
-    const tab = await this.#tab(tabId);
+  /** Emergency stop. New work is refused and queued work ends until `resume`. Returns what may have taken effect. */
+  halt() {
+    const open = [...this.calls].filter((c) => !c.aborted && c.tool !== 'connection_status');
+    this.halted = { at: this.now(), calls: open.map((c) => this.#report(c)) };
+    this.#abort((c) => c.tool !== 'connection_status', 'stopped');
+    for (const g of this.grants.all) this.onGrantEnd(g);
+    this.onChange();
+    return this.halted;
+  }
+
+  resume() {
+    this.halted = null;
+    this.onChange();
+  }
+
+  /** The user takes one tab over. Its calls end, and new ones are refused until the user gives it back. */
+  stopTab(tabId, why = 'The user took this tab over. Ask the user to give it back in the sidebar.') {
+    const open = [...this.calls].filter((c) => !c.aborted && c.tabId === tabId);
+    this.stoppedTabs.set(tabId, why);
+    const report = open.map((c) => this.#report(c));
+    this.#abort((c) => open.includes(c), 'stopped');
+    for (const g of this.grants.all) if (g.tabId === tabId) this.onGrantEnd(g);
+    this.onChange();
+    return report;
+  }
+
+  resumeTab(tabId) {
+    this.stoppedTabs.delete(tabId);
+    this.onChange();
+  }
+
+  #report(c) {
+    return { session: c.session.label, tool: c.tool, tabId: c.tabId, state: c.state, may_have_taken_effect: c.sent?.what ?? null };
+  }
+
+  /** `private` and `move` are choices of the user for a private window and for a tab that another session has. */
+  async grant({ sessionId, tabId, origin, level, private: allowPrivate = false, move = false }) {
+    const tab = await this.tab(tabId);
     const session = this.sessions.get(sessionId);
     if (!session || !['read', 'act'].includes(level)) throw new ToolError('invalid_argument', 'That session is gone.');
     if (!tab || !origin || originOf(tab.url) !== origin) throw new ToolError('origin_changed', 'The tab shows another page now.');
+    if (tab.incognito && allowPrivate !== true) throw new ToolError('not_allowed', 'This is a private window. It needs a grant of its own.');
+    if (tab.incognito && session.kind !== 'mcp') throw new ToolError('not_allowed', 'Chats and this sidebar keep a history, so a private tab can be given to an MCP client only.');
     if (!(await this.api.hasHost(origin))) throw new ToolError('permission_required', 'Firefox did not allow this site.');
+    const holder = this.#holder(sessionId, tabId);
+    if (holder && !move) throw new ToolError('conflict', `The tab is attached to ${this.sessions.get(holder.sessionId)?.label}. Move it here or revoke it first.`);
+    if (holder) this.revoke((g) => g === holder);
     this.#abort((c) => c.session === session && c.tabId === tabId, 'no_grant');
-    const g = this.grants.add({ sessionId, tabId, origin, level });
-    this.#note(session, 'grant', origin, `granted ${level}`);
+    const g = this.grants.add({ sessionId, tabId, origin, level, private: tab.incognito === true });
+    this.#remember(tab);
+    this.#note(session, 'grant', g.private ? null : origin, `granted ${level}${g.private ? ' private' : ''}`);
     this.onChange();
     return g;
   }
 
+  /** One agent session per tab. The sidebar's own session is the user. */
+  #holder(sessionId, tabId) {
+    if (this.sessions.get(sessionId)?.kind === 'sidebar') return null;
+    return this.grants.all.find((g) => g.tabId === tabId && g.sessionId !== sessionId && this.sessions.get(g.sessionId)?.kind !== 'sidebar') ?? null;
+  }
+
   async approveOrigin(grantId, origin) {
     const g = this.grants.get(grantId);
-    const tab = g && (await this.#tab(g.tabId));
+    const tab = g && (await this.tab(g.tabId));
     if (!tab || originOf(tab.url) !== origin) throw new ToolError('origin_changed', 'The tab shows another page now.');
     if (!(await this.api.hasHost(origin))) throw new ToolError('permission_required', 'Firefox did not allow this site.');
     this.grants.approveOrigin(g, origin);
-    this.#note(this.sessions.get(g.sessionId), 'grant', origin, 'origin approved');
+    this.#note(this.sessions.get(g.sessionId), 'grant', g.private ? null : origin, 'origin approved');
+    this.onChange();
+  }
+
+  /** Frames of this origin in this tab. It says nothing about the tab itself moving there. */
+  async approveFrames(grantId, origin) {
+    const g = this.grants.get(grantId);
+    if (!g || originOf(origin) !== origin) throw new ToolError('invalid_argument', 'That grant is gone.');
+    if (!(await this.api.hasHost(origin))) throw new ToolError('permission_required', 'Firefox did not allow this site.');
+    if (!g.frames.includes(origin)) g.frames.push(origin);
+    this.#note(this.sessions.get(g.sessionId), 'grant', g.private ? null : origin, 'frames approved');
+    this.onChange();
+  }
+
+  /** The tabs of a lost session, for a new one of the same client, where they still show what was granted. */
+  async regrant(lostId, sessionId) {
+    const l = this.lost.find((x) => x.id === lostId);
+    const s = this.sessions.get(sessionId);
+    if (!l || !s || s.kind !== l.kind || s.name !== l.name) throw new ToolError('not_found', 'That session is gone.');
+    this.lost = this.lost.filter((x) => x !== l);
+    const given = [];
+    for (const old of l.grants) {
+      const tab = await this.tab(old.tabId);
+      const origin = tab && originOf(tab.url);
+      if (!origin || !old.origins.includes(origin)) continue;
+      try {
+        const g = await this.grant({ sessionId, tabId: old.tabId, origin, level: old.level });
+        g.frames.push(...old.frames);
+        given.push(old.tabId);
+      } catch (e) {
+        if (!(e instanceof ToolError)) throw e;
+      }
+    }
+    this.onChange();
+    return { given, left_out: l.grants.length - given.length };
+  }
+
+  /** The user answers a tab request with a tab and a level, or refuses it. */
+  async answerRequest(id, { tabId = null, origin = null, level = null, ...more } = {}) {
+    const r = this.requests.get(id);
+    if (!r || r.state !== 'pending') throw new ToolError('not_found', 'That request is over.');
+    if (tabId !== null) await this.grant({ sessionId: r.session.id, tabId, origin, level, ...more });
+    Object.assign(r, tabId === null ? { state: 'denied' } : { state: 'granted', tabId });
+    r.wake();
     this.onChange();
   }
 
@@ -89,7 +210,7 @@ export class Router {
     const gone = this.grants.remove(match);
     this.#abort((c) => gone.some((g) => g.sessionId === c.session.id && g.tabId === c.tabId), 'no_grant');
     this.#forget(gone);
-    for (const g of gone) this.#note(this.sessions.get(g.sessionId), 'grant', g.origins.at(-1), 'revoked');
+    for (const g of gone) this.#note(this.sessions.get(g.sessionId), 'grant', g.private ? null : g.origins.at(-1), 'revoked');
     this.onChange();
   }
 
@@ -100,7 +221,14 @@ export class Router {
   }
 
   tabClosed(tabId) {
-    for (const s of this.sessions.values()) s.owned.delete(tabId);
+    const known = this.urls.get(tabId);
+    for (const s of this.sessions.values()) {
+      const mine = s.owned.delete(tabId) || this.grants.find(s.id, tabId);
+      if (mine && known && originOf(known.url)) s.closed = [{ id: `c${tabId}`, ...known }, ...s.closed].slice(0, LIMITS.closed);
+      if (s.current === tabId) s.current = null;
+    }
+    this.urls.delete(tabId);
+    this.stoppedTabs.delete(tabId);
     this.revoke((g) => g.tabId === tabId);
   }
 
@@ -110,15 +238,13 @@ export class Router {
     const g = c && tab.openerTabId === c.call.tabId && this.grants.find(c.call.session.id, c.call.tabId);
     if (!g) return;
     c.opened = tab.id;
-    c.call.session.owned.add(tab.id);
-    this.grants.add({ sessionId: c.call.session.id, tabId: tab.id, origin: c.origin, level: g.level, state: 'pending' });
-    this.onChange();
+    this.own(c.call.session, tab, { origin: c.origin, level: g.level, state: 'pending', private: g.private });
   }
 
   async permissionsRemoved() {
     const lost = [];
     for (const g of this.grants.all) {
-      const tab = g.state === 'active' && (await this.#tab(g.tabId));
+      const tab = g.state === 'active' && (await this.tab(g.tabId));
       if (tab && !(await this.api.hasHost(originOf(tab.url) ?? g.origins[0]))) lost.push(g);
     }
     for (const g of lost) this.grants.suspend(g, 'permission');
@@ -128,14 +254,14 @@ export class Router {
   // Calls
 
   /** `user` marks a gesture in the sidebar. It opens the tools that are for the user only and waives no other check. */
-  async call(sessionId, callId, tool, args, { user = false } = {}) {
+  async call(sessionId, callId, tool, args, { user = false, parent = null } = {}) {
     const session = this.sessions.get(sessionId);
     if (!session) return { error: { code: 'session_ended', message: 'The session ended. This call was not carried out.' } };
-    const call = { session, id: callId, tool, user, tabId: Number.isInteger(args?.tabId) ? args.tabId : null, origin: null, aborted: null, sent: null };
+    const call = { session, id: callId, tool, user, parent, tabId: Number.isInteger(args?.tabId) ? args.tabId : null, origin: null, aborted: null, sent: null, state: 'running', since: this.now(), waited: 0, frame: 0 };
     call.gone = new Promise((_, reject) => (call.reject = reject));
     call.gone.catch(() => {});
     this.calls.add(call);
-    const start = this.now();
+    this.onChange();
     let reply;
     try {
       const result = await Promise.race([this.#run(call, tool, args), call.gone]);
@@ -145,13 +271,16 @@ export class Router {
     } catch (e) {
       const known = e instanceof ToolError;
       if (!known) console.error(tool, e);
-      reply = { error: known ? { code: e.code, message: e.message } : { code: 'internal_error', message: 'The add-on failed.' } };
-      if (call.sent) reply.error.message += ' The action may have reached the page. Read the page before you repeat it.';
+      reply = { error: known ? { code: e.code, message: e.message, ...e.data } : { code: 'internal_error', message: 'The add-on failed.' } };
+      if (call.sent && call.sent.outcome === 'unknown') reply.error.message += ' The action may have reached the page. Read the page before you repeat it.';
+      if (call.progress) reply.error.steps = call.progress;
     } finally {
       this.calls.delete(call);
+      call.release?.();
       call.card?.close();
     }
-    this.#note(session, tool, call.origin, reply.error?.code ?? 'ok', this.now() - start, call.approved);
+    this.#note(session, tool, call.private ? null : call.origin, reply.error?.code ?? 'ok', this.now() - call.since, call.approved);
+    this.onChange();
     return reply;
   }
 
@@ -167,37 +296,62 @@ export class Router {
   }
 
   async #run(call, tool, args) {
-    if (!Object.hasOwn(TOOLS, tool) || (TOOLS[tool].user && !call.user)) throw new ToolError('unknown_tool', 'No such tool.');
+    if (!Object.hasOwn(TOOLS, tool) || (TOOLS[tool].user && !call.user) || TOOLS[tool].local) throw new ToolError('unknown_tool', 'No such tool.');
     const bad = checkArgs(tool, args);
     if (bad) throw new ToolError('invalid_argument', bad);
     if (tool === 'connection_status') return this.#status(call.session);
-    if (this.paused) throw new ToolError('paused', WHY.paused);
-    if (tool === 'tabs_context') return this.#tabs(call.session, args);
+    this.#open();
+    if (tool === 'browser_batch') return this.#batch(call, args);
     const spec = toolSpec(tool, args);
-    const origin = await this.#authorize(call, spec);
-    if (tool === 'read_page') return this.#read(call, origin, args);
-    if (tool === 'wait_for') return this.#waitFor(call, spec, origin, args);
-    if (tool === 'get_selection') return { origin, ...(await this.#page(call, origin, { cmd: 'selection', max: LIMITS.selectionChars })) };
-    if (tool === 'form_input') return this.#fill(call, spec, origin, args);
-    if (tool === 'navigate') return this.#navigate(call, spec, origin, args);
-    if (tool === 'gif_creator') return this.#gif(call, spec, origin, args);
-    if (args.action === 'screenshot') return this.#screenshot(call, spec, origin);
-    return this.#click(call, spec, origin, args);
+    if (TOOLS[tool].group) await this.#group(TOOLS[tool].group);
+    if (spec.level === 'none') return HANDLERS[tool](this, call, spec, null, args);
+    let origin = await this.authorize(call, spec);
+    if (spec.level === 'act') {
+      await this.#turn(call);
+      origin = await this.authorize(call, spec); // the one before may have moved the page
+    }
+    return HANDLERS[tool](this, call, spec, origin, args);
+  }
+
+  #open() {
+    if (this.paused) throw new ToolError('paused', WHY.paused);
+    if (this.halted) throw new ToolError('stopped', 'The user stopped Firefox Companion. Ask the user to press Resume work in the sidebar.');
+  }
+
+  async #group(name) {
+    if (!this.switches[name]) throw new ToolError('tool_off', `The user has not turned ${name} on in the sidebar.`);
+    if (!(await this.api.browser.permissions.contains({ permissions: [name] }))) throw new ToolError('permission_required', `Firefox no longer allows ${name}. Ask the user to turn it on again in the sidebar.`);
+  }
+
+  /** Actions in one tab run one after the other. A queued one that is stopped never begins. */
+  async #turn(call) {
+    const before = this.turns.get(call.tabId) ?? Promise.resolve();
+    let release;
+    const mine = new Promise((r) => (release = r));
+    this.turns.set(call.tabId, before.then(() => mine));
+    call.release = release;
+    call.state = 'queued';
+    await Promise.race([before, call.gone]);
+    call.state = 'running';
   }
 
   /** Every check of one call, in the order of docs/feature-parity.md. Runs again right before an action. Returns the origin. */
-  async #authorize(call, spec) {
-    if (this.paused) throw new ToolError('paused', WHY.paused);
-    const g = this.grants.find(call.session.id, call.tabId);
+  async authorize(call, spec, tabId = call.tabId) {
+    this.#open();
+    const g = this.grants.find(call.session.id, tabId);
+    if (!g && this.#holder(call.session.id, tabId)) throw new ToolError('conflict', 'Another session has this tab.');
     if (!g) throw new ToolError('no_grant', 'The user has not attached this tab to this session. Ask the user to attach it in the sidebar.');
-    const tab = await this.#tab(call.tabId);
-    if (!tab) throw new ToolError('no_grant', 'The tab is closed.');
+    const tab = await this.tab(tabId);
+    if (!tab || (tab.incognito && !g.private)) throw new ToolError('no_grant', 'The tab is closed.');
     const origin = originOf(tab.url);
     call.origin = origin;
-    this.tabMoved(call.tabId, tab.url);
+    call.private = g.private;
+    this.tabMoved(tabId, tab.url);
     if (g.state === 'suspended' && g.reason === 'origin') throw new ToolError(...SUSPENDED.origin);
     if (g.state === 'pending') throw new ToolError('grant_suspended', 'The new tab has not loaded yet. Try again.');
+    if (this.stoppedTabs.has(tabId)) throw new ToolError('stopped', this.stoppedTabs.get(tabId));
     if (spec.level === 'act' && g.level !== 'act') throw new ToolError('read_only_grant', 'The user allowed reading only.');
+    if (spec.level === 'act' && call.session.handover.has(tabId)) throw new ToolError('paused', 'The tab is with the user until request_user ends.');
     if (g.state === 'suspended') throw new ToolError(...SUSPENDED[g.reason]);
     if (!(await this.api.hasHost(origin))) {
       this.grants.suspend(g, 'permission');
@@ -206,254 +360,185 @@ export class Router {
     }
     // Something may have changed during the two questions to the browser.
     if (call.aborted) throw call.aborted;
-    if (this.grants.find(call.session.id, call.tabId) !== g || g.state !== 'active') throw new ToolError('no_grant', WHY.no_grant);
+    if (this.grants.find(call.session.id, tabId) !== g || g.state !== 'active') throw new ToolError('no_grant', WHY.no_grant);
+    this.#remember(tab);
     return origin;
   }
 
-  /** One message to the content script. It compares the document's origin with `origin` before anything else. */
-  async #page(call, origin, message) {
+  /** One frame of an authorized tab, if the grant covers its origin. Returns its origin, as the frame itself reports it. */
+  async authorizeFrame(call, origin, frame) {
+    if (!frame) return origin;
+    const w = await this.#ask1(call, { cmd: 'where' }, frame);
+    const g = this.grants.find(call.session.id, call.tabId);
+    if (!w || w.error) throw new ToolError('no_grant', 'That frame is gone, or Firefox does not let add-ons into it.');
+    if (!g || (w.origin !== origin && !(g.frames.includes(w.origin) && (await this.api.hasHost(w.origin))))) {
+      throw new ToolError('no_grant', `The frame belongs to ${w.origin}. Ask the user to allow its frames in the sidebar.`);
+    }
+    if (call.aborted) throw call.aborted;
+    return w.origin;
+  }
+
+  async #ask1(call, message, frame) {
     let timer;
     const late = new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new ToolError('timeout', 'The page did not answer. A dialog may be open in the tab.')), LIMITS.pageMs);
+      timer = setTimeout(() => reject(new ToolError('timeout', 'The page did not answer. A dialog may be open in the tab.')), message.slow ?? LIMITS.pageMs);
     });
     try {
-      const r = await Promise.race([this.api.page(call.tabId, { ...message, origin }, () => call.aborted === null), late, call.gone]);
-      if (!r) throw new ToolError('origin_changed', 'The page went away. Read it again.');
-      if (r.error) throw Object.assign(new ToolError(r.error, r.message), { fromPage: true });
-      return r;
+      return await Promise.race([this.api.page(call.tabId, message, () => call.aborted === null, frame), late, call.gone]);
     } finally {
       clearTimeout(timer);
     }
   }
 
-  #status(session) {
-    const mine = this.grants.of(session.id);
-    return {
-      state: this.paused ? 'paused' : 'connected',
-      session: { id: session.id, label: session.label },
-      extension: { version: VERSION, protocol: PROTOCOL },
-      helper: this.linkStatus(),
-      grants: mine.length,
-      suspended_grants: mine.filter((g) => g.state !== 'active').length,
-      missing_permissions: [...new Set(mine.filter((g) => g.reason === 'permission').flatMap((g) => g.origins))],
-      next_step: this.paused
-        ? 'The user paused Firefox Companion. Ask the user to press Resume in the sidebar.'
-        : mine.length
-          ? 'Call tabs_context.'
-          : 'Ask the user to attach a tab to this session in the Firefox Companion sidebar.',
-    };
+  /** One message to the content script of a frame. It compares the document's origin with `origin` before anything else. */
+  async page(call, origin, message, frame = 0) {
+    const r = await this.#ask1(call, { ...message, origin }, frame);
+    if (!r) throw new ToolError('origin_changed', 'The page went away. Read it again.');
+    if (r.error) throw Object.assign(new ToolError(r.error, r.message), { fromPage: true });
+    return r;
   }
 
-  async #tabs(session, args) {
-    let tabs = await this.api.queryTabs();
-    const mine = () => tabs.filter((t) => session.owned.has(t.id) || this.grants.find(session.id, t.id));
-    if (args.createIfEmpty && mine().length === 0) {
-      const tab = await this.api.createTab();
-      session.owned.add(tab.id);
-      tabs = await this.api.queryTabs();
-    }
-    const list = mine().map((t) => {
-      const g = this.grants.find(session.id, t.id);
-      const base = { tabId: t.id, windowId: t.windowId, active: t.active, owned: session.owned.has(t.id), level: g?.level ?? null };
-      // Title and address only where the grant covers the page that the tab shows now.
-      if (!g || g.state !== 'active' || !g.origins.includes(originOf(t.url))) return { ...base, state: g ? 'suspended' : 'no_grant' };
-      return { ...base, state: 'active', title: oneLine(t.title), url: plainUrl(t.url), loading: t.status === 'loading' };
-    });
-    return { session: session.id, tabs: list, otherTabs: tabs.length - list.length };
-  }
-
-  async #read(call, origin, args) {
-    const r = await this.#page(call, origin, { cmd: 'snapshot', filter: args.filter ?? 'all', maxChars: args.max_chars ?? LIMITS.readChars, maxNodes: LIMITS.snapshotNodes });
-    return { origin, outline: r.outline, truncated: r.truncated, fullChars: r.fullChars };
-  }
-
-  async #waitFor(call, spec, origin, args) {
-    const start = this.now();
-    const limit = (args.timeout_s ?? 10) * 1000;
-    for (;;) {
-      const { found } = await this.#page(call, origin, { cmd: 'find', text: args.text });
-      const elapsed_ms = this.now() - start;
-      if (found || elapsed_ms >= limit) return { found, elapsed_ms };
-      await Promise.race([sleep(Math.min(250, limit - elapsed_ms)), call.gone]);
-      if ((await this.#authorize(call, spec)) !== origin) throw new ToolError('origin_changed', 'The page changed its origin.');
-    }
-  }
-
-  async #screenshot(call, spec, origin) {
-    const { id } = await this.#page(call, origin, { cmd: 'cover' });
-    let shot;
-    let after;
-    try {
-      shot = await this.#capture(call);
-    } finally {
-      after = await this.#page(call, origin, { cmd: 'uncover' }).catch(() => null);
-    }
-    // The picture counts only if the same document was there before and after it.
-    await this.#authorize(call, spec);
-    if (after?.id !== id) throw new ToolError('origin_changed', 'The page changed during the capture.');
-    const [, mimeType, image] = /^data:([^;]+);base64,(.*)$/s.exec(shot.dataUrl);
-    if (image.length > LIMITS.imageBase64) throw new ToolError('too_large', 'The picture is too large.');
-    return { image, mimeType, origin, via: shot.via };
-  }
-
-  async #capture(call) {
-    if (await this.api.hasAllUrls()) return { dataUrl: await this.api.captureTab(call.tabId), via: 'captureTab' };
-    const need = new ToolError('permission_required', 'A picture needs the user: ask them to press the Firefox Companion toolbar button on this tab, or to allow screenshots of any granted tab in the sidebar.');
-    const tab = await this.#tab(call.tabId);
-    if (!tab?.active) throw need;
-    let dataUrl;
-    try {
-      dataUrl = await this.api.captureVisible(tab.windowId);
-    } catch {
-      throw need;
-    }
-    // captureVisibleTab takes whatever tab is in front. Make sure that it still is this one.
-    if (!(await this.#tab(call.tabId))?.active) throw new ToolError('origin_changed', 'Another tab came to the front during the capture.');
-    return { dataUrl, via: 'captureVisibleTab' };
-  }
-
-  /** Asks the user for one call. Afterwards grant, level, pause, origin and permission are checked again. */
-  async #ask(call, spec, origin, card, reason) {
-    const tab = await this.#tab(call.tabId);
+  /** Asks the user for one call. Afterwards grant, level, pause, origin, frame and permission are checked again. */
+  async ask(call, spec, origin, card, reason, { frame = 0, hiddenMs, visibleMs } = {}) {
+    const tab = call.tabId === null ? null : await this.tab(call.tabId);
     if (this.approvals.cards.filter((c) => c.session === call.session.id).length >= LIMITS.cards) throw new ToolError('rate_limited', 'Too many calls of this session wait for the user.');
-    call.card = this.approvals.ask({
-      session: call.session.id,
-      sessionLabel: call.session.label,
-      tabId: call.tabId,
-      tabTitle: oneLine(tab?.title),
-      origin,
-      ...card,
-      reason: oneLine(reason, 200),
-    });
+    const start = this.now();
+    call.state = 'waiting for approval';
+    call.card = this.approvals.ask(
+      { session: call.session.id, sessionLabel: call.session.label, tabId: call.tabId, tabTitle: oneLine(tab?.title), origin, ...card, reason: oneLine(reason, 200) },
+      { hiddenMs, visibleMs },
+    );
+    this.onChange();
     const allowed = await Promise.race([call.card.answer, call.gone]);
+    call.state = 'running';
+    for (let c = call; c; c = c.parent) c.waited += this.now() - start;
     call.approved = allowed;
     if (!allowed) throw new ToolError('approval_denied', 'The user did not allow this.');
-    if (card.tool !== 'gif_creator') await this.#frame(call, spec, origin, null);
-    if ((await this.#authorize(call, spec)) !== origin) throw new ToolError('origin_changed', 'The page changed its origin.');
+    if (spec.level === 'none') return this.#open();
+    if (card.tool !== 'gif_creator') await this.frame(call, spec, origin, null);
+    if ((await this.authorize(call, spec)) !== origin) throw new ToolError('origin_changed', 'The page changed its origin.');
+    if (frame) await this.authorizeFrame(call, origin, frame);
   }
 
   /** From here on the page may have the action. The entry tells the user so if the call is stopped. */
-  #sent(call, what) {
+  sent(call, what) {
     call.sent = { what, outcome: 'unknown' };
     call.session.acted.push(call.sent);
     if (call.session.acted.length > 200) call.session.acted.shift();
+    // The user sees in the page that a session acts, and can take over there.
+    if (call.tabId !== null && call.origin) this.api.page(call.tabId, { cmd: 'work', origin: call.origin, who: oneLine(call.session.label, 40), what: oneLine(what, 60) }, () => call.aborted === null, 0);
   }
 
-  #notSent(call) {
+  notSent(call) {
     call.session.acted.splice(call.session.acted.indexOf(call.sent), 1);
     call.sent = null;
   }
 
-  async #click(call, spec, origin, args) {
-    const target = await this.#page(call, origin, { cmd: 'describe', ref: args.ref });
-    await this.#ask(call, spec, origin, { tool: 'left_click', target: target.description, link: target.link, download: target.download }, args.reason);
-    const click = (this.clicking = { call, origin, opened: null });
-    let sent;
-    try {
-      this.#sent(call, `click on ${target.description}`);
-      sent = await this.#page(call, origin, { cmd: 'click', ref: args.ref, fingerprint: target.fingerprint });
-      await Promise.race([sleep(300), call.gone]);
-    } catch (e) {
-      if (e.fromPage) this.#notSent(call); // the page refused before it sent any event
-      throw e;
-    } finally {
-      if (this.clicking === click) this.clicking = null;
-    }
-    const after = await this.#page(call, origin, { cmd: 'after_click' }).catch(() => null);
-    call.sent.outcome = 'done';
-    await this.#frame(call, spec, origin, { label: `Click ${target.description}`, at: sent.at });
-    // The question may reach the next document, which knows nothing of the click.
-    const page = after?.id !== sent.id
-      ? 'navigated'
-      : after.changed
-        ? 'changed'
-        : click.opened !== null
-          ? 'opened a tab'
-          : 'no visible change; the page may ignore events of add-ons';
-    return { clicked: target.description, trusted_event: false, page, ...(click.opened !== null && { opened_tab: click.opened }) };
-  }
-
-  async #fill(call, spec, origin, args) {
-    const target = await this.#page(call, origin, { cmd: 'describe', ref: args.ref, fill: true });
-    await this.#ask(call, spec, origin, { tool: 'form_input', target: target.description, value: args.value }, args.reason);
-    let r;
-    try {
-      this.#sent(call, `entry in ${target.description}`);
-      r = await this.#page(call, origin, { cmd: 'fill', ref: args.ref, fingerprint: target.fingerprint, value: args.value });
-    } catch (e) {
-      if (e.fromPage && e.code !== 'not_taken') this.#notSent(call);
-      throw e;
-    }
-    call.sent.outcome = 'done';
-    await this.#frame(call, spec, origin, { label: `Fill ${target.description}`, at: r.at });
-    return { field: target.description, set: true, changed: r.changed };
-  }
-
-  async #navigate(call, spec, origin, args) {
-    const to = originOf(args.url);
-    if (!to || new URL(args.url).username || new URL(args.url).password) throw new ToolError('invalid_argument', 'url must be an http or https address without a user name.');
-    const url = new URL(args.url).href;
-    await this.#ask(call, spec, origin, { tool: 'navigate', target: url, value: to === origin ? null : `Leaves ${origin} for ${to}` }, args.reason);
-    this.#sent(call, `opening ${plainUrl(url)}`);
-    await Promise.race([this.api.openUrl(call.tabId, url), call.gone]);
-    const end = this.now() + LIMITS.loadMs;
-    await Promise.race([sleep(250), call.gone]); // the old page still says complete for a moment
-    let tab;
-    while ((tab = await this.#tab(call.tabId))?.status === 'loading' && this.now() < end) await Promise.race([sleep(100), call.gone]);
-    call.sent.outcome = 'done';
-    if (!tab) throw new ToolError('no_grant', 'The tab is closed.');
-    if (tab.status === 'loading') return { state: 'still loading' };
-    const now = await this.#authorize(call, spec);
-    await this.#page(call, now, { cmd: 'after_click' }).catch((e) => {
-      throw e.code === 'restricted_page' ? new ToolError('load_failed', 'Firefox shows an error page instead of the address.') : e;
-    });
-    await this.#frame(call, spec, now, { label: `Open ${now}`, at: null });
-    return { state: 'loaded', url: plainUrl(tab.url), title: oneLine(tab.title) };
-  }
-
-  async #gif(call, spec, origin, args) {
-    if (args.action === 'start') {
-      await this.#ask(call, spec, origin, { tool: 'gif_creator', target: 'Record pictures of this tab before and after each action' }, args.reason);
-      if (!(await this.api.hasAllUrls()) && !(await this.#tab(call.tabId))?.active) throw new ToolError('permission_required', 'Bring the tab to the front, or allow screenshots in the sidebar.');
-      this.gif.start(call.session.id, call.tabId);
-      try {
-        await this.#page(call, origin, { cmd: 'pill', kind: 'GIF' });
-      } catch (e) {
-        this.gif.clear(call.session.id, call.tabId); // no recording without its mark in the page
-        throw e;
-      }
-      await this.#frame(call, spec, origin, null);
-      return { recording: true, frames: this.gif.frames(call.session.id, call.tabId) };
-    }
-    if (args.action === 'stop') this.gif.stop(call.session.id, call.tabId, 'stopped');
-    if (args.action === 'clear') this.gif.clear(call.session.id, call.tabId);
-    if (args.action !== 'export') return { recording: false, frames: this.gif.frames(call.session.id, call.tabId) };
-    return Promise.race([this.gif.export(call.session.id, call.tabId, args), call.gone]);
+  /** A tab of this session, with a grant for what the user approved. */
+  own(session, tab, grant = null) {
+    session.owned.add(tab.id);
+    this.#remember(tab);
+    if (grant) this.grants.add({ sessionId: session.id, tabId: tab.id, ...grant });
+    this.onChange();
   }
 
   /** A frame for a running GIF. A picture that fails never fails the action. */
-  async #frame(call, spec, origin, mark) {
+  async frame(call, spec, origin, mark) {
     if (!this.gif?.wants(call.session.id, call.tabId)) return;
     try {
-      const { image, mimeType } = await this.#screenshot(call, spec, origin);
+      const { image, mimeType } = await screenshot(this, call, spec, origin);
       this.gif.add(call.session.id, call.tabId, { dataUrl: `data:${mimeType};base64,${image}`, label: mark?.label ?? null, at: mark?.at ?? null });
     } catch (e) {
       this.gif.missed(call.session.id, call.tabId, e.code ?? 'error');
     }
   }
 
+  #status(session) {
+    const mine = this.grants.of(session.id);
+    const state = this.halted ? 'stopped' : this.paused ? 'paused' : 'connected';
+    return {
+      state,
+      session: { id: session.id, label: session.label },
+      extension: { version: VERSION, protocol: PROTOCOL },
+      helper: this.linkStatus(),
+      grants: mine.length,
+      suspended_grants: mine.filter((g) => g.state !== 'active').length,
+      missing_permissions: [...new Set(mine.filter((g) => g.reason === 'permission').flatMap((g) => g.origins))],
+      input: 'synthetic events; pages that check for trusted input ignore them, and no optional input backend is installed',
+      next_step: {
+        stopped: 'The user stopped Firefox Companion. Ask the user to press Resume work in the sidebar.',
+        paused: 'The user paused Firefox Companion. Ask the user to press Resume in the sidebar.',
+        connected: mine.length ? 'Call tabs_context.' : 'Ask the user to attach a tab to this session in the Firefox Companion sidebar, or call tab_request.',
+      }[state],
+    };
+  }
+
+  // Batches
+
+  async #batch(call, { steps, timeout_s = 120 }) {
+    for (const [i, s] of steps.entries()) {
+      if (s.tool === 'browser_batch' || !Object.hasOwn(TOOLS, s.tool) || TOOLS[s.tool].user || TOOLS[s.tool].local) throw new ToolError('invalid_argument', `Step ${i + 1}: ${oneLine(s.tool, 40)} cannot be a step.`);
+      const bad = checkArgs(s.tool, s.args);
+      if (bad) throw new ToolError('invalid_argument', `Step ${i + 1}: ${bad}`);
+    }
+    const progress = (call.progress = steps.map((s, i) => ({ step: i + 1, tool: s.tool, state: 'not_run' })));
+    const docOf = async (tabId) => (Number.isInteger(tabId) ? ((await this.api.page(tabId, { cmd: 'where' }, () => call.aborted === null, 0).catch(() => null))?.id ?? null) : null);
+    for (const [i, s] of steps.entries()) {
+      if (call.aborted) throw call.aborted;
+      const left = timeout_s * 1000 - (this.now() - call.since - call.waited);
+      if (left <= 0 || call.waited > LIMITS.batchCards) return this.#batchEnd(progress, 'timeout', `The time of the batch was over before step ${i + 1}.`);
+      const granted = this.grants.find(call.session.id, s.args.tabId)?.state === 'active';
+      const before = granted ? await docOf(s.args.tabId) : null;
+      progress[i].state = 'running';
+      const id = `${call.id}/${i + 1}`;
+      // The clock of the batch stands still while the step waits for the user.
+      const guard = setInterval(() => this.now() - call.since - call.waited - this.#cardTime(id) > timeout_s * 1000 && this.#abort((c) => c.id === id && c.parent === call, 'timeout'), 200);
+      const r = await this.call(call.session.id, id, s.tool, s.args, { parent: call });
+      clearInterval(guard);
+      if (r.error) {
+        Object.assign(progress[i], { state: 'failed', error: r.error });
+        if (call.aborted) throw call.aborted;
+        return this.#batchEnd(progress, r.error.code, `Step ${i + 1} failed, the rest did not run.`);
+      }
+      Object.assign(progress[i], { state: 'done', result: r.result });
+      const after = granted ? await docOf(s.args.tabId) : null;
+      if (i + 1 < steps.length && before && after !== before && !s.navigates && s.tool !== 'navigate') {
+        progress[i].navigated = true;
+        return this.#batchEnd(progress, 'navigated', `Step ${i + 1} moved the page, so its refs ended. Read the page, then go on.`);
+      }
+    }
+    return this.#batchEnd(progress, null, 'All steps ran.');
+  }
+
+  #cardTime(id) {
+    const c = [...this.calls].find((x) => x.id === id);
+    return c?.state === 'waiting for approval' ? this.now() - c.since - c.waited : 0;
+  }
+
+  #batchEnd(steps, stopped, message) {
+    return { completed: stopped === null, stopped_by: stopped, message, done: steps.filter((s) => s.state === 'done').length, steps };
+  }
+
   // Helpers
 
-  #tab(id) {
+  tab(id) {
     return this.api.getTab(id).catch(() => null);
   }
 
+  #remember(tab) {
+    if (!tab.incognito) this.urls.set(tab.id, { url: tab.url, title: oneLine(tab.title), cookieStoreId: tab.cookieStoreId });
+  }
+
   #abort(match, code) {
-    for (const c of this.calls) {
+    for (const c of [...this.calls]) {
       if (!match(c) || c.aborted) continue;
       c.aborted = new ToolError(code, WHY[code]);
       c.reject(c.aborted);
       c.card?.close();
+      const step = c.parent?.progress?.find((s) => s.state === 'running');
+      if (step) Object.assign(step, { state: code, may_have_taken_effect: c.sent?.what ?? null });
+      if (c.tabId !== null && TOOLS[c.tool]) this.api.abort?.(c.tabId, c.frame);
+      this.#abort((x) => x.parent === c, code);
     }
   }
 
@@ -465,10 +550,13 @@ export class Router {
     this.onChange();
   }
 
-  /** Refs and covers in the page go when the grant goes. */
+  /** Refs, covers, pictures and recordings of a tab go when its grant goes. */
   #forget(grants) {
     for (const g of grants) {
       this.onGrantEnd(g);
+      const s = this.sessions.get(g.sessionId);
+      s?.seen.delete(g.tabId);
+      if (s) for (const [k, shot] of s.shots) if (shot.tabId === g.tabId) s.shots.delete(k);
       if (!this.grants.all.some((o) => o !== g && o.tabId === g.tabId && o.state === 'active')) this.api.forget(g.tabId);
     }
   }
@@ -476,5 +564,10 @@ export class Router {
   /** Names, codes and times only: no page text, no arguments. */
   #note(session, tool, origin, decision, ms = 0, approved = undefined) {
     this.log({ at: this.now(), session: session?.id ?? '?', tool: oneLine(tool, 40), origin, decision, ms, approved });
+  }
+
+  /** What runs now, for the sidebar. */
+  get activity() {
+    return [...this.calls].map((c) => ({ session: c.session.label, tool: c.tool, tabId: c.tabId, state: c.state, since: c.since }));
   }
 }

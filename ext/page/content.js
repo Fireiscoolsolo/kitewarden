@@ -1,9 +1,10 @@
-// Injected on demand into the top frame of a granted tab. Reads write nothing into the page. Only the add-on's own
-// background page can send messages here.
+// Injected on demand into the granted frames of a granted tab. Reads write nothing into the page. Only the add-on's own
+// background page can send messages here, and each one names the origin that it expects.
 (() => {
   if (globalThis.companion) return;
   globalThis.companion = true;
 
+  const frame = browser.runtime.getFrameId(window);
   const id = crypto.randomUUID().slice(0, 8); // a ref names one element of one document and is never reused
   const refs = new Map();
   let refOf = new WeakMap();
@@ -11,18 +12,23 @@
   let nextRef = 1;
   let covers = null;
   let watch = null;
+  let epoch = 0; // an abort ends the loops that began before it
 
   const line = (s, max) => {
     const t = String(s ?? '').replace(/\s+/g, ' ').trim();
     return t.length > max ? `${t.slice(0, max)}…` : t;
   };
+  const fail = (error, message) => {
+    throw { error, message };
+  };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // Elements
 
   const ref = (el) => {
     let r = refOf.get(el);
     if (!r) {
-      r = `ref_${id}_${nextRef++}`;
+      r = `ref_${frame ? `f${frame}_` : ''}${id}_${nextRef++}`;
       refOf.set(el, r);
       refs.set(r, new WeakRef(el));
     }
@@ -46,15 +52,17 @@
   const TAG_ROLES = { BUTTON: 'button', SELECT: 'combobox', TEXTAREA: 'textbox', SUMMARY: 'button', OPTION: 'option', NAV: 'navigation', MAIN: 'main', HEADER: 'banner', FOOTER: 'contentinfo', ASIDE: 'complementary', FORM: 'form', IMG: 'image', UL: 'list', OL: 'list', LI: 'listitem', TABLE: 'table', TR: 'row', TD: 'cell', TH: 'columnheader', DIALOG: 'dialog', IFRAME: 'frame', FRAME: 'frame', OBJECT: 'frame', EMBED: 'frame' };
   const INTERACTIVE = new Set(['button', 'link', 'checkbox', 'radio', 'slider', 'spinbutton', 'searchbox', 'textbox', 'combobox', 'listbox', 'option', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'switch', 'tab', 'treeitem', 'gridcell']);
   const NAME_FROM_TEXT = new Set(['button', 'link', 'heading', 'option', 'menuitem', 'tab', 'switch', 'treeitem', 'checkbox', 'radio']);
+  const FRAMES = ['IFRAME', 'FRAME', 'OBJECT', 'EMBED'];
 
   function roleOf(el) {
     const explicit = el.getAttribute('role')?.trim().split(/\s+/)[0];
+    if (FRAMES.includes(el.tagName)) return 'frame';
     if (explicit && explicit !== 'presentation' && explicit !== 'none') return explicit;
     if (el instanceof HTMLInputElement) return INPUT_ROLES[el.type] ?? 'textbox';
     if ((el.tagName === 'A' || el.tagName === 'AREA') && el.hasAttribute('href')) return 'link';
     if (/^H[1-6]$/.test(el.tagName)) return 'heading';
     if (el.isContentEditable && !el.parentElement?.isContentEditable) return 'textbox';
-    return TAG_ROLES[el.tagName] ?? (el.hasAttribute('onclick') || el.tabIndex >= 0 && el.hasAttribute('tabindex') ? 'clickable' : null);
+    return TAG_ROLES[el.tagName] ?? (el.hasAttribute('onclick') || el.draggable && el.getAttribute('draggable') === 'true' || el.tabIndex >= 0 && el.hasAttribute('tabindex') ? 'clickable' : null);
   }
 
   const interactive = (role) => INTERACTIVE.has(role) || role === 'clickable';
@@ -92,7 +100,7 @@
   function valueOf(el) {
     if (isSecret(el)) return '[secret]';
     if (el instanceof HTMLSelectElement) return line([...el.selectedOptions].map((o) => o.text).join(', '), 120);
-    if (el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && !(el.type in INPUT_ROLES && INPUT_ROLES[el.type] === 'button') && !['checkbox', 'radio', 'hidden'].includes(el.type))) return line(el.value, 200);
+    if (el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && !(INPUT_ROLES[el.type] === 'button') && !['checkbox', 'radio', 'hidden'].includes(el.type))) return line(el.value, 200);
     return '';
   }
 
@@ -109,6 +117,8 @@
   }
 
   const shadowOf = (el) => (typeof el.openOrClosedShadowRoot === 'object' ? el.openOrClosedShadowRoot : el.shadowRoot);
+  const parentOf = (n) => n.assignedSlot ?? n.parentElement ?? (n.getRootNode() instanceof ShadowRoot ? n.getRootNode().host : null);
+  const own = (n) => n === pill || n === covers;
 
   function childrenOf(el) {
     if (el.tagName === 'SLOT') {
@@ -118,36 +128,62 @@
     return [...(shadowOf(el) ?? el).childNodes];
   }
 
+  /** Every element as rendered, through shadow roots, without hidden parts. */
+  function* rendered(root = document.body) {
+    if (!root || own(root) || ['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'HEAD'].includes(root.tagName)) return;
+    const cs = getComputedStyle(root);
+    if (cs.display === 'none' || cs.opacity === '0') return;
+    if (cs.visibility === 'visible') yield root;
+    for (const c of childrenOf(root)) if (c instanceof Element) yield* rendered(c);
+  }
+
+  const onScreen = (el) => {
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth;
+  };
+
   // Reading
 
-  function snapshot({ filter, maxChars, maxNodes, collect = null }) {
+  /** The modal, or the layer over the middle of the page, that takes its clicks. */
+  function overlay() {
+    const modal = [...document.querySelectorAll('dialog[open], [role=dialog], [role=alertdialog], [aria-modal=true]')].findLast((e) => e.checkVisibility() && onScreen(e));
+    if (modal) return modal;
+    let e = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+    for (; e && e !== document.body && e !== document.documentElement; e = parentOf(e)) {
+      const r = e.getBoundingClientRect();
+      if (!own(e) && getComputedStyle(e).position === 'fixed' && r.width >= innerWidth * 0.9 && r.height >= innerHeight * 0.9) return e;
+    }
+    return null;
+  }
+
+  function snapshot({ filter, maxChars, maxNodes, root = null, depthLimit = 100, viewport = false, collect = null }) {
     const out = [];
+    const frames = []; // { line, frame, depth }: where the outline of a frame goes
     let nodes = 0;
     let full = 0;
     let size = 0;
     const emit = (depth, s) => {
       const l = '  '.repeat(Math.min(depth, 20)) + s;
       full += l.length + 1;
-      if (full <= maxChars) {
-        out.push(l);
-        size = full;
-      }
+      if (full > maxChars) return;
+      out.push(l);
+      size = full;
     };
     const walk = (node, depth, inName, style) => {
-      if (++nodes > maxNodes) return;
+      if (++nodes > maxNodes || depth > depthLimit) return;
       if (node.nodeType === Node.TEXT_NODE) {
         const t = line(node.data, 500);
         if (t && !inName && filter === 'all' && style.visibility === 'visible') emit(depth, `- text ${JSON.stringify(t)}`);
         return;
       }
-      if (!(node instanceof Element) || node === pill || ['SCRIPT','STYLE', 'NOSCRIPT', 'TEMPLATE', 'HEAD'].includes(node.tagName)) return;
+      if (!(node instanceof Element) || own(node) || ['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'HEAD'].includes(node.tagName)) return;
       const cs = getComputedStyle(node);
       if (cs.display === 'none' || cs.opacity === '0') return;
-      const visible = cs.visibility === 'visible';
+      const visible = cs.visibility === 'visible' && (!viewport || onScreen(node));
       const role = roleOf(node);
       let d = depth;
       let named = inName;
-      if (role && visible && (filter === 'all' || interactive(role))) {
+      if (role && visible && (filter === 'all' || interactive(role) || role === 'frame')) {
         const name = nameOf(node, role);
         const states = statesOf(node, role);
         const value = valueOf(node);
@@ -157,21 +193,149 @@
         d = depth + 1;
         named = inName || NAME_FROM_TEXT.has(role) || role === 'clickable';
       }
-      // Frames are placeholders and form values are printed above, so neither is walked.
-      if (['frame', 'textbox', 'searchbox', 'image'].includes(role) && !node.isContentEditable) return;
+      if (role === 'frame') {
+        const f = browser.runtime.getFrameId(node);
+        if (f > 0 && visible) frames.push({ line: out.length, frame: f, depth: d });
+        return;
+      }
+      // Form values are printed above, so these are not walked.
+      if (['textbox', 'searchbox', 'image'].includes(role) && !node.isContentEditable) return;
       if (node instanceof HTMLSelectElement) return;
       for (const c of childrenOf(node)) walk(c, d, named, cs);
     };
-    if (document.body) walk(document.body, 0, false, getComputedStyle(document.body));
+    const start = root ? target(root) : document.body;
+    if (!root && !collect && filter === 'all') {
+      const over = overlay();
+      if (over) {
+        const buttons = [...rendered(over)].filter((e) => ['button', 'link'].includes(roleOf(e))).slice(0, 12);
+        emit(0, `- overlay ${JSON.stringify(nameOf(over, 'dialog') || line(over.innerText, 300))} takes the clicks of this page; what is behind it is blocked: ${buttons.map((b) => `${JSON.stringify(nameOf(b, 'button'))} [${ref(b)}]`).join(', ') || 'no buttons'}`);
+      }
+    }
+    if (start) walk(start, 0, false, getComputedStyle(start));
     if (nodes > maxNodes) emit(0, `- (stopped after ${maxNodes} nodes)`);
-    return { outline: out.join('\n'), truncated: full > size, fullChars: full };
+    return { lines: out, frames, truncated: full > size, fullChars: full, ready: document.readyState };
   }
 
-  // Acting
+  /** Visible text, the main article first. Values of fields are no text. */
+  function text({ root, links }) {
+    const article = root ? target(root) : [...document.querySelectorAll('article, main, [role=main]')].filter((e) => e.checkVisibility()).sort((a, b) => b.innerText.length - a.innerText.length)[0];
+    const from = article && (root || article.innerText.length > 200) ? article : document.body;
+    const parts = [];
+    const walk = (node) => {
+      if (node.nodeType === Node.TEXT_NODE) return void parts.push(node.data.replace(/\s+/g, ' '));
+      if (!(node instanceof Element) || own(node) || ['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'TEXTAREA', 'SELECT', ...FRAMES].includes(node.tagName)) return;
+      const cs = getComputedStyle(node);
+      if (cs.display === 'none' || cs.visibility !== 'visible' || cs.opacity === '0') return;
+      const block = !['inline', 'contents', 'inline-block'].includes(cs.display) || node.tagName === 'BR';
+      if (block) parts.push('\n');
+      childrenOf(node).forEach(walk);
+      if (block) parts.push('\n');
+    };
+    if (from) walk(from);
+    const all = links && from ? [...rendered(from)].filter((e) => e.tagName === 'A').map((a) => ({ text: line(a.innerText, 100), link: linkOf(a) })).filter((l) => l.link && /^https?:$/.test(l.link.protocol)).slice(0, 200).map((l) => `${l.text} -> ${l.link.text}`) : [];
+    return { title: line(document.title, 200), source: root ? 'element' : from === document.body ? 'body' : 'article', text: parts.join('').replace(/[ \t]*\n[ \t]*/g, '\n').replace(/\n{3,}/g, '\n\n').trim(), links: all };
+  }
+
+  /** A selector that tests the value of a field would tell the value of a secret one, so none may. */
+  function bySelector(selector) {
+    if (selector.includes('\\') || /\[[^\]]*value/i.test(selector)) fail('invalid_argument', 'A selector may not test values or use escapes.');
+    try {
+      document.createDocumentFragment().querySelector(selector);
+    } catch {
+      fail('invalid_argument', 'That is not a CSS selector.');
+    }
+    return [...rendered()].filter((e) => e.matches(selector));
+  }
+
+  function search({ query, selector, limit }) {
+    const words = query?.toLowerCase().split(/\s+/).filter(Boolean) ?? [];
+    const hits = [];
+    for (const el of selector !== undefined ? bySelector(selector) : rendered()) {
+      const role = roleOf(el);
+      if (selector === undefined && (!role || role === 'frame' || !(interactive(role) || NAME_FROM_TEXT.has(role)))) continue;
+      const name = nameOf(el, role ?? '');
+      const kind = role ?? el.tagName.toLowerCase();
+      let score = 0;
+      if (selector === undefined) {
+        const near = `${kind} ${name} ${el.getAttribute('title') ?? ''} ${el.getAttribute('placeholder') ?? ''} ${el.id} ${el.getAttribute('name') ?? ''}`.toLowerCase();
+        score = words.filter((w) => near.includes(w)).length + (name.toLowerCase().includes(query.toLowerCase()) ? words.length + 1 : 0) + (name.toLowerCase() === query.toLowerCase() ? 5 : 0);
+        if (!score) continue;
+      }
+      hits.push({ el, kind, name, score });
+    }
+    if (selector === undefined) hits.sort((a, b) => b.score - a.score);
+    return { total: hits.length, hits: hits.slice(0, limit).map(({ el, kind, name, score }) => ({ ref: ref(el), role: kind, name, score, off_screen: !onScreen(el) })) };
+  }
+
+  function findText({ text: wanted }) {
+    const body = line(document.body?.innerText, 2e6).toLowerCase();
+    const needle = line(wanted, 500).toLowerCase();
+    const at = [];
+    for (let i = body.indexOf(needle); i >= 0 && at.length < 10_000; i = body.indexOf(needle, i + needle.length)) at.push(i);
+    const plain = line(document.body?.innerText, 2e6);
+    return { count: at.length, snippets: at.slice(0, 5).map((i) => plain.slice(Math.max(0, i - 60), i + needle.length + 60)) };
+  }
+
+  const shows = (t) => (document.body?.innerText ?? '').includes(t);
+
+  function check(m) {
+    if (m.text !== undefined) return { met: shows(m.text) };
+    if (m.gone !== undefined) return { met: !shows(m.gone) };
+    const el = refs.get(m.ref)?.deref();
+    const there = Boolean(el?.isConnected);
+    const visible = there && el.checkVisibility({ visibilityProperty: true, opacityProperty: true });
+    return { met: m.state === 'gone' ? !there : m.state === 'hidden' ? !visible : visible };
+  }
+
+  /** Frames of this document with their place in it, in CSS pixels. */
+  const children = () => ({
+    children: [...rendered()].filter((e) => FRAMES.includes(e.tagName)).map((e) => {
+      const r = e.getBoundingClientRect();
+      const s = getComputedStyle(e);
+      return { frame: browser.runtime.getFrameId(e), src: originText(e), name: line(e.title || e.name, 80), left: r.left + e.clientLeft + parseFloat(s.paddingLeft), top: r.top + e.clientTop + parseFloat(s.paddingTop), width: r.width, height: r.height };
+    }).filter((c) => c.frame > 0),
+  });
+  const originText = (e) => {
+    try {
+      return new URL(e.src || e.data || 'about:blank', location.href).origin;
+    } catch {
+      return 'null';
+    }
+  };
+
+  const marks = () => ({
+    width: innerWidth,
+    height: innerHeight,
+    marks: [...rendered()].filter((e) => interactive(roleOf(e)) && onScreen(e)).slice(0, 100).map((e) => {
+      const r = e.getBoundingClientRect();
+      return { ref: ref(e), role: roleOf(e), name: nameOf(e, roleOf(e)), left: r.left, top: r.top, width: r.width, height: r.height };
+    }),
+  });
+
+  const place = () => ({ width: innerWidth, height: innerHeight, scroll: [scrollX, scrollY, devicePixelRatio] });
+
+  /** The deepest element at a point in CSS pixels, or the frame that has it. */
+  function hitTest({ x, y }) {
+    let el = document.elementFromPoint(x, y);
+    while (el && shadowOf(el)) {
+      const inner = shadowOf(el).elementFromPoint(x, y);
+      if (!inner || inner === el) break;
+      el = inner;
+    }
+    if (!el || own(el)) fail('not_actionable', `There is nothing at ${Math.round(x)},${Math.round(y)}.`);
+    if (FRAMES.includes(el.tagName)) {
+      const c = children().children.find((k) => k.frame === browser.runtime.getFrameId(el));
+      return { frame: c?.frame ?? -1, x: x - (c?.left ?? 0), y: y - (c?.top ?? 0) };
+    }
+    for (let e = el; e; e = parentOf(e)) if (interactive(roleOf(e) ?? '')) return { ref: ref(e) };
+    return { ref: ref(el) };
+  }
+
+  // Acting. Every event here is synthetic; what the page did with it is looked up afterwards.
 
   function target(refName) {
     const el = refs.get(refName)?.deref();
-    if (!el || !el.isConnected) throw { error: 'stale_ref', message: 'That element is gone. Read the page again.' };
+    if (!el || !el.isConnected) fail('stale_ref', 'That element is gone. Read the page again.');
     return el;
   }
 
@@ -189,135 +353,527 @@
     };
   }
 
-  function checkTarget(el) {
-    const link = linkOf(el);
-    if (link && !/^https?:$/.test(link.protocol)) throw { error: 'not_allowed', message: `Links with ${link.protocol || 'an invalid address'} are not clicked.` };
-    if (el instanceof HTMLInputElement && el.type === 'file') throw { error: 'not_allowed', message: 'File pickers are not opened by a click.' };
-    if (el.matches(':disabled') || el.getAttribute('aria-disabled') === 'true' || el.closest('[inert]')) throw { error: 'not_actionable', message: 'The element is disabled.' };
-    if (!el.checkVisibility({ visibilityProperty: true, opacityProperty: true })) throw { error: 'not_actionable', message: 'The element is hidden.' };
+  /** The element of an approved action, if it still is the one that the user saw. */
+  function approved(m, name = 'ref', print = 'fingerprint') {
+    const el = target(m[name]);
+    if (describe(el).fingerprint !== m[print]) fail('stale_ref', 'The element changed after the user approved it.');
+    return el;
   }
 
-  function click(el) {
-    checkTarget(el);
+  function checkTarget(el) {
+    const link = linkOf(el);
+    if (link && !/^https?:$/.test(link.protocol)) fail('not_allowed', `Links with ${link.protocol || 'an invalid address'} are not clicked.`);
+    if (el instanceof HTMLInputElement && el.type === 'file') fail('not_allowed', 'File pickers are not opened by a click. Use file_upload.');
+    if (el.matches(':disabled') || el.getAttribute('aria-disabled') === 'true' || el.closest('[inert]')) fail('not_actionable', 'The element is disabled.');
+    if (!el.checkVisibility({ visibilityProperty: true, opacityProperty: true })) fail('not_actionable', 'The element is hidden.');
+  }
+
+  /** Scrolls it into view and returns the point and the innermost element there, or says what covers it. */
+  function pointOf(el) {
     el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
     const r = el.getBoundingClientRect();
-    if (r.width < 1 || r.height < 1) throw { error: 'not_actionable', message: 'The element has no size.' };
+    if (r.width < 1 || r.height < 1) fail('not_actionable', 'The element has no size.');
     const x = r.left + r.width / 2;
     const y = r.top + r.height / 2;
-    let hit = el.getRootNode().elementFromPoint(x, y);
+    const hit = el.getRootNode().elementFromPoint(x, y);
     const label = hit?.closest('label');
-    if (!hit || !(el === hit || el.contains(hit) || hit.contains(el) && !interactive(roleOf(hit)) && shadowOf(hit) || label?.control === el)) {
-      throw { error: 'covered', message: hit ? `Another element covers it: ${describe(hit).description}` : 'It is outside the visible area.' };
+    if (!hit || !(el === hit || el.contains(hit) || (hit.contains(el) && !interactive(roleOf(hit)) && shadowOf(hit)) || label?.control === el)) {
+      fail('covered', hit ? `Another element covers it: ${describe(hit).description} [${ref(hit)}]` : 'It is outside the visible area.');
     }
-    hit = el.contains(hit) ? hit : el;
-    watch?.disconnect();
-    const seen = { changed: false };
-    watch = new MutationObserver(() => (seen.changed = true));
-    watch.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
-    watch.seen = seen;
-    const init = { bubbles: true, cancelable: true, composed: true, view: window, clientX: x, clientY: y, button: 0, detail: 1 };
-    hit.dispatchEvent(new PointerEvent('pointerdown', { ...init, buttons: 1, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
-    hit.dispatchEvent(new MouseEvent('mousedown', { ...init, buttons: 1 }));
-    el.focus?.({ preventScroll: true });
-    hit.dispatchEvent(new PointerEvent('pointerup', { ...init, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
-    hit.dispatchEvent(new MouseEvent('mouseup', init));
-    hit.click();
-    return { at: placeOf(r) };
+    return { x, y, hit: el.contains(hit) ? hit : el, at: placeOf(r) };
   }
 
   /** Middle of a rectangle as parts of the visible area, for the click mark of a GIF. */
   const placeOf = (r) => ({ x: (r.left + r.width / 2) / innerWidth, y: (r.top + r.height / 2) / innerHeight });
 
-  const isChoice = (el) => el instanceof HTMLInputElement && (el.type === 'checkbox' || el.type === 'radio');
-
-  function checkField(el) {
-    if (isSecret(el)) throw { error: 'secret_field', message: 'Passwords, codes and payment fields are filled in by the user only.' };
-    checkTarget(el);
-    const field = el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement || el.isContentEditable ||
-      (el instanceof HTMLInputElement && !['button', 'submit', 'reset', 'image', 'hidden'].includes(el.type));
-    if (!field) throw { error: 'not_actionable', message: 'That is not a form field.' };
-    if (el.readOnly) throw { error: 'not_actionable', message: 'The field is read-only.' };
+  /** Watches what the page does from here on. Our own nodes do not count. */
+  function observe() {
+    watch?.disconnect();
+    const seen = { changed: false, url: location.href, focus: document.activeElement };
+    watch = new MutationObserver((list) => {
+      if (list.some((r) => r.type !== 'childList' || [...r.addedNodes, ...r.removedNodes].some((n) => !own(n) && !gone.has(n)))) seen.changed = true;
+    });
+    watch.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+    watch.seen = seen;
   }
 
-  function fill(el, value) {
+  // The page's own dialogs would block this script. They are answered while an action runs and reported.
+  let dialogs = null;
+
+  function guardDialogs(answer, textAnswer) {
+    const w = window.wrappedJSObject;
+    if (!w || dialogs) return;
+    const seen = [];
+    const saved = {};
+    const put = (name, fn) => {
+      saved[name] = w[name];
+      w[name] = exportFunction(fn, window);
+    };
+    put('alert', (m) => void seen.push({ kind: 'alert', text: line(m, 200), answer: 'closed' }));
+    put('confirm', (m) => (seen.push({ kind: 'confirm', text: line(m, 200), answer: answer ? 'accepted' : 'cancelled' }), answer));
+    put('prompt', (m) => (seen.push({ kind: 'prompt', text: line(m, 200), answer: answer ? 'accepted' : 'cancelled' }), answer ? textAnswer : null));
+    dialogs = { seen, saved };
+  }
+
+  function releaseDialogs() {
+    const seen = dialogs?.seen ?? [];
+    if (dialogs) for (const [name, fn] of Object.entries(dialogs.saved)) window.wrappedJSObject[name] = fn;
+    dialogs = null;
+    return seen;
+  }
+
+  const mods = (m) => ({ ctrlKey: m.includes('ctrl'), shiftKey: m.includes('shift'), altKey: m.includes('alt'), metaKey: m.includes('meta') });
+  const BUTTON = { left: 0, middle: 1, right: 2 };
+
+  function pointer(m) {
+    const el = approved(m);
+    checkTarget(el);
+    const { x, y, hit, at } = pointOf(el);
+    observe();
+    guardDialogs(m.accept, m.promptText ?? '');
+    const button = BUTTON[m.button];
+    const held = [1, 4, 2][button];
+    const init = { bubbles: true, cancelable: true, composed: true, view: window, clientX: x, clientY: y, button, ...mods(m.modifiers) };
+    const mouse = { ...init, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+    for (let n = 1; n <= m.count; n++) {
+      const down = hit.dispatchEvent(new PointerEvent('pointerdown', { ...mouse, buttons: held })) && hit.dispatchEvent(new MouseEvent('mousedown', { ...init, buttons: held, detail: n }));
+      if (down && n === 1 && button === 0) (hit.closest('a, button, input, select, textarea, [tabindex], [contenteditable]') ?? el).focus?.({ preventScroll: true });
+      hit.dispatchEvent(new PointerEvent('pointerup', mouse));
+      hit.dispatchEvent(new MouseEvent('mouseup', { ...init, detail: n }));
+      if (button === 0 && !m.modifiers.length) hit.click();
+      else hit.dispatchEvent(new PointerEvent(button === 0 ? 'click' : 'auxclick', { ...mouse, detail: n }));
+      if (n === 2 && button === 0) hit.dispatchEvent(new MouseEvent('dblclick', { ...init, detail: 2 }));
+    }
+    if (button === 2) hit.dispatchEvent(new PointerEvent('contextmenu', mouse));
+    if (m.count === 3 && button === 0) getSelection().selectAllChildren(hit.closest('p, li, td, pre, h1, h2, h3, div') ?? hit);
+    return { at };
+  }
+
+  let hovered = null;
+
+  function hover(m) {
+    const el = target(m.ref);
+    const { x, y, hit, at } = pointOf(el);
+    observe();
+    const init = { bubbles: true, cancelable: true, composed: true, view: window, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true, ...mods(m.modifiers) };
+    const path = (e) => (e ? [e, ...path(parentOf(e))] : []);
+    const now = path(hit);
+    const before = path(hovered?.isConnected ? hovered : null);
+    const fire = (n, Kind, type, bubbles) => n.dispatchEvent(new Kind(type, { ...init, bubbles, relatedTarget: null }));
+    if (before.length && before[0] !== hit) {
+      fire(before[0], PointerEvent, 'pointerout', true);
+      fire(before[0], MouseEvent, 'mouseout', true);
+      for (const e of before) if (!now.includes(e)) for (const [K, t] of [[PointerEvent, 'pointerleave'], [MouseEvent, 'mouseleave']]) fire(e, K, t, false);
+    }
+    fire(hit, PointerEvent, 'pointerover', true);
+    for (const e of now.reverse()) if (!before.includes(e)) fire(e, PointerEvent, 'pointerenter', false);
+    fire(hit, PointerEvent, 'pointermove', true);
+    fire(hit, MouseEvent, 'mouseover', true);
+    for (const e of now) if (!before.includes(e)) fire(e, MouseEvent, 'mouseenter', false);
+    fire(hit, MouseEvent, 'mousemove', true);
+    hovered = hit;
+    return { at };
+  }
+
+  const isChoice = (el) => el instanceof HTMLInputElement && (el.type === 'checkbox' || el.type === 'radio');
+  const isText = (el) => el instanceof HTMLTextAreaElement || el?.isContentEditable || (el instanceof HTMLInputElement && !['button', 'submit', 'reset', 'image', 'hidden', 'checkbox', 'radio', 'file', 'range', 'color'].includes(el.type));
+
+  function checkField(el) {
+    if (isSecret(el)) fail('secret_field', 'Passwords, codes and payment fields are filled in by the user only.');
+    checkTarget(el);
+    if (!(isText(el) || isChoice(el) || el instanceof HTMLSelectElement || (el instanceof HTMLInputElement && ['range', 'color'].includes(el.type)))) fail('not_actionable', 'That is not a form field.');
+    if (el.readOnly) fail('not_actionable', 'The field is read-only.');
+  }
+
+  const announce = (el) => {
+    el.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, inputType: 'insertReplacementText' }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  /** Options of a list by value, exact label, label without case, then the only one that holds the text. */
+  function optionFor(el, value) {
+    const all = [...el.options];
+    const label = (o) => line(o.label, 200);
+    const low = value.toLowerCase();
+    const hits = [all.filter((o) => o.value === value), all.filter((o) => label(o) === value), all.filter((o) => label(o).toLowerCase() === low), all.filter((o) => label(o).toLowerCase().includes(low))].find((h) => h.length) ?? [];
+    if (hits.length !== 1) fail(hits.length ? 'ambiguous' : 'no_match', `Options: ${(hits.length ? hits : all).slice(0, 50).map((o) => JSON.stringify(label(o))).join(', ')}`);
+    if (hits[0].disabled) fail('not_actionable', 'That option is disabled.');
+    return hits[0];
+  }
+
+  /** The values of one field as a check without any write. */
+  function checkValue(el, value) {
     checkField(el);
+    if (isChoice(el) && value !== 'true' && value !== 'false') fail('invalid_argument', 'A checkbox or radio button takes "true" or "false".');
+    if (el instanceof HTMLSelectElement) for (const v of el.multiple ? value.split('\n') : [value]) optionFor(el, v);
+  }
+
+  function fill(el, value, commit) {
+    checkValue(el, value);
     el.scrollIntoView({ block: 'center', behavior: 'instant' });
     const at = placeOf(el.getBoundingClientRect());
-    const announce = () => {
-      el.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, inputType: 'insertReplacementText' }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
+    const done = (changed) => {
+      if (commit) el.blur();
+      return { changed, at };
     };
     if (isChoice(el)) {
-      if (value !== 'true' && value !== 'false') throw { error: 'invalid_argument', message: 'A checkbox or radio button takes "true" or "false".' };
       const changed = el.checked !== (value === 'true');
       if (changed) el.click();
-      if (el.checked !== (value === 'true')) throw { error: 'not_taken', message: 'The page did not keep the choice.' };
-      return { changed, at };
+      if (el.checked !== (value === 'true')) fail('not_taken', 'The page did not keep the choice.');
+      return done(changed);
     }
     if (el instanceof HTMLSelectElement) {
-      if (el.multiple) throw { error: 'not_actionable', message: 'Lists with several choices are not supported.' };
-      const all = [...el.options];
-      const label = (o) => line(o.label, 200);
-      const same = (o, f) => f(o).toLowerCase() === value.toLowerCase();
-      const hits = [all.filter((o) => o.value === value), all.filter((o) => label(o) === value), all.filter((o) => same(o, label))].find((h) => h.length) ?? [];
-      if (hits.length !== 1) throw { error: hits.length ? 'ambiguous' : 'no_match', message: `Options: ${(hits.length ? hits : all).slice(0, 50).map((o) => JSON.stringify(label(o))).join(', ')}` };
-      if (hits[0].disabled) throw { error: 'not_actionable', message: 'That option is disabled.' };
-      const changed = !hits[0].selected;
-      hits[0].selected = true;
-      if (changed) announce();
-      if (!hits[0].selected) throw { error: 'not_taken', message: 'The page did not keep the choice.' };
-      return { changed, at };
+      const want = (el.multiple ? value.split('\n') : [value]).map((v) => optionFor(el, v));
+      const before = [...el.selectedOptions];
+      if (el.multiple) for (const o of el.options) o.selected = want.includes(o);
+      else want[0].selected = true;
+      const changed = before.length !== want.length || before.some((o) => !want.includes(o));
+      if (changed) announce(el);
+      if (!want.every((o) => o.selected)) fail('not_taken', 'The page did not keep the choice.');
+      return done(changed);
     }
     el.focus({ preventScroll: true });
     if (el.isContentEditable) {
       getSelection().selectAllChildren(el);
       document.execCommand('insertText', false, value);
-      if (line(el.innerText, 1e6) !== line(value, 1e6)) throw { error: 'not_taken', message: 'The editor did not keep the text.' };
-      return { changed: true, at };
+      if (line(el.innerText, 1e6) !== line(value, 1e6)) fail('not_taken', 'The editor did not keep the text.');
+      return done(true);
     }
     const changed = el.value !== value;
     el.value = value;
-    if (el.value !== value) throw { error: 'not_taken', message: 'The field does not accept this value.' };
-    if (changed) announce();
-    if (el.value !== value) throw { error: 'not_taken', message: 'The page changed the value.' };
-    return { changed, at };
+    if (el.value !== value) fail('not_taken', 'The field does not accept this value.');
+    if (changed) announce(el);
+    if (el.value !== value) fail('not_taken', 'The page changed the value.');
+    return done(changed);
+  }
+
+  /** The field that keys go to. */
+  function focusField(m) {
+    if (m.ref) {
+      const el = approved(m);
+      checkField(el);
+      el.focus({ preventScroll: true });
+      return el;
+    }
+    let el = document.activeElement;
+    while (el && shadowOf(el)?.activeElement) el = shadowOf(el).activeElement;
+    return el;
+  }
+
+  /** Inserts at the caret. Returns the number of characters that arrived. */
+  function insert(el, s) {
+    const size = () => (el.isContentEditable ? el.textContent.length : el.value.length);
+    const before = size();
+    if (!document.execCommand('insertText', false, s) && !el.isContentEditable) {
+      const at = el.selectionStart ?? el.value.length;
+      try {
+        el.setRangeText(s, at, el.selectionEnd ?? at, 'end');
+      } catch {
+        el.value += s; // number and date fields have no caret
+      }
+      el.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, inputType: 'insertText', data: s }));
+    }
+    return size() - before;
+  }
+
+  async function type(m) {
+    const el = focusField(m);
+    if (!isText(el)) fail('not_actionable', 'No field has the focus.');
+    checkField(el);
+    observe();
+    if (!m.slowly) {
+      const n = insert(el, m.text);
+      if (n <= 0 && m.text) fail('not_taken', 'The field did not take the text.');
+      return { arrived: n };
+    }
+    const mine = epoch;
+    let n = 0;
+    for (const c of m.text) {
+      if (epoch !== mine || !el.isConnected) break;
+      keyEvents(el, c, [], () => (n += insert(el, c)));
+      await sleep(Math.min(30, 8000 / m.text.length));
+    }
+    return { arrived: n, cut: epoch !== mine };
+  }
+
+  /** keydown, the default action unless the page cancels it, keyup. Returns whether the default was done. */
+  function keyEvents(el, key, modifiers, action) {
+    const init = { key, code: /^[a-z]$/i.test(key) ? `Key${key.toUpperCase()}` : key, bubbles: true, cancelable: true, composed: true, view: window, ...mods(modifiers) };
+    const go = el.dispatchEvent(new KeyboardEvent('keydown', init));
+    const printable = [...key].length === 1 || key === 'Enter';
+    const press = go && printable && !modifiers.includes('ctrl') ? el.dispatchEvent(new KeyboardEvent('keypress', init)) : go;
+    const did = go && press && action ? action() !== false : false;
+    if (el.isConnected) el.dispatchEvent(new KeyboardEvent('keyup', init));
+    return did;
+  }
+
+  const tabbable = () => [...rendered()].filter((e) => e.tabIndex >= 0 && !e.matches(':disabled') && e.matches('a[href], button, input, select, textarea, summary, [tabindex], [contenteditable]'));
+
+  function moveCaret(el, key) {
+    const n = el.value.length;
+    const at = el.selectionEnd ?? n;
+    const to = { ArrowLeft: at - 1, ArrowRight: at + 1, Home: 0, End: n }[key];
+    el.setSelectionRange(Math.max(0, Math.min(n, to)), Math.max(0, Math.min(n, to)));
+  }
+
+  function erase(el, forward) {
+    if (document.execCommand(forward ? 'forwardDelete' : 'delete')) return;
+    const a = el.selectionStart;
+    const b = el.selectionEnd;
+    el.setRangeText('', a === b && !forward ? Math.max(0, a - 1) : a, a === b && forward ? b + 1 : b, 'end');
+    el.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, inputType: forward ? 'deleteContentForward' : 'deleteContentBackward' }));
+  }
+
+  /** What Firefox would do with a real key, from a fixed list. False: nothing is emulated. */
+  function keyDefault(el, key, modifiers) {
+    const field = isText(el);
+    if (modifiers.includes('ctrl') || modifiers.includes('meta')) {
+      if (key.toLowerCase() !== 'a') return false;
+      if (field && el.select) el.select();
+      else getSelection().selectAllChildren(field ? el : document.body);
+      return true;
+    }
+    if (key === 'Tab') {
+      const list = tabbable();
+      const i = list.indexOf(el);
+      const next = list[(i + (modifiers.includes('shift') ? -1 : 1) + list.length) % list.length];
+      next?.focus();
+      return Boolean(next);
+    }
+    if (key === 'Enter') {
+      if (el instanceof HTMLTextAreaElement || el.isContentEditable) return insert(el, '\n') !== 0;
+      if (el.matches('a[href], button, summary, [role=button], input[type=submit], input[type=button]')) return el.click(), true;
+      const f = el.form;
+      if (!f) return false;
+      const button = f.querySelector('button:not([type]), button[type=submit], input[type=submit], input[type=image]');
+      if (button) return button.disabled ? false : (button.click(), true);
+      f.requestSubmit();
+      return true;
+    }
+    if (key === ' ' && !field) {
+      if (el.matches('button, summary, input[type=checkbox], input[type=radio], input[type=button], input[type=submit], [role=button], [role=checkbox]')) return el.click(), true;
+      scrollBy({ top: innerHeight * 0.8, behavior: 'instant' });
+      return true;
+    }
+    if (key === 'Escape') {
+      const d = [...document.querySelectorAll('dialog[open]')].at(-1);
+      if (!d) return false;
+      if (d.dispatchEvent(new Event('cancel', { cancelable: true }))) d.close();
+      return true;
+    }
+    if (key === 'Backspace' || key === 'Delete') return field ? (erase(el, key === 'Delete'), true) : false;
+    if (/^Arrow|^Home$|^End$/.test(key)) {
+      if (el instanceof HTMLSelectElement) {
+        const i = { ArrowUp: el.selectedIndex - 1, ArrowDown: el.selectedIndex + 1, Home: 0, End: el.options.length - 1 }[key];
+        if (i === undefined || i < 0 || i >= el.options.length) return false;
+        el.selectedIndex = i;
+        announce(el);
+        return true;
+      }
+      if (el instanceof HTMLInputElement && ['range', 'number'].includes(el.type)) {
+        if (/Up|Right/.test(key)) el.stepUp();
+        else if (/Down|Left/.test(key)) el.stepDown();
+        else return false;
+        announce(el);
+        return true;
+      }
+      if (field && el.setSelectionRange && /Left|Right|Home|End/.test(key)) return moveCaret(el, key), true;
+      if (field) return false;
+      const to = { ArrowDown: 40, ArrowUp: -40, Home: -1e7, End: 1e7 }[key];
+      if (to) scrollBy({ top: to, behavior: 'instant' });
+      return Boolean(to);
+    }
+    if (key === 'PageDown' || key === 'PageUp') return scrollBy({ top: innerHeight * (key === 'PageDown' ? 0.9 : -0.9), behavior: 'instant' }), true;
+    if ([...key].length === 1 && field) return insert(el, key) !== 0;
+    return false;
+  }
+
+  async function key(m) {
+    let el = m.ref ? approved(m) : focusField({});
+    if (m.ref) el.focus?.({ preventScroll: true });
+    el ??= document.body;
+    observe();
+    guardDialogs(m.accept, m.promptText ?? '');
+    const mine = epoch;
+    let did = 0;
+    for (let n = 0; n < m.repeat && epoch === mine; n++) {
+      const now = el.isConnected ? el : focusField({}) ?? document.body;
+      if (isSecret(now) && !['Tab', 'Escape'].includes(m.key)) fail('secret_field', 'Keys go to no password, code or payment field.');
+      if (keyEvents(now, m.key, m.modifiers, () => keyDefault(now, m.key, m.modifiers))) did++;
+      const after = focusField({});
+      if (after && after !== document.body) el = after;
+      if (n % 20 === 19) await sleep(0);
+    }
+    return { defaults: did };
+  }
+
+  /** The area that a scroll moves: the nearest scrollable one at or above the element, or the page. */
+  function scroller(el) {
+    for (let e = el; e && e !== document.body && e !== document.documentElement; e = parentOf(e)) {
+      const s = getComputedStyle(e);
+      if (/auto|scroll/.test(s.overflowY + s.overflowX) && (e.scrollHeight > e.clientHeight || e.scrollWidth > e.clientWidth)) return e;
+    }
+    return document.scrollingElement ?? document.documentElement;
+  }
+
+  /** Scroll functions only: no synthetic wheel, key or mouse event. */
+  function scroll(m) {
+    const s = scroller(m.ref ? target(m.ref) : null);
+    const before = [s.scrollLeft, s.scrollTop];
+    const by = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[m.direction];
+    if (m.to) s.scrollTo({ top: m.to === 'top' ? 0 : s.scrollHeight, behavior: 'instant' });
+    else s.scrollBy({ left: by[0] * m.amount, top: by[1] * m.amount, behavior: 'instant' });
+    const after = [s.scrollLeft, s.scrollTop];
+    return { from: before, to: after, moved: before.join() !== after.join(), at_end: s.scrollTop + s.clientHeight >= s.scrollHeight - 1, at_start: s.scrollTop <= 0, area: s === document.scrollingElement ? 'page' : 'element' };
+  }
+
+  function scrollTo(m) {
+    const el = target(m.ref);
+    el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+    const r = el.getBoundingClientRect();
+    return { box: [r.left, r.top, r.width, r.height].map(Math.round), visible: onScreen(el) };
+  }
+
+  async function drag(m) {
+    const from = approved(m);
+    const to = approved(m, 'to', 'toPrint');
+    checkTarget(from);
+    const mine = epoch;
+    const a = pointOf(from);
+    to.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+    const rb = to.getBoundingClientRect();
+    const b = { x: rb.left + rb.width * (m.toX ?? 0.5), y: rb.top + rb.height * (m.toY ?? 0.5) };
+    observe();
+    const at = (n) => ({ clientX: a.x + ((b.x - a.x) * n) / 5, clientY: a.y + ((b.y - a.y) * n) / 5 });
+    const base = { bubbles: true, cancelable: true, composed: true, view: window, button: 0 };
+    const fire = (el, type, p, buttons = 1) => {
+      const Kind = type.startsWith('pointer') ? PointerEvent : MouseEvent;
+      return el.dispatchEvent(new Kind(type, { ...base, ...p, buttons, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+    };
+    if (from instanceof HTMLInputElement && from.type === 'range') {
+      const r = from.getBoundingClientRect();
+      const share = Math.max(0, Math.min(1, (b.x - r.left) / r.width));
+      const min = Number(from.min || 0);
+      from.value = String(min + share * (Number(from.max || 100) - min));
+      announce(from);
+      return { accepted: true, handled: true, how: 'slider', at: a.at };
+    }
+    fire(a.hit, 'pointerdown', at(0));
+    fire(a.hit, 'mousedown', at(0));
+    const source = from.closest('[draggable=true], a[href], img');
+    let accepted = null;
+    let handled = null;
+    if (source && source.draggable) {
+      const data = new DataTransfer();
+      const d = (el, type, p) => el.dispatchEvent(new DragEvent(type, { ...base, ...p, dataTransfer: data }));
+      if (d(source, 'dragstart', at(0))) {
+        d(source, 'drag', at(1));
+        d(to, 'dragenter', at(4));
+        for (const n of [4, 5]) accepted = !d(to, 'dragover', at(n));
+        if (accepted) handled = !d(to, 'drop', at(5));
+        else d(to, 'dragleave', at(5));
+        d(source, 'dragend', at(5));
+      }
+    } else {
+      for (let n = 1; n <= 5 && epoch === mine; n++) {
+        const p = at(n);
+        const over = document.elementFromPoint(p.clientX, p.clientY) ?? to;
+        fire(over, 'pointermove', p);
+        fire(over, 'mousemove', p);
+        await sleep(16);
+      }
+    }
+    fire(to, 'pointerup', at(5), 0);
+    fire(to, 'mouseup', at(5), 0);
+    return { accepted, handled, how: source?.draggable ? 'drag events' : 'pointer events', at: a.at };
+  }
+
+  /** Files that the user approved, into a file input or onto a drop zone. */
+  function upload(m) {
+    const el = approved(m);
+    const data = new DataTransfer();
+    for (const f of m.files) {
+      const file = new File([f.bytes], f.name, { type: f.type });
+      if (f.relative) Object.defineProperty(file.wrappedJSObject ?? file, 'webkitRelativePath', { value: f.relative, configurable: true });
+      data.items.add(file);
+    }
+    observe();
+    if (el instanceof HTMLInputElement && el.type === 'file') {
+      if (el.matches(':disabled')) fail('not_actionable', 'The field is disabled.');
+      if (m.files.length > 1 && !el.multiple && !el.webkitdirectory) fail('not_actionable', 'The field takes one file.');
+      el.files = data.files;
+      announce(el);
+      return { set: el.files.length, how: 'input' };
+    }
+    const r = el.getBoundingClientRect();
+    const init = { bubbles: true, cancelable: true, composed: true, dataTransfer: data, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
+    el.dispatchEvent(new DragEvent('dragenter', init));
+    const accepted = !el.dispatchEvent(new DragEvent('dragover', init));
+    const handled = accepted && !el.dispatchEvent(new DragEvent('drop', init));
+    return { set: handled ? m.files.length : 0, how: 'drop', accepted, handled };
+  }
+
+  /** What an upload target is: an input (one, several, folder) or a drop zone. */
+  function uploadTarget(m) {
+    const el = target(m.ref);
+    const input = el instanceof HTMLInputElement && el.type === 'file';
+    return { ...describe(el), input, multiple: input && el.multiple, folder: input && el.webkitdirectory };
   }
 
   /** What the user selected, never from a secret field. */
   function selection({ max }) {
     const a = document.activeElement;
-    let text = '';
-    if ((a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement) && a.selectionEnd > a.selectionStart) text = isSecret(a) ? '' : a.value.slice(a.selectionStart, a.selectionEnd);
-    else text = String(getSelection() ?? '');
-    return { text: text.slice(0, max), truncated: text.length > max };
+    let s = '';
+    if ((a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement) && a.selectionEnd > a.selectionStart) s = isSecret(a) ? '' : a.value.slice(a.selectionStart, a.selectionEnd);
+    else s = String(getSelection() ?? '');
+    return { text: s.slice(0, max), truncated: s.length > max };
   }
 
-  // Recording: the user's own gestures become steps, and a pill shows that it runs.
+  // The pill: a recording runs, or a session works here. It stops on a real click only.
 
   let pill = null;
+  let pillKind = null;
+  let pillTimer = null;
+  const gone = new WeakSet(); // our own nodes after they left the page
   let recording = false;
 
-  function setPill(kind) {
+  function setPill(kind, words, label, message) {
+    clearTimeout(pillTimer);
+    if (pill) gone.add(pill);
     pill?.remove();
     pill = null;
+    pillKind = kind;
     if (!kind) return;
     pill = document.createElement('div');
     pill.style.cssText = 'all:initial;position:fixed;right:12px;bottom:12px;z-index:2147483647;pointer-events:auto';
     const root = pill.attachShadow({ mode: 'closed' });
     const box = document.createElement('div');
-    box.style.cssText = 'display:flex;gap:8px;align-items:center;padding:6px 10px;border-radius:16px;background:#1c1b22;color:#fff;font:13px/1.3 system-ui,sans-serif;box-shadow:0 1px 6px #0006';
+    box.style.cssText = 'display:flex;gap:8px;align-items:center;max-width:70vw;padding:6px 10px;border-radius:16px;background:#1c1b22;color:#fff;font:13px/1.3 system-ui,sans-serif;box-shadow:0 1px 6px #0006';
     const dot = document.createElement('span');
-    dot.style.cssText = 'width:10px;height:10px;border-radius:50%;background:#e22850';
-    const label = document.createElement('span');
-    label.textContent = kind === 'GIF' ? 'Recording pictures' : 'Recording steps';
+    dot.style.cssText = `flex:none;width:10px;height:10px;border-radius:50%;background:${kind === 'work' ? '#45a1ff' : '#e22850'}`;
+    const text = document.createElement('span');
+    text.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    text.textContent = words;
     const stop = document.createElement('button');
-    stop.textContent = 'Stop';
-    stop.style.cssText = 'font:inherit;color:inherit;background:#fff3;border:0;border-radius:10px;padding:2px 10px;cursor:pointer';
-    stop.addEventListener('click', (e) => e.isTrusted && browser.runtime.sendMessage({ type: 'stop_recording', kind }));
-    box.append(dot, label, stop);
+    stop.textContent = label;
+    stop.style.cssText = 'flex:none;font:inherit;color:inherit;background:#fff3;border:0;border-radius:10px;padding:2px 10px;cursor:pointer';
+    stop.addEventListener('click', (e) => e.isTrusted && browser.runtime.sendMessage(message));
+    box.append(dot, text, stop);
     root.append(box);
     document.documentElement.append(pill);
   }
+
+  const recordPill = (kind) => setPill(kind, kind === 'GIF' ? 'Recording pictures' : 'Recording steps', 'Stop', { type: 'stop_recording', kind });
+
+  /** A session works in this tab. A recording's pill goes first. */
+  function work({ who, what }) {
+    if (pillKind && pillKind !== 'work') return {};
+    setPill('work', `${who}: ${what}`, 'Take over', { type: 'take_over' });
+    pillTimer = setTimeout(() => pillKind === 'work' && setPill(null), 6000);
+    return {};
+  }
+
+  // Recording: the user's own gestures become steps.
 
   /** Role, name and number among equals, as in the outline that a replay reads. */
   function locate(el) {
@@ -392,7 +948,7 @@
     if (recording) reportTyping();
     recording = on;
     typing = null;
-    setPill(on ? kind : null);
+    if (frame === 0 && (on || pillKind === 'steps')) on ? recordPill(kind) : setPill(null);
     return {};
   }
 
@@ -402,9 +958,9 @@
   addEventListener('submit', () => recording && reportTyping(), true);
   addEventListener('pagehide', () => recording && reportTyping(), true);
 
-  // Covers for captures: secret fields and every frame, because no frame has a grant of its own yet.
+  // Covers for captures: secret fields, and every frame that is not granted.
 
-  function cover() {
+  function cover({ frames = [] }) {
     uncover();
     if (pill) pill.style.visibility = 'hidden';
     covers = document.createElement('div');
@@ -413,8 +969,8 @@
     const root = covers.attachShadow({ mode: 'closed' });
     const walk = (node) => {
       if (node instanceof Element) {
-        const frame = ['IFRAME', 'FRAME', 'OBJECT', 'EMBED'].includes(node.tagName);
-        if (frame || (isSecret(node) && node.value !== '')) {
+        const closed = FRAMES.includes(node.tagName) && !frames.includes(browser.runtime.getFrameId(node));
+        if (closed || (isSecret(node) && node.value !== '')) {
           const r = node.getBoundingClientRect();
           const box = document.createElement('div');
           box.style.cssText = `position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;background:#000`;
@@ -425,12 +981,13 @@
       node.childNodes.forEach(walk);
     };
     walk(document.documentElement);
-    if (!root.childNodes.length) return;
+    if (!root.childNodes.length) return void (covers = null);
     document.documentElement.append(covers);
     covers.showPopover?.(); // above modal dialogs of the page
   }
 
   function uncover() {
+    if (covers) gone.add(covers);
     covers?.remove();
     covers = null;
     if (pill) pill.style.visibility = '';
@@ -438,45 +995,76 @@
 
   const commands = {
     snapshot,
-    find: ({ text }) => ({ found: (document.body?.innerText ?? '').includes(text) }),
+    text,
+    search,
+    find_text: findText,
+    check,
+    children,
+    marks,
+    place,
+    hit: hitTest,
     describe: (m) => {
       const el = target(m.ref);
       if (m.fill) checkField(el);
-      else checkTarget(el);
+      else if (m.value !== undefined) checkValue(el, m.value);
+      else if (!m.loose) checkTarget(el);
       return describe(el);
     },
-    fill: (m) => {
-      const el = target(m.ref);
-      if (describe(el).fingerprint !== m.fingerprint) throw { error: 'stale_ref', message: 'The element changed after the user approved it.' };
-      return fill(el, m.value);
+    upload_target: uploadTarget,
+    pointer,
+    hover,
+    type,
+    key,
+    scroll,
+    scroll_to: scrollTo,
+    drag,
+    upload,
+    fill: (m) => fill(approved(m), m.value, m.commit),
+    fill_many: ({ fields }) => {
+      // Everything is checked before the first write.
+      const list = fields.map((f) => [approved(f), f.value]);
+      for (const [el, v] of list) checkValue(el, v);
+      const set = [];
+      for (const [i, [el, v]] of list.entries()) {
+        try {
+          fill(el, v, false);
+          set.push(i);
+        } catch (e) {
+          return { set, failed: i, code: e.error ?? 'error', message: e.message };
+        }
+      }
+      return { set };
     },
     selection,
     record,
-    pill: ({ kind }) => (setPill(kind), {}),
-    click: (m) => {
-      const el = target(m.ref);
-      if (describe(el).fingerprint !== m.fingerprint) throw { error: 'stale_ref', message: 'The element changed after the user approved it.' };
-      return click(el);
+    work,
+    pill: ({ kind }) => (kind || pillKind === 'GIF' ? recordPill(kind) : null, {}),
+    after: () => {
+      const s = watch?.seen;
+      return { changed: Boolean(s && (s.changed || s.url !== location.href || s.focus !== document.activeElement)), dialogs: releaseDialogs(), url: location.href !== s?.url };
     },
-    after_click: () => ({ changed: watch?.seen.changed ?? false }),
     cover,
     uncover,
   };
 
   browser.runtime.onMessage.addListener((m) => {
+    if (m.cmd === 'where') return Promise.resolve({ origin: self.origin, path: location.pathname, id });
+    if (m.cmd === 'abort') {
+      epoch++;
+      return Promise.resolve({ id });
+    }
     if (m.cmd === 'forget') {
+      epoch++;
       uncover();
+      releaseDialogs();
       refs.clear();
       refOf = new WeakMap();
       record({ on: false });
+      setPill(null);
       watch?.disconnect();
       return Promise.resolve({ id });
     }
-    if (location.origin !== m.origin) return Promise.resolve({ error: 'origin_changed', message: 'The document has another origin.' });
-    try {
-      return Promise.resolve({ ...commands[m.cmd](m), id });
-    } catch (e) {
-      return e.error ? Promise.resolve(e) : Promise.reject(e);
-    }
+    if (self.origin !== m.origin) return Promise.resolve({ error: 'origin_changed', message: 'The document has another origin.' });
+    return (async () => ({ ...(await commands[m.cmd](m)), id }))().catch((e) => (e.error ? e : Promise.reject(e)));
   });
 })();

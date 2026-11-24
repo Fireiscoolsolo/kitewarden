@@ -5,8 +5,8 @@ const FIRST_MS = 1000;
 const MAX_MS = 30_000;
 
 export class NativeLink {
-  constructor({ open, onMessage, onLost, onChange, now = Date.now, setTimer = (f, ms) => setTimeout(f, ms), clearTimer = (t) => clearTimeout(t), protocol = PROTOCOL }) {
-    Object.assign(this, { open, onMessage, onLost, onChange, now, setTimer, clearTimer, protocol });
+  constructor({ hello = () => ({}), open, onMessage, onLost, onChange, now = Date.now, setTimer = (f, ms) => setTimeout(f, ms), clearTimer = (t) => clearTimeout(t), protocol = PROTOCOL }) {
+    Object.assign(this, { hello, open, onMessage, onLost, onChange, now, setTimer, clearTimer, protocol });
     this.port = null;
     this.timer = null;
     this.delay = FIRST_MS;
@@ -50,7 +50,7 @@ export class NativeLink {
       const missing = /no such native application/i.test(error ?? '');
       this.#drop(port, problem ?? (missing ? { state: 'waiting', code: 'helper_missing', detail: error } : { state: 'waiting', code: 'helper_stopped', detail: error }));
     });
-    this.post({ type: 'hello', protocol: this.protocol, extension: VERSION });
+    this.post({ type: 'hello', protocol: this.protocol, extension: VERSION, ...this.hello() });
   }
 
   #drop(port, why) {

@@ -7,7 +7,8 @@ import { Gif } from '../../dist/extension/capture/gif.mjs';
 import { Approvals } from '../../dist/extension/grants/approvals.mjs';
 import { Grants } from '../../dist/extension/grants/grants.mjs';
 import { parse } from '../../dist/extension/sidebar/markdown.mjs';
-import { Replay, elements, match } from '../../dist/extension/workflow/replay.mjs';
+import { elements } from '../../dist/extension/workflow/elements.mjs';
+import { Replay, match } from '../../dist/extension/workflow/replay.mjs';
 import { Workflows, cleanStep, cleanSteps, inertJson, skillText } from '../../dist/extension/workflow/workflows.mjs';
 
 const A = 'https://a.example';
@@ -33,11 +34,12 @@ beforeEach(async () => {
     hasHost: async (o) => hosts.has(o),
     hasAllUrls: async () => true,
     openUrl: async (id, url) => (sent.push(['open', url]), (tab.url = url)),
+    annotate: async (dataUrl) => ({ dataUrl, width: 100, height: 100 }),
     captureTab: async () => 'data:image/jpeg;base64,AAAA',
     forget: () => {},
     page: async (id, m) => {
-      if (m.cmd === 'click' || m.cmd === 'fill') sent.push([m.cmd, m.ref, m.value]);
-      return { id: 'doc', ...{ snapshot: { outline, truncated: false, fullChars: 1 }, describe: { description: `target ${m.ref}`, fingerprint: 'f' }, click: { at: { x: 0.5, y: 0.5 } }, fill: { changed: true }, after_click: { changed: true } }[m.cmd] };
+      if (m.cmd === 'pointer' || m.cmd === 'fill') sent.push([m.cmd === 'pointer' ? 'click' : 'fill', m.ref, m.value]);
+      return { id: 'doc', ...{ snapshot: { lines: [...outline.split('\n'), '- x'], frames: [], truncated: false, fullChars: 1, ready: 'complete' }, describe: { description: `target ${m.ref}`, fingerprint: 'f' }, pointer: { at: { x: 0.5, y: 0.5 } }, fill: { changed: true }, children: { children: [] }, place: { width: 100, height: 100, scroll: [0, 0, 1] }, after: { changed: true, dialogs: [] }, work: {}, where: { origin: A } }[m.cmd] };
     },
   };
   router = new Router({ grants, approvals, log: (l) => lines.push(l), gif, api, onGrantEnd: (g) => (wf.grantEnded(g), gif.grantEnded(g)) });

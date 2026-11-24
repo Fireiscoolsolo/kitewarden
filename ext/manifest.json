@@ -1,9 +1,9 @@
 {
   "manifest_version": 2,
   "name": "Firefox Companion (working name)",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Connects the tabs you choose to Claude on this computer.",
-  "incognito": "not_allowed",
+  "incognito": "spanning",
   "browser_specific_settings": {
     "gecko": {
       "id": "bridge@firefox-companion.invalid",
@@ -13,8 +13,8 @@
       }
     }
   },
-  "permissions": ["tabs", "storage", "activeTab", "nativeMessaging"],
-  "optional_permissions": ["<all_urls>"],
+  "permissions": ["tabs", "storage", "activeTab", "nativeMessaging", "cookies", "contextualIdentities"],
+  "optional_permissions": ["<all_urls>", "bookmarks", "history", "downloads", "tabGroups"],
   "background": { "page": "background/index.html", "persistent": true },
   "sidebar_action": {
     "default_title": "Firefox Companion",

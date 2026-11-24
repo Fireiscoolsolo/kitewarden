@@ -1,19 +1,13 @@
 // Replays a workflow through the router, with the sidebar's own session: every step meets the grants, the origin and the
 // approvals of this moment. It holds no right of its own.
 import { ToolError } from '../shared/protocol.mjs';
+import { elements } from './elements.mjs';
 import { stepText } from './workflows.mjs';
 
 const SESSION = 'sidebar';
 const FIND_MS = 5000;
 const PAGE_MS = 10_000;
-const LINE = /^\s*- (\S+)(?: ("(?:[^"\\]|\\.)*"))?.*\[(ref_\w+)\]$/;
-
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-/** The elements of an interactive outline: role, name and ref. */
-export function elements(outline) {
-  return outline.split('\n').map((l) => LINE.exec(l)).filter(Boolean).map(([, role, name, ref]) => ({ role, name: name ? JSON.parse(name) : '', ref }));
-}
 
 /** The ref of a step's element. The number of equal elements must be the recorded one. */
 export function match(step, list) {

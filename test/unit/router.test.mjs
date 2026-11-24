@@ -25,11 +25,11 @@ beforeEach(async () => {
   log = [];
   n = 0;
   const reply = {
-    snapshot: { outline: '- button "SECRET-PAGE-TEXT"', truncated: false, fullChars: 10 },
-    find: { found: false },
+    snapshot: { lines: ['- button "SECRET-PAGE-TEXT"', '- x'], frames: [], truncated: false, fullChars: 10, ready: 'complete' },
+    check: { met: false },
     describe: { description: 'button "Go"', link: null, download: false, fingerprint: 'f' },
-    click: {},
-    after_click: { changed: true },
+    pointer: {},
+    children: { children: [] }, place: { width: 100, height: 100, scroll: [0, 0, 1] }, after: { changed: true, dialogs: [] }, work: {}, where: { origin: A },
     cover: {},
     uncover: {},
   };
@@ -49,6 +49,7 @@ beforeEach(async () => {
       forget: () => {},
       captureTab: () => capture(),
       captureVisible: () => capture(),
+      annotate: async (dataUrl) => ({ dataUrl, width: 100, height: 100 }),
     },
   });
   router.openSession('s1', 'mcp', 'one');
@@ -58,7 +59,7 @@ beforeEach(async () => {
 
 const call = (tool, args = {}, session = 's1') => router.call(session, ++n, tool, args);
 const code = async (p) => (await p).error?.code ?? 'ok';
-const sample = { read_page: {}, wait_for: { text: 'x', timeout_s: 0.1 }, computer: { action: 'screenshot' }, form_input: { ref: 'r', value: 'v' }, navigate: { url: `${A}/y` }, gif_creator: { action: 'start' } };
+const sample = { read_page: {}, wait_for: { text: 'x', timeout_s: 0.1 }, computer: { action: 'screenshot' }, form_input: { ref: 'r', value: 'v' }, navigate: { url: `${A}/y` }, gif_creator: { action: 'start' }, list_frames: {}, get_page_text: {}, find: { query: 'x' }, find_text: { text: 'x' }, form_fill: { fields: [{ ref: 'r', value: 'v' }] }, file_upload: { ref: 'r', paths: ['C:\\x'] }, request_user: { message: 'x' }, resize_window: { width: 500 }, tabs_close: {}, tabs_select: {}, tabs_release: {}, download_start: { url: `${A}/f` } };
 const click = (session) => call('computer', { action: 'left_click', tabId: 1, ref: 'r' }, session);
 const card = async () => {
   for (let i = 0; i < 50 && !approvals.cards.length; i++) await tick();
@@ -76,9 +77,11 @@ const allow = async (yes = true) => {
 test('every tool that takes a tab is refused without a grant, and no page gets a message', async () => {
   const withTab = Object.keys(TOOLS).filter((t) => TOOLS[t].input.properties.tabId && !TOOLS[t].user);
   assert.deepEqual(withTab.sort(), Object.keys(sample).sort(), 'a new tool needs a sample here');
+  router.switches.downloads = true;
+  router.api.browser = { permissions: { contains: async () => true } };
   for (const t of withTab) {
     assert.equal(await code(call(t, { tabId: 2, ...sample[t] })), 'no_grant', t);
-    assert.equal(await code(call(t, { tabId: 1, ...sample[t] }, 's2')), 'no_grant', `${t} with the grant of another session`);
+    assert.equal(await code(call(t, { tabId: 1, ...sample[t] }, 's2')), 'conflict', `${t} on the tab of another session`);
     assert.equal(await code(call(t, { tabId: 77, ...sample[t] })), 'no_grant', `${t} on a tab that does not exist`);
   }
   assert.deepEqual(pages, []);
@@ -178,13 +181,13 @@ test('a message to the page is dropped when the call ended while the script went
 test('covers are removed when the capture fails', async () => {
   capture = async () => Promise.reject(new Error('Missing activeTab permission'));
   assert.equal(await code(call('computer', { action: 'screenshot', tabId: 1 })), 'permission_required');
-  assert.deepEqual(pages.map((m) => m.cmd), ['cover', 'uncover']);
+  assert.deepEqual(pages.map((m) => m.cmd).filter((c) => /cover/.test(c)), ['cover', 'uncover']);
   tabs[0].active = false;
   assert.equal(await code(call('computer', { action: 'screenshot', tabId: 1 })), 'permission_required', 'a background tab without <all_urls>');
 });
 
 test('a click runs only after the answer, and everything is checked again in between', async () => {
-  const sent = () => pages.filter((m) => m.cmd === 'click').length;
+  const sent = () => pages.filter((m) => m.cmd === 'pointer').length;
   let p = click();
   assert.equal((await card()).sessionLabel, 'Client one (s1)');
   assert.equal(sent(), 0);
@@ -230,16 +233,16 @@ test('after the answer a lowered level, a moved tab or a lost permission still s
     approvals.answer(c.id, true);
     assert.equal(await code(p), want);
   }
-  assert.equal(pages.filter((m) => m.cmd === 'click').length, 0);
+  assert.equal(pages.filter((m) => m.cmd === 'pointer').length, 0);
 });
 
 test('a click that the page refused is not reported as sent, one that got lost is', async () => {
   const page = router.api.page;
-  router.api.page = async (id, m) => (m.cmd === 'click' ? { error: 'covered', message: 'Covered.' } : page(id, m));
+  router.api.page = async (id, m) => (m.cmd === 'pointer' ? { error: 'covered', message: 'Covered.' } : page(id, m));
   let p = click();
   await allow();
   assert.equal((await p).error.message, 'Covered.');
-  router.api.page = async (id, m) => (m.cmd === 'click' ? null : page(id, m));
+  router.api.page = async (id, m) => (m.cmd === 'pointer' ? null : page(id, m));
   p = click();
   await allow();
   assert.match((await p).error.message, /may have reached the page/);
@@ -254,7 +257,7 @@ test('an entry and a navigation ask with their value, and run only after the ans
   assert.ok(!pages.some((m) => m.cmd === 'fill'));
   p = call('form_input', { tabId: 1, ref: 'r', value: 'typed text' });
   await allow();
-  assert.deepEqual((await p).result, { field: 'button "Go"', set: true, changed: true });
+  assert.deepEqual((await p).result, { field: 'button "Go"', set: true, dispatched: true, observed: true, changed: true });
   assert.ok(!JSON.stringify(log).includes('typed text'));
 
   p = call('navigate', { tabId: 1, url: `${B}/p?q=1` });
@@ -262,7 +265,7 @@ test('an entry and a navigation ask with their value, and run only after the ans
   assert.deepEqual(opened, []);
   await allow(false);
   assert.equal(await code(p), 'approval_denied');
-  for (const url of ['javascript:alert(1)', 'file:///c:/x', 'https://u:p@a.example/', 'about:config', 'x']) assert.equal(await code(call('navigate', { tabId: 1, url })), 'invalid_argument', url);
+  for (const url of ['javascript:alert(1)', 'file:///c:/x', 'https://u:p@a.example/', 'about:config', 'data:text/html,x', '']) assert.equal(await code(call('navigate', { tabId: 1, url })), 'invalid_argument', url);
   assert.deepEqual(opened, []);
 });
 
@@ -288,7 +291,7 @@ test('a stop ends the calls of one session and says what the page may have', asy
   // a click that the page has
   p = click();
   await allow();
-  for (let i = 0; i < 100 && !pages.some((m) => m.cmd === 'click'); i++) await tick();
+  for (let i = 0; i < 100 && !pages.some((m) => m.cmd === 'pointer'); i++) await tick();
   assert.deepEqual(router.stopCalls('s1'), [{ tool: 'computer', sent: 'click on button "Go"' }]);
   assert.match((await p).error.message, /may have reached/);
   assert.deepEqual(router.sessions.get('s1').acted.map((a) => a.outcome), ['unknown']);
@@ -315,10 +318,16 @@ test('a tool for the user is unknown to clients and waives no check for the user
 });
 
 test('at most ten cards of one session wait, and another session still gets one', async () => {
-  const many = Array.from({ length: 11 }, () => click());
+  // Actions in one tab queue, so one click asks at a time. Starts of recordings do not queue.
+  click();
+  click();
+  await card();
+  await tick();
+  assert.equal(approvals.cards.length, 1);
+  const many = Array.from({ length: 10 }, () => call('gif_creator', { action: 'start', tabId: 1 }));
   assert.equal(await code(Promise.race(many)), 'rate_limited');
-  await router.grant({ sessionId: 's2', tabId: 1, origin: A, level: 'act' });
-  click('s2');
+  await router.grant({ sessionId: 's2', tabId: 2, origin: B, level: 'act' });
+  call('gif_creator', { action: 'start', tabId: 2 }, 's2');
   await tick();
   assert.equal(approvals.cards.filter((c) => c.session === 's2').length, 1);
   router.revoke(() => true);
@@ -331,7 +340,7 @@ test('a new tab belongs to a session only during its click, and starts with the 
   assert.equal(grants.find('s1', 3), null, 'a tab the user opened');
   const page = router.api.page;
   router.api.page = async (id, m) => {
-    if (m.cmd === 'click') {
+    if (m.cmd === 'pointer') {
       router.tabOpened({ ...tab, id: 2, openerTabId: 2 });
       router.tabOpened(tab);
     }
@@ -364,10 +373,10 @@ test('a suspended grant stays suspended until the user approves, and an approved
 });
 
 test('a tab that closes ends its grants; a session that ends takes only its own', async () => {
-  await router.grant({ sessionId: 's2', tabId: 1, origin: A, level: 'read' });
+  await router.grant({ sessionId: 's2', tabId: 2, origin: B, level: 'read' });
   router.endSession('s1');
   assert.deepEqual(grants.all.map((g) => g.sessionId), ['s2']);
-  router.tabClosed(1);
+  router.tabClosed(2);
   assert.deepEqual(grants.all, []);
 });
 

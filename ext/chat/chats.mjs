@@ -309,6 +309,11 @@ export class Chats {
     this.#note(id, 'warn', `Stopped. ${this.#outcome(run)}`);
   }
 
+  /** Emergency stop: every run ends. */
+  stopAll() {
+    for (const run of [...this.#runs.values()]) this.stop(run.chat);
+  }
+
   #outcome(run) {
     const acted = (this.router.sessions.get(run.sid)?.acted ?? []).filter((a) => !run.before.has(a));
     const names = (o) => acted.filter((a) => a.outcome === o).map((a) => a.what).join('; ');
