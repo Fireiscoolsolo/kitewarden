@@ -32,6 +32,33 @@ window.clickAll = () => { for (const e of document.querySelectorAll('body *:not(
 </script>`,
   );
 
+const form = (port) =>
+  page(
+    `Form ${port}`,
+    `<h1>Form ${port}</h1><p id="sentence">Selectable sentence BRAVO-${port}.</p>
+<form id="f">
+<label>Search <input name="q"></label>
+<label>Email <input name="mail" type="email"></label>
+<label>Password <input name="pw" type="password"></label>
+<label>API key <input name="key"></label>
+<label>Color <select name="color"><option>Red</option><option>Green</option></select></label>
+<label><input name="urgent" type="checkbox"> Urgent</label>
+<button>Save</button>
+</form>
+<script>
+const report = (what) => fetch('/report?' + encodeURIComponent(what), { method: 'POST', keepalive: true });
+document.getElementById('f').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const d = new FormData(e.target);
+  report('saved q=' + d.get('q') + ';color=' + d.get('color') + ';urgent=' + d.has('urgent') + ';pw=' + d.get('pw').length);
+  location.href = '/done?secret=tail';
+});
+window.hostile = () => {
+  for (const e of document.querySelectorAll('input, select, button, div')) for (const t of ['click', 'change']) if (e.type !== 'submit') e.dispatchEvent(new Event(t, { bubbles: true }));
+};
+</script>`,
+  );
+
 export async function fixture(wanted) {
   const reports = [];
   const server = http.createServer((req, res) => {
@@ -43,6 +70,8 @@ export async function fixture(wanted) {
     res.setHeader('content-type', 'text/html; charset=utf-8');
     const port = server.address().port;
     if (url.pathname === '/frame') res.end(page('frame', 'FRAME-TEXT'));
+    else if (url.pathname === '/form') res.end(form(port));
+    else if (url.pathname === '/done') res.end(page('Done', `<h1>Saved on ${port}</h1><a href="/form">Back</a>`));
     else if (url.pathname === '/second') res.end(page('Second', `<h1>Second page ${port}</h1>`));
     else if (url.pathname === '/wide') res.end(page('Red', '<body style="margin:0;background:#fff"><div style="width:100px;height:100px;background:#f00"></div><input type="password" value="hunter2secret" style="position:absolute;left:200px;top:0;width:150px;height:40px;background:#0f0;border:0"><iframe src="/frame" style="position:absolute;left:400px;top:0;width:100px;height:100px;border:0"></iframe></body>'));
     else res.end(main(port));

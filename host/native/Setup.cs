@@ -132,9 +132,12 @@ static class Setup
         // Only files of this program, by name. Anything else keeps its folder in place.
         var files = new List<string> { Manifest(h), h.Key, h.State, Path.Combine(h.Dir, Exe) };
         foreach (var f in McpFiles) files.Add(Path.Combine(h.Dir, "mcp", f));
+        string chat = Path.Combine(h.Dir, "chat");
+        files.Add(Path.Combine(chat, "rules.txt"));
+        if (Directory.Exists(chat)) files.AddRange(Directory.GetFiles(chat, "run-*.json"));
         files.Add(h.Install);
         foreach (var f in files) if (File.Exists(f)) { string file = f; step("delete " + file, delegate { File.Delete(file); }); }
-        foreach (var d in new[] { Path.Combine(h.Dir, "mcp"), h.Dir })
+        foreach (var d in new[] { Path.Combine(h.Dir, "mcp"), chat, h.Dir })
             if (Directory.Exists(d) && (dry || Directory.GetFileSystemEntries(d).Length == 0)) { string dir = d; step("delete folder " + dir, delegate { Directory.Delete(dir); }); }
         return 0;
     }
@@ -156,6 +159,7 @@ static class Setup
         string pipe = PipeProblem(h);
         if (pipe == "none") Console.WriteLine("info  pipe: the helper is not running; open Firefox and press Connect in the sidebar");
         else check("pipe", pipe, "close other programs that use the pipe name, then press Retry in the sidebar");
+        Console.WriteLine("info  Claude Code: " + (Runs.FindClaude() ?? "claude.exe was not found; the sidebar chat needs it, MCP clients do not"));
         return bad == 0 ? 0 : 1;
     }
 

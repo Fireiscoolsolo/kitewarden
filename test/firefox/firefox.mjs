@@ -65,14 +65,16 @@ class Marionette {
 }
 
 export class Firefox {
-  static async start({ headed = process.env.FC_HEADED === '1', prefs = {} } = {}) {
+  static async start({ headed = process.env.FC_HEADED === '1', prefs = {}, env = {} } = {}) {
     const f = new Firefox();
     f.profile = mkdtempSync(path.join(os.tmpdir(), 'fc-profile-'));
     writeFileSync(path.join(f.profile, 'user.js'), Object.entries({ ...PREFS, ...prefs }).map(([k, v]) => `user_pref(${JSON.stringify(k)}, ${JSON.stringify(v)});`).join('\n'));
     const args = ['-marionette', '-no-remote', '-profile', f.profile, '-width', '1280', '-height', '900'];
     if (!headed) args.unshift('-headless');
     // Firefox 160 asks for this variable before it lets a test look into its own windows. It reaches this process only.
-    spawn(FIREFOX, args, { stdio: 'ignore', env: { ...process.env, MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: '1' } });
+    // Nothing of a Claude session that happens to run this test reaches Firefox, its helper or the user's Claude Code.
+    const own = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^CLAUDE/.test(k)));
+    spawn(FIREFOX, args, { stdio: 'ignore', env: { ...own, MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: '1', ...env } });
     const portFile = path.join(f.profile, 'MarionetteActivePort');
     const port = Number(await until('Marionette port', () => existsSync(portFile) && readFileSync(portFile, 'utf8').trim(), 60_000));
     f.m = await Marionette.connect(port);
@@ -119,6 +121,18 @@ export class Firefox {
   async select(handle) {
     await this.m.send('Marionette:SetContext', { value: 'content' });
     await this.m.send('WebDriver:SwitchToWindow', { handle, focus: true });
+  }
+
+  /** A real click on an element of the page, or keys typed into it. */
+  async #element(selector) {
+    await this.m.send('Marionette:SetContext', { value: 'content' });
+    return Object.values((await this.m.send('WebDriver:FindElement', { using: 'css selector', value: selector })).value)[0];
+  }
+  async pageClick(selector) {
+    await this.m.send('WebDriver:ElementClick', { id: await this.#element(selector) });
+  }
+  async pageKeys(selector, text) {
+    await this.m.send('WebDriver:ElementSendKeys', { id: await this.#element(selector), text });
   }
 
   async handle() {
@@ -182,6 +196,9 @@ export class Sidebar {
 
   /** A real mouse click at the place of the element, sent to the browser window. */
   async click(selector, index = 0) {
+    // The part of the sidebar that holds the element is opened first, as a user would.
+    const closed = await this.eval('return document.querySelectorAll(arguments[0])[arguments[1]]?.closest("[data-panel][hidden]")?.dataset.panel ?? null', selector, index);
+    if (closed) await this.click(`[data-show="${closed}"]`);
     const at = await this.eval(`
       const e = document.querySelectorAll(arguments[0])[arguments[1]];
       if (!e) return null;

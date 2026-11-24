@@ -9,9 +9,12 @@ import { TOOLS } from '../../dist/extension/shared/protocol.mjs';
 const A = 'https://a.example';
 const B = 'https://b.example';
 const tick = () => new Promise((r) => setTimeout(r, 5));
-let tabs, pages, hosts, allUrls, capture, grants, approvals, log, router, n;
+let tabs, pages, hosts, allUrls, capture, grants, approvals, log, router, n, fillReply, opened, ended;
 
 beforeEach(async () => {
+  fillReply = { changed: true };
+  opened = [];
+  ended = [];
   tabs = [{ id: 1, windowId: 1, active: true, url: `${A}/x?token=1`, title: 'A\npage', status: 'complete' }, { id: 2, windowId: 1, active: false, url: `${B}/`, title: 'B', status: 'complete' }];
   pages = [];
   hosts = new Set([A, B]);
@@ -34,13 +37,15 @@ beforeEach(async () => {
     grants,
     approvals,
     log: (l) => log.push(l),
+    onGrantEnd: (g) => ended.push(g.tabId),
     api: {
       getTab: async (id) => tabs.find((t) => t.id === id) ?? Promise.reject(new Error('no tab')),
       queryTabs: async () => tabs,
       createTab: async () => (tabs.push({ id: 9, windowId: 1, active: false, url: 'about:blank', title: '' }), tabs.at(-1)),
       hasHost: async (o) => hosts.has(o),
       hasAllUrls: async () => allUrls,
-      page: async (id, m) => (pages.push(m), { id: 'doc', ...reply[m.cmd] }),
+      page: async (id, m) => (pages.push(m), { id: 'doc', ...reply[m.cmd], ...(m.cmd === 'fill' && fillReply) }),
+      openUrl: async (id, url) => opened.push(url),
       forget: () => {},
       captureTab: () => capture(),
       captureVisible: () => capture(),
@@ -53,7 +58,7 @@ beforeEach(async () => {
 
 const call = (tool, args = {}, session = 's1') => router.call(session, ++n, tool, args);
 const code = async (p) => (await p).error?.code ?? 'ok';
-const sample = { read_page: {}, wait_for: { text: 'x', timeout_s: 0.1 }, computer: { action: 'screenshot' } };
+const sample = { read_page: {}, wait_for: { text: 'x', timeout_s: 0.1 }, computer: { action: 'screenshot' }, form_input: { ref: 'r', value: 'v' }, navigate: { url: `${A}/y` }, gif_creator: { action: 'start' } };
 const click = (session) => call('computer', { action: 'left_click', tabId: 1, ref: 'r' }, session);
 const card = async () => {
   for (let i = 0; i < 50 && !approvals.cards.length; i++) await tick();
@@ -69,7 +74,7 @@ const allow = async (yes = true) => {
 };
 
 test('every tool that takes a tab is refused without a grant, and no page gets a message', async () => {
-  const withTab = Object.keys(TOOLS).filter((t) => TOOLS[t].input.properties.tabId);
+  const withTab = Object.keys(TOOLS).filter((t) => TOOLS[t].input.properties.tabId && !TOOLS[t].user);
   assert.deepEqual(withTab.sort(), Object.keys(sample).sort(), 'a new tool needs a sample here');
   for (const t of withTab) {
     assert.equal(await code(call(t, { tabId: 2, ...sample[t] })), 'no_grant', t);
@@ -238,6 +243,75 @@ test('a click that the page refused is not reported as sent, one that got lost i
   p = click();
   await allow();
   assert.match((await p).error.message, /may have reached the page/);
+});
+
+test('an entry and a navigation ask with their value, and run only after the answer', async () => {
+  let p = call('form_input', { tabId: 1, ref: 'r', value: 'typed text' });
+  assert.deepEqual([(await card()).tool, (await card()).value], ['form_input', 'typed text']);
+  assert.ok(!pages.some((m) => m.cmd === 'fill'));
+  await allow(false);
+  assert.equal(await code(p), 'approval_denied');
+  assert.ok(!pages.some((m) => m.cmd === 'fill'));
+  p = call('form_input', { tabId: 1, ref: 'r', value: 'typed text' });
+  await allow();
+  assert.deepEqual((await p).result, { field: 'button "Go"', set: true, changed: true });
+  assert.ok(!JSON.stringify(log).includes('typed text'));
+
+  p = call('navigate', { tabId: 1, url: `${B}/p?q=1` });
+  assert.deepEqual([(await card()).target, (await card()).value], [`${B}/p?q=1`, `Leaves ${A} for ${B}`]);
+  assert.deepEqual(opened, []);
+  await allow(false);
+  assert.equal(await code(p), 'approval_denied');
+  for (const url of ['javascript:alert(1)', 'file:///c:/x', 'https://u:p@a.example/', 'about:config', 'x']) assert.equal(await code(call('navigate', { tabId: 1, url })), 'invalid_argument', url);
+  assert.deepEqual(opened, []);
+});
+
+test('a navigation to another origin suspends the grant, also when it was approved', async () => {
+  const p = call('navigate', { tabId: 1, url: `${B}/` });
+  await allow();
+  for (let i = 0; i < 100 && !opened.length; i++) await tick();
+  tabs[0].url = `${B}/`;
+  router.tabMoved(1, `${B}/`);
+  assert.equal(await code(p), 'grant_suspended');
+  assert.equal(await code(call('read_page', { tabId: 1 })), 'grant_suspended');
+  assert.deepEqual(ended, [1]);
+});
+
+test('a stop ends the calls of one session and says what the page may have', async () => {
+  // a card that waits: nothing was sent
+  let p = click();
+  await card();
+  assert.deepEqual(router.stopCalls('s1'), [{ tool: 'computer', sent: null }]);
+  assert.equal(await code(p), 'stopped');
+  assert.equal(approvals.cards.length, 0);
+  assert.deepEqual(router.sessions.get('s1').acted, []);
+  // a click that the page has
+  p = click();
+  await allow();
+  for (let i = 0; i < 100 && !pages.some((m) => m.cmd === 'click'); i++) await tick();
+  assert.deepEqual(router.stopCalls('s1'), [{ tool: 'computer', sent: 'click on button "Go"' }]);
+  assert.match((await p).error.message, /may have reached/);
+  assert.deepEqual(router.sessions.get('s1').acted.map((a) => a.outcome), ['unknown']);
+  // a click that ended, and one that the page refused
+  p = click();
+  await allow();
+  await p;
+  assert.deepEqual(router.sessions.get('s1').acted.map((a) => a.outcome), ['unknown', 'done']);
+  fillReply = { error: 'secret_field', message: 'no' };
+  p = call('form_input', { tabId: 1, ref: 'r', value: 'x' });
+  await allow();
+  assert.equal(await code(p), 'secret_field');
+  assert.equal(router.sessions.get('s1').acted.length, 2);
+  assert.deepEqual(router.stopCalls('s2'), []);
+});
+
+test('a tool for the user is unknown to clients and waives no check for the user', async () => {
+  assert.equal(await code(call('get_selection', { tabId: 1 })), 'unknown_tool');
+  assert.equal(await code(router.call('s1', 'u1', 'get_selection', { tabId: 2 }, { user: true })), 'no_grant');
+  assert.equal(await code(router.call('s1', 'u2', 'get_selection', { tabId: 1 }, { user: true })), 'ok');
+  router.setPaused(true);
+  assert.equal(await code(router.call('s1', 'u3', 'get_selection', { tabId: 1 }, { user: true })), 'paused');
+  assert.deepEqual(ended, [1], 'a pause ends recordings');
 });
 
 test('at most ten cards of one session wait, and another session still gets one', async () => {

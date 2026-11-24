@@ -9,7 +9,7 @@ const WHY = {
   paused: 'The user paused Firefox Companion.',
   no_grant: 'The user revoked this tab.',
   session_ended: 'The session ended.',
-  stopped: 'The user disconnected this session.',
+  stopped: 'The user stopped this session.',
   cancelled: 'The client cancelled the call.',
   grant_suspended: SUSPENDED.origin[1],
   permission_required: SUSPENDED.permission[1],
@@ -18,9 +18,12 @@ const WHY = {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export class Router {
-  /** `api` is the browser: getTab, queryTabs, createTab, hasHost, hasAllUrls, page, capture, windowActive. */
-  constructor({ api, grants, approvals, log, onChange = () => {}, now = Date.now, linkStatus = () => ({}) }) {
-    Object.assign(this, { api, grants, approvals, log, onChange, now, linkStatus });
+  /**
+   * `api` is the browser: getTab, queryTabs, createTab, openUrl, hasHost, hasAllUrls, page, forget, captureTab, captureVisible.
+   * `onGrantEnd` hears of each grant that ended or no longer holds, also by a pause. `gif` keeps the frames of recordings.
+   */
+  constructor({ api, grants, approvals, log, gif = null, onGrantEnd = () => {}, onChange = () => {}, now = Date.now, linkStatus = () => ({}) }) {
+    Object.assign(this, { api, grants, approvals, log, gif, onGrantEnd, onChange, now, linkStatus });
     this.sessions = new Map();
     this.calls = new Set();
     this.paused = false;
@@ -30,7 +33,7 @@ export class Router {
   // Sessions
 
   openSession(id, kind, label) {
-    this.sessions.set(id, { id, kind, owned: new Set() });
+    this.sessions.set(id, { id, kind, owned: new Set(), acted: [] });
     this.label(id, label);
   }
 
@@ -52,7 +55,10 @@ export class Router {
 
   setPaused(on) {
     this.paused = on;
-    if (on) this.#abort((c) => c.tool !== 'connection_status', 'paused');
+    if (on) {
+      this.#abort((c) => c.tool !== 'connection_status', 'paused');
+      for (const g of this.grants.all) this.onGrantEnd(g);
+    }
     this.onChange();
   }
 
@@ -121,10 +127,11 @@ export class Router {
 
   // Calls
 
-  async call(sessionId, callId, tool, args) {
+  /** `user` marks a gesture in the sidebar. It opens the tools that are for the user only and waives no other check. */
+  async call(sessionId, callId, tool, args, { user = false } = {}) {
     const session = this.sessions.get(sessionId);
     if (!session) return { error: { code: 'session_ended', message: 'The session ended. This call was not carried out.' } };
-    const call = { session, id: callId, tool, tabId: Number.isInteger(args?.tabId) ? args.tabId : null, origin: null, aborted: null };
+    const call = { session, id: callId, tool, user, tabId: Number.isInteger(args?.tabId) ? args.tabId : null, origin: null, aborted: null, sent: null };
     call.gone = new Promise((_, reject) => (call.reject = reject));
     call.gone.catch(() => {});
     this.calls.add(call);
@@ -139,7 +146,7 @@ export class Router {
       const known = e instanceof ToolError;
       if (!known) console.error(tool, e);
       reply = { error: known ? { code: e.code, message: e.message } : { code: 'internal_error', message: 'The add-on failed.' } };
-      if (call.sent) reply.error.message += ' The click may have reached the page. Read the page before you repeat it.';
+      if (call.sent) reply.error.message += ' The action may have reached the page. Read the page before you repeat it.';
     } finally {
       this.calls.delete(call);
       call.card?.close();
@@ -152,8 +159,15 @@ export class Router {
     this.#abort((c) => c.session.id === sessionId && c.id === callId, 'cancelled');
   }
 
+  /** Ends the calls of a session, or those that `match`. Returns what was under way, and whether the page may have it. */
+  stopCalls(sessionId, code = 'stopped', match = () => true) {
+    const hit = [...this.calls].filter((c) => c.session.id === sessionId && !c.aborted && match(c));
+    this.#abort((c) => hit.includes(c), code);
+    return hit.map((c) => ({ tool: c.tool, sent: c.sent?.what ?? null }));
+  }
+
   async #run(call, tool, args) {
-    if (!Object.hasOwn(TOOLS, tool)) throw new ToolError('unknown_tool', 'No such tool.');
+    if (!Object.hasOwn(TOOLS, tool) || (TOOLS[tool].user && !call.user)) throw new ToolError('unknown_tool', 'No such tool.');
     const bad = checkArgs(tool, args);
     if (bad) throw new ToolError('invalid_argument', bad);
     if (tool === 'connection_status') return this.#status(call.session);
@@ -163,6 +177,10 @@ export class Router {
     const origin = await this.#authorize(call, spec);
     if (tool === 'read_page') return this.#read(call, origin, args);
     if (tool === 'wait_for') return this.#waitFor(call, spec, origin, args);
+    if (tool === 'get_selection') return { origin, ...(await this.#page(call, origin, { cmd: 'selection', max: LIMITS.selectionChars })) };
+    if (tool === 'form_input') return this.#fill(call, spec, origin, args);
+    if (tool === 'navigate') return this.#navigate(call, spec, origin, args);
+    if (tool === 'gif_creator') return this.#gif(call, spec, origin, args);
     if (args.action === 'screenshot') return this.#screenshot(call, spec, origin);
     return this.#click(call, spec, origin, args);
   }
@@ -294,40 +312,56 @@ export class Router {
     return { dataUrl, via: 'captureVisibleTab' };
   }
 
-  async #click(call, spec, origin, args) {
-    const target = await this.#page(call, origin, { cmd: 'describe', ref: args.ref });
+  /** Asks the user for one call. Afterwards grant, level, pause, origin and permission are checked again. */
+  async #ask(call, spec, origin, card, reason) {
     const tab = await this.#tab(call.tabId);
-    if (this.approvals.cards.filter((c) => c.session === call.session.id).length >= LIMITS.cards) throw new ToolError('rate_limited', 'Too many clicks of this session wait for the user.');
+    if (this.approvals.cards.filter((c) => c.session === call.session.id).length >= LIMITS.cards) throw new ToolError('rate_limited', 'Too many calls of this session wait for the user.');
     call.card = this.approvals.ask({
       session: call.session.id,
       sessionLabel: call.session.label,
-      tool: 'left_click',
       tabId: call.tabId,
       tabTitle: oneLine(tab?.title),
       origin,
-      target: target.description,
-      link: target.link,
-      download: target.download,
-      reason: oneLine(args.reason, 200),
+      ...card,
+      reason: oneLine(reason, 200),
     });
     const allowed = await Promise.race([call.card.answer, call.gone]);
     call.approved = allowed;
-    if (!allowed) throw new ToolError('approval_denied', 'The user did not allow this click.');
-    // Grant, level, pause, origin and permission are checked again, then the page checks origin and element again.
+    if (!allowed) throw new ToolError('approval_denied', 'The user did not allow this.');
+    if (card.tool !== 'gif_creator') await this.#frame(call, spec, origin, null);
     if ((await this.#authorize(call, spec)) !== origin) throw new ToolError('origin_changed', 'The page changed its origin.');
+  }
+
+  /** From here on the page may have the action. The entry tells the user so if the call is stopped. */
+  #sent(call, what) {
+    call.sent = { what, outcome: 'unknown' };
+    call.session.acted.push(call.sent);
+    if (call.session.acted.length > 200) call.session.acted.shift();
+  }
+
+  #notSent(call) {
+    call.session.acted.splice(call.session.acted.indexOf(call.sent), 1);
+    call.sent = null;
+  }
+
+  async #click(call, spec, origin, args) {
+    const target = await this.#page(call, origin, { cmd: 'describe', ref: args.ref });
+    await this.#ask(call, spec, origin, { tool: 'left_click', target: target.description, link: target.link, download: target.download }, args.reason);
     const click = (this.clicking = { call, origin, opened: null });
     let sent;
     try {
-      call.sent = true;
+      this.#sent(call, `click on ${target.description}`);
       sent = await this.#page(call, origin, { cmd: 'click', ref: args.ref, fingerprint: target.fingerprint });
       await Promise.race([sleep(300), call.gone]);
     } catch (e) {
-      if (e.fromPage) call.sent = false; // the page refused before it sent any event
+      if (e.fromPage) this.#notSent(call); // the page refused before it sent any event
       throw e;
     } finally {
       if (this.clicking === click) this.clicking = null;
     }
     const after = await this.#page(call, origin, { cmd: 'after_click' }).catch(() => null);
+    call.sent.outcome = 'done';
+    await this.#frame(call, spec, origin, { label: `Click ${target.description}`, at: sent.at });
     // The question may reach the next document, which knows nothing of the click.
     const page = after?.id !== sent.id
       ? 'navigated'
@@ -337,6 +371,75 @@ export class Router {
           ? 'opened a tab'
           : 'no visible change; the page may ignore events of add-ons';
     return { clicked: target.description, trusted_event: false, page, ...(click.opened !== null && { opened_tab: click.opened }) };
+  }
+
+  async #fill(call, spec, origin, args) {
+    const target = await this.#page(call, origin, { cmd: 'describe', ref: args.ref, fill: true });
+    await this.#ask(call, spec, origin, { tool: 'form_input', target: target.description, value: args.value }, args.reason);
+    let r;
+    try {
+      this.#sent(call, `entry in ${target.description}`);
+      r = await this.#page(call, origin, { cmd: 'fill', ref: args.ref, fingerprint: target.fingerprint, value: args.value });
+    } catch (e) {
+      if (e.fromPage && e.code !== 'not_taken') this.#notSent(call);
+      throw e;
+    }
+    call.sent.outcome = 'done';
+    await this.#frame(call, spec, origin, { label: `Fill ${target.description}`, at: r.at });
+    return { field: target.description, set: true, changed: r.changed };
+  }
+
+  async #navigate(call, spec, origin, args) {
+    const to = originOf(args.url);
+    if (!to || new URL(args.url).username || new URL(args.url).password) throw new ToolError('invalid_argument', 'url must be an http or https address without a user name.');
+    const url = new URL(args.url).href;
+    await this.#ask(call, spec, origin, { tool: 'navigate', target: url, value: to === origin ? null : `Leaves ${origin} for ${to}` }, args.reason);
+    this.#sent(call, `opening ${plainUrl(url)}`);
+    await Promise.race([this.api.openUrl(call.tabId, url), call.gone]);
+    const end = this.now() + LIMITS.loadMs;
+    await Promise.race([sleep(250), call.gone]); // the old page still says complete for a moment
+    let tab;
+    while ((tab = await this.#tab(call.tabId))?.status === 'loading' && this.now() < end) await Promise.race([sleep(100), call.gone]);
+    call.sent.outcome = 'done';
+    if (!tab) throw new ToolError('no_grant', 'The tab is closed.');
+    if (tab.status === 'loading') return { state: 'still loading' };
+    const now = await this.#authorize(call, spec);
+    await this.#page(call, now, { cmd: 'after_click' }).catch((e) => {
+      throw e.code === 'restricted_page' ? new ToolError('load_failed', 'Firefox shows an error page instead of the address.') : e;
+    });
+    await this.#frame(call, spec, now, { label: `Open ${now}`, at: null });
+    return { state: 'loaded', url: plainUrl(tab.url), title: oneLine(tab.title) };
+  }
+
+  async #gif(call, spec, origin, args) {
+    if (args.action === 'start') {
+      await this.#ask(call, spec, origin, { tool: 'gif_creator', target: 'Record pictures of this tab before and after each action' }, args.reason);
+      if (!(await this.api.hasAllUrls()) && !(await this.#tab(call.tabId))?.active) throw new ToolError('permission_required', 'Bring the tab to the front, or allow screenshots in the sidebar.');
+      this.gif.start(call.session.id, call.tabId);
+      try {
+        await this.#page(call, origin, { cmd: 'pill', kind: 'GIF' });
+      } catch (e) {
+        this.gif.clear(call.session.id, call.tabId); // no recording without its mark in the page
+        throw e;
+      }
+      await this.#frame(call, spec, origin, null);
+      return { recording: true, frames: this.gif.frames(call.session.id, call.tabId) };
+    }
+    if (args.action === 'stop') this.gif.stop(call.session.id, call.tabId, 'stopped');
+    if (args.action === 'clear') this.gif.clear(call.session.id, call.tabId);
+    if (args.action !== 'export') return { recording: false, frames: this.gif.frames(call.session.id, call.tabId) };
+    return Promise.race([this.gif.export(call.session.id, call.tabId, args), call.gone]);
+  }
+
+  /** A frame for a running GIF. A picture that fails never fails the action. */
+  async #frame(call, spec, origin, mark) {
+    if (!this.gif?.wants(call.session.id, call.tabId)) return;
+    try {
+      const { image, mimeType } = await this.#screenshot(call, spec, origin);
+      this.gif.add(call.session.id, call.tabId, { dataUrl: `data:${mimeType};base64,${image}`, label: mark?.label ?? null, at: mark?.at ?? null });
+    } catch (e) {
+      this.gif.missed(call.session.id, call.tabId, e.code ?? 'error');
+    }
   }
 
   // Helpers
@@ -365,6 +468,7 @@ export class Router {
   /** Refs and covers in the page go when the grant goes. */
   #forget(grants) {
     for (const g of grants) {
+      this.onGrantEnd(g);
       if (!this.grants.all.some((o) => o !== g && o.tabId === g.tabId && o.state === 'active')) this.api.forget(g.tabId);
     }
   }

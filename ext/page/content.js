@@ -59,12 +59,20 @@
 
   const interactive = (role) => INTERACTIVE.has(role) || role === 'clickable';
 
+  /** Text of a label without that of the control inside it: the options of a list are not its name. */
+  function labelText(label, control) {
+    let text = '';
+    const walk = document.createTreeWalker(label, NodeFilter.SHOW_TEXT);
+    while (walk.nextNode()) if (!control.contains(walk.currentNode)) text += walk.currentNode.data;
+    return text;
+  }
+
   function nameOf(el, role) {
     const by = el.getAttribute('aria-labelledby')?.split(/\s+/).map((i) => el.getRootNode().getElementById?.(i)?.textContent ?? '').join(' ');
     const label = line(by, 120) || line(el.getAttribute('aria-label'), 120);
     if (label) return label;
     if (el instanceof HTMLInputElement && ['button', 'submit', 'reset'].includes(el.type)) return line(el.value || el.type, 120);
-    if ('labels' in el && el.labels?.length) return line([...el.labels].map((l) => l.textContent).join(' '), 120);
+    if ('labels' in el && el.labels?.length) return line([...el.labels].map((l) => labelText(l, el)).join(' '), 120);
     const alt = line(el.getAttribute('alt') || el.getAttribute('placeholder'), 120);
     if (alt) return alt;
     if (NAME_FROM_TEXT.has(role) || role === 'clickable') return line(el.innerText ?? el.textContent, 120) || line(el.querySelector('img[alt]')?.alt, 120) || line(el.title, 120);
@@ -112,7 +120,7 @@
 
   // Reading
 
-  function snapshot({ filter, maxChars, maxNodes }) {
+  function snapshot({ filter, maxChars, maxNodes, collect = null }) {
     const out = [];
     let nodes = 0;
     let full = 0;
@@ -132,7 +140,7 @@
         if (t && !inName && filter === 'all' && style.visibility === 'visible') emit(depth, `- text ${JSON.stringify(t)}`);
         return;
       }
-      if (!(node instanceof Element) || ['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'HEAD'].includes(node.tagName)) return;
+      if (!(node instanceof Element) || node === pill || ['SCRIPT','STYLE', 'NOSCRIPT', 'TEMPLATE', 'HEAD'].includes(node.tagName)) return;
       const cs = getComputedStyle(node);
       if (cs.display === 'none' || cs.opacity === '0') return;
       const visible = cs.visibility === 'visible';
@@ -144,6 +152,7 @@
         const states = statesOf(node, role);
         const value = valueOf(node);
         const link = role === 'link' ? linkOf(node) : null;
+        if (interactive(role)) collect?.push({ el: node, role, name });
         emit(depth, [`- ${role}`, name && JSON.stringify(name), states.length && `[${states.join(', ')}]`, value && `value=${JSON.stringify(value)}`, link && `-> ${link.text}`, interactive(role) && `[${ref(node)}]`].filter(Boolean).join(' '));
         d = depth + 1;
         named = inName || NAME_FROM_TEXT.has(role) || role === 'clickable';
@@ -213,13 +222,191 @@
     hit.dispatchEvent(new PointerEvent('pointerup', { ...init, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
     hit.dispatchEvent(new MouseEvent('mouseup', init));
     hit.click();
+    return { at: placeOf(r) };
+  }
+
+  /** Middle of a rectangle as parts of the visible area, for the click mark of a GIF. */
+  const placeOf = (r) => ({ x: (r.left + r.width / 2) / innerWidth, y: (r.top + r.height / 2) / innerHeight });
+
+  const isChoice = (el) => el instanceof HTMLInputElement && (el.type === 'checkbox' || el.type === 'radio');
+
+  function checkField(el) {
+    if (isSecret(el)) throw { error: 'secret_field', message: 'Passwords, codes and payment fields are filled in by the user only.' };
+    checkTarget(el);
+    const field = el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement || el.isContentEditable ||
+      (el instanceof HTMLInputElement && !['button', 'submit', 'reset', 'image', 'hidden'].includes(el.type));
+    if (!field) throw { error: 'not_actionable', message: 'That is not a form field.' };
+    if (el.readOnly) throw { error: 'not_actionable', message: 'The field is read-only.' };
+  }
+
+  function fill(el, value) {
+    checkField(el);
+    el.scrollIntoView({ block: 'center', behavior: 'instant' });
+    const at = placeOf(el.getBoundingClientRect());
+    const announce = () => {
+      el.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, inputType: 'insertReplacementText' }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    if (isChoice(el)) {
+      if (value !== 'true' && value !== 'false') throw { error: 'invalid_argument', message: 'A checkbox or radio button takes "true" or "false".' };
+      const changed = el.checked !== (value === 'true');
+      if (changed) el.click();
+      if (el.checked !== (value === 'true')) throw { error: 'not_taken', message: 'The page did not keep the choice.' };
+      return { changed, at };
+    }
+    if (el instanceof HTMLSelectElement) {
+      if (el.multiple) throw { error: 'not_actionable', message: 'Lists with several choices are not supported.' };
+      const all = [...el.options];
+      const label = (o) => line(o.label, 200);
+      const same = (o, f) => f(o).toLowerCase() === value.toLowerCase();
+      const hits = [all.filter((o) => o.value === value), all.filter((o) => label(o) === value), all.filter((o) => same(o, label))].find((h) => h.length) ?? [];
+      if (hits.length !== 1) throw { error: hits.length ? 'ambiguous' : 'no_match', message: `Options: ${(hits.length ? hits : all).slice(0, 50).map((o) => JSON.stringify(label(o))).join(', ')}` };
+      if (hits[0].disabled) throw { error: 'not_actionable', message: 'That option is disabled.' };
+      const changed = !hits[0].selected;
+      hits[0].selected = true;
+      if (changed) announce();
+      if (!hits[0].selected) throw { error: 'not_taken', message: 'The page did not keep the choice.' };
+      return { changed, at };
+    }
+    el.focus({ preventScroll: true });
+    if (el.isContentEditable) {
+      getSelection().selectAllChildren(el);
+      document.execCommand('insertText', false, value);
+      if (line(el.innerText, 1e6) !== line(value, 1e6)) throw { error: 'not_taken', message: 'The editor did not keep the text.' };
+      return { changed: true, at };
+    }
+    const changed = el.value !== value;
+    el.value = value;
+    if (el.value !== value) throw { error: 'not_taken', message: 'The field does not accept this value.' };
+    if (changed) announce();
+    if (el.value !== value) throw { error: 'not_taken', message: 'The page changed the value.' };
+    return { changed, at };
+  }
+
+  /** What the user selected, never from a secret field. */
+  function selection({ max }) {
+    const a = document.activeElement;
+    let text = '';
+    if ((a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement) && a.selectionEnd > a.selectionStart) text = isSecret(a) ? '' : a.value.slice(a.selectionStart, a.selectionEnd);
+    else text = String(getSelection() ?? '');
+    return { text: text.slice(0, max), truncated: text.length > max };
+  }
+
+  // Recording: the user's own gestures become steps, and a pill shows that it runs.
+
+  let pill = null;
+  let recording = false;
+
+  function setPill(kind) {
+    pill?.remove();
+    pill = null;
+    if (!kind) return;
+    pill = document.createElement('div');
+    pill.style.cssText = 'all:initial;position:fixed;right:12px;bottom:12px;z-index:2147483647;pointer-events:auto';
+    const root = pill.attachShadow({ mode: 'closed' });
+    const box = document.createElement('div');
+    box.style.cssText = 'display:flex;gap:8px;align-items:center;padding:6px 10px;border-radius:16px;background:#1c1b22;color:#fff;font:13px/1.3 system-ui,sans-serif;box-shadow:0 1px 6px #0006';
+    const dot = document.createElement('span');
+    dot.style.cssText = 'width:10px;height:10px;border-radius:50%;background:#e22850';
+    const label = document.createElement('span');
+    label.textContent = kind === 'GIF' ? 'Recording pictures' : 'Recording steps';
+    const stop = document.createElement('button');
+    stop.textContent = 'Stop';
+    stop.style.cssText = 'font:inherit;color:inherit;background:#fff3;border:0;border-radius:10px;padding:2px 10px;cursor:pointer';
+    stop.addEventListener('click', (e) => e.isTrusted && browser.runtime.sendMessage({ type: 'stop_recording', kind }));
+    box.append(dot, label, stop);
+    root.append(box);
+    document.documentElement.append(pill);
+  }
+
+  /** Role, name and number among equals, as in the outline that a replay reads. */
+  function locate(el) {
+    const all = [];
+    snapshot({ filter: 'interactive', maxChars: 0, maxNodes: 20_000, collect: all });
+    for (let e = el; e; e = e.parentElement ?? e.getRootNode().host ?? null) {
+      const i = all.findIndex((x) => x.el === e);
+      if (i < 0) continue;
+      const same = all.filter((x) => x.role === all[i].role && x.name === all[i].name);
+      return { role: all[i].role, name: all[i].name, nth: same.findIndex((x) => x.el === e), of: same.length };
+    }
+    return null;
+  }
+
+  const PERSONAL = /\b(username|email|tel|name|given-name|family-name|street-address|address-line\d|postal-code|bday|sex|organization)\b/;
+  const step = (s) => browser.runtime.sendMessage({ type: 'step', step: s });
+  const insidePill = (e) => pill !== null && e.composedPath().includes(pill);
+
+  function onClick(e) {
+    if (!recording || !e.isTrusted || insidePill(e)) return;
+    const el = e.composedPath()[0];
+    if (!(el instanceof Element)) return;
+    if (typing !== el) reportTyping();
+    const control = el.closest('label')?.control;
+    if (control && control !== el && !el.closest('a,button')) return; // the control reports itself
+    if (isChoice(el) || el instanceof HTMLSelectElement || el.closest('option') || el instanceof HTMLTextAreaElement || el.isContentEditable) return;
+    if (el instanceof HTMLInputElement && !['button', 'submit', 'reset', 'image'].includes(el.type)) return;
+    const at = locate(el);
+    if (at) step({ kind: 'click', ...at });
+    else if (getComputedStyle(el).cursor === 'pointer') step({ kind: 'manual', text: 'Click a part of the page that has no name' });
+  }
+
+  // A field in which the user types. Some pages and some ways to leave a field give no change event, so it is also
+  // reported before the next gesture and before the page goes.
+  let typing = null;
+
+  function onInput(e) {
+    if (!recording || !e.isTrusted) return;
+    const el = e.composedPath()[0];
+    if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el.isContentEditable) || isChoice(el)) return;
+    if (typing !== el) reportTyping();
+    typing = el;
+  }
+
+  function reportTyping() {
+    const el = typing;
+    typing = null;
+    if (el?.isConnected) reportField(el);
+  }
+
+  function onChange(e) {
+    if (!recording || !e.isTrusted) return;
+    const el = e.composedPath()[0];
+    if (!(el instanceof Element)) return;
+    if (typing === el) typing = null;
+    else reportTyping();
+    reportField(el);
+  }
+
+  function reportField(el) {
+    const at = locate(el);
+    if (!at) return step({ kind: 'manual', text: 'Fill in a field that has no name' });
+    if (isSecret(el)) return step({ kind: 'secret', ...at });
+    if (isChoice(el)) return step({ kind: 'check', ...at, value: String(el.checked) });
+    if (el instanceof HTMLSelectElement) return step(el.multiple ? { kind: 'manual', text: 'Choose in a list with several choices' } : { kind: 'choose', ...at, value: line(el.selectedOptions[0]?.label, 200) });
+    if (el.type === 'file') return step({ kind: 'manual', text: 'Choose a file' });
+    const personal = ['email', 'tel'].includes(el.type) || PERSONAL.test(el.autocomplete ?? '');
+    step(personal ? { kind: 'fill', ...at, ask: true } : { kind: 'fill', ...at, value: String(el.value ?? el.innerText).slice(0, 10_000) });
+  }
+
+  function record({ on, kind }) {
+    if (recording) reportTyping();
+    recording = on;
+    typing = null;
+    setPill(on ? kind : null);
     return {};
   }
+
+  addEventListener('click', onClick, true);
+  addEventListener('input', onInput, true);
+  addEventListener('change', onChange, true);
+  addEventListener('submit', () => recording && reportTyping(), true);
+  addEventListener('pagehide', () => recording && reportTyping(), true);
 
   // Covers for captures: secret fields and every frame, because no frame has a grant of its own yet.
 
   function cover() {
     uncover();
+    if (pill) pill.style.visibility = 'hidden';
     covers = document.createElement('div');
     covers.setAttribute('popover', 'manual');
     covers.style.cssText = 'all:initial;position:fixed;inset:0;width:100vw;height:100vh;margin:0;padding:0;border:0;background:transparent;pointer-events:none;overflow:visible;z-index:2147483647';
@@ -246,6 +433,7 @@
   function uncover() {
     covers?.remove();
     covers = null;
+    if (pill) pill.style.visibility = '';
   }
 
   const commands = {
@@ -253,9 +441,18 @@
     find: ({ text }) => ({ found: (document.body?.innerText ?? '').includes(text) }),
     describe: (m) => {
       const el = target(m.ref);
-      checkTarget(el);
+      if (m.fill) checkField(el);
+      else checkTarget(el);
       return describe(el);
     },
+    fill: (m) => {
+      const el = target(m.ref);
+      if (describe(el).fingerprint !== m.fingerprint) throw { error: 'stale_ref', message: 'The element changed after the user approved it.' };
+      return fill(el, m.value);
+    },
+    selection,
+    record,
+    pill: ({ kind }) => (setPill(kind), {}),
     click: (m) => {
       const el = target(m.ref);
       if (describe(el).fingerprint !== m.fingerprint) throw { error: 'stale_ref', message: 'The element changed after the user approved it.' };
@@ -271,6 +468,7 @@
       uncover();
       refs.clear();
       refOf = new WeakMap();
+      record({ on: false });
       watch?.disconnect();
       return Promise.resolve({ id });
     }

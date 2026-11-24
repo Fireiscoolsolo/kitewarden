@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Firefox Companion (working name)",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Connects the tabs you choose to Claude on this computer.",
   "incognito": "not_allowed",
   "browser_specific_settings": {

@@ -8,6 +8,9 @@ import { LIMITS, PROTOCOL, ToolError, VERSION } from './protocol.mjs';
 const AUTH_MS = 5000;
 const CONNECT_MS = 3000;
 
+let TICKET = process.env.FC_CHAT_TICKET;
+delete process.env.FC_CHAT_TICKET;
+
 const NEXT = {
   not_installed: 'Run the installer: firefox-companion-host.exe install',
   never_connected: 'Open Firefox, open the Firefox Companion sidebar and press Connect.',
@@ -138,7 +141,9 @@ export class Link {
     });
     socket.on('error', (e) => (this.lastLoss = e.code ?? e.message));
     socket.on('close', () => this.#lost(socket));
-    socket.write(frame({ type: 'hello', client: this.client }));
+    // The ticket of a chat run works once, so only the first link of this process carries it.
+    socket.write(frame({ type: 'hello', client: this.client, ticket: TICKET }));
+    TICKET = undefined;
   }
 
   #onMessage(m) {

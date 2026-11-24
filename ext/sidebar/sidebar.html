@@ -9,7 +9,7 @@
   <body>
     <div id="cards" aria-live="polite"></div>
 
-    <section aria-labelledby="link-title">
+    <header>
       <h1 id="link-title" role="status">Starting</h1>
       <p id="link-detail" class="sub"></p>
       <p class="row">
@@ -20,65 +20,171 @@
         <button id="retry" hidden>Retry now</button>
       </p>
       <p id="message" role="status"></p>
-    </section>
+      <nav aria-label="Parts" class="row">
+        <button data-show="chat" aria-current="page">Chat</button>
+        <button data-show="tabs">Tabs</button>
+        <button data-show="workflows">Workflows</button>
+        <button data-show="activity">Activity</button>
+      </nav>
+    </header>
 
-    <section aria-labelledby="h-attach">
-      <h2 id="h-attach">This tab</h2>
-      <p id="tab"></p>
-      <p class="fields">
-        <label>For <select id="session"></select></label>
-        <label>
-          Level
-          <select id="level">
-            <option value="read">Read</option>
-            <option value="act">Read and click</option>
-          </select>
-        </label>
-        <button id="attach">Attach</button>
-      </p>
-    </section>
+    <main data-panel="chat">
+      <section aria-label="Chat">
+        <p class="row">
+          <label class="grow">Conversation <select id="chat-list"></select></label>
+          <button id="chat-new">New</button>
+          <button id="chat-delete">Delete</button>
+        </p>
+        <div id="chat-undo"></div>
+        <div id="chat-items" role="log" aria-label="Messages" tabindex="0"></div>
+        <div id="link-ask" role="status"></div>
+        <p id="run-state" class="sub" role="status"></p>
+        <div id="queue"></div>
+        <p class="row">
+          <button id="stop" hidden>Stop</button>
+          <button id="try-again" hidden>Try again</button>
+        </p>
+        <div id="composer">
+          <p id="chat-tab"></p>
+          <p class="row">
+            <button id="allow-read">Let Claude read this tab</button>
+            <button id="allow-act">Let Claude read and act</button>
+          </p>
+          <div id="draft" aria-live="polite"></div>
+          <label>Message <textarea id="prompt" rows="3" placeholder="Enter sends, Shift+Enter adds a line, Esc stops"></textarea></label>
+          <p class="row">
+            <button id="send">Send</button>
+            <select id="skill-pick" aria-label="Insert a skill" hidden></select>
+          </p>
+          <fieldset>
+            <legend>Add to the message</legend>
+            <p class="row">
+              <button id="attach-page">Page text</button>
+              <button id="attach-selection">Selected text</button>
+              <button id="attach-shot">Screenshot</button>
+              <button id="attach-file">File…</button>
+            </p>
+            <input id="file" type="file" multiple hidden />
+          </fieldset>
+        </div>
+      </section>
+      <details>
+        <summary>Claude Code</summary>
+        <p id="claude" class="sub" role="status">Connect to see it.</p>
+        <p class="row"><button id="claude-check">Check again</button></p>
+        <p class="fields">
+          <label>
+            Model
+            <select id="model">
+              <option value="">Default of Claude Code</option>
+              <option value="haiku">haiku</option>
+              <option value="sonnet">sonnet</option>
+              <option value="opus">opus</option>
+              <option value="fable">fable</option>
+            </select>
+          </label>
+        </p>
+        <label class="check"><input id="extras" type="checkbox" /> This chat may use my skills, plugins and agents</label>
+        <p class="sub">They load from your Claude Code settings. Hooks and shell commands in skills stay off, and file, shell and web tools are not offered. It makes each message larger.</p>
+        <div id="lists"></div>
+      </details>
+      <details>
+        <summary>History</summary>
+        <label>Search <input id="chat-search" type="search" /></label>
+        <p class="sub">Chats are kept in this add-on on this computer. Claude Code keeps its own transcript as well; "claude purge" removes those.</p>
+        <p class="row"><button id="chat-clear">Delete all chats</button></p>
+        <p id="chat-clear-sure" class="row" hidden>
+          <span>Delete all chats now? There is no undo.</span>
+          <button id="chat-clear-yes">Delete all</button>
+          <button id="chat-clear-no">Keep</button>
+        </p>
+      </details>
+    </main>
 
-    <section aria-labelledby="h-grants">
-      <h2 id="h-grants">Attached tabs</h2>
-      <ul id="grants"></ul>
-      <p class="row"><button id="revoke-all" hidden>Revoke all</button></p>
-    </section>
+    <main data-panel="tabs" hidden>
+      <section aria-labelledby="h-attach">
+        <h2 id="h-attach">This tab</h2>
+        <p id="tab"></p>
+        <p class="fields">
+          <label>For <select id="session"></select></label>
+          <label>
+            Level
+            <select id="level">
+              <option value="read">Read</option>
+              <option value="act">Read and act</option>
+            </select>
+          </label>
+          <button id="attach">Attach</button>
+        </p>
+      </section>
 
-    <section aria-labelledby="h-sessions">
-      <h2 id="h-sessions">Clients</h2>
-      <ul id="sessions"></ul>
-    </section>
+      <section aria-labelledby="h-grants">
+        <h2 id="h-grants">Attached tabs</h2>
+        <ul id="grants"></ul>
+        <p class="row"><button id="revoke-all" hidden>Revoke all</button></p>
+      </section>
 
-    <section id="try" aria-labelledby="h-try" hidden>
-      <h2 id="h-try">Try it</h2>
-      <p class="fields">
-        <label>Tab <select id="try-tab"></select></label>
-      </p>
-      <p class="row">
-        <button id="try-read">Read page</button>
-        <button id="try-shot">Screenshot</button>
-      </p>
-      <p class="fields">
-        <label>Element <select id="try-ref"></select></label>
-        <button id="try-click" disabled>Click</button>
-      </p>
-      <p id="try-state" role="status"></p>
-      <img id="try-image" alt="Screenshot of the attached tab" hidden />
-      <pre id="try-output" tabindex="0" aria-label="Page outline"></pre>
-    </section>
+      <section aria-labelledby="h-sessions">
+        <h2 id="h-sessions">Clients</h2>
+        <ul id="sessions"></ul>
+      </section>
 
-    <details>
-      <summary>Screenshots</summary>
-      <p class="sub">
-        Firefox lets an add-on take pictures of a tab only after you press its toolbar button on that tab, or if it may
-        access all sites. Attached tabs stay the only ones that are captured.
-      </p>
-      <p class="row"><button id="screens">Allow screenshots of attached tabs</button></p>
-    </details>
+      <section id="try" aria-labelledby="h-try" hidden>
+        <h2 id="h-try">Try it</h2>
+        <p class="fields">
+          <label>Tab <select id="try-tab"></select></label>
+        </p>
+        <p class="row">
+          <button id="try-read">Read page</button>
+          <button id="try-shot">Screenshot</button>
+        </p>
+        <p class="fields">
+          <label>Element <select id="try-ref"></select></label>
+          <button id="try-click" disabled>Click</button>
+        </p>
+        <p id="try-state" role="status"></p>
+        <img id="try-image" alt="Screenshot of the attached tab" hidden />
+        <pre id="try-output" tabindex="0" aria-label="Page outline"></pre>
+      </section>
 
-    <details>
-      <summary>Activity</summary>
-      <ul id="log"></ul>
-    </details>
+      <details id="d-screens">
+        <summary>Screenshots</summary>
+        <p class="sub">
+          Firefox lets an add-on take pictures of a tab only after you press its toolbar button on that tab, or if it may
+          access all sites. Attached tabs stay the only ones that are captured.
+        </p>
+        <p class="row"><button id="screens">Allow screenshots of attached tabs</button></p>
+      </details>
+    </main>
+
+    <main data-panel="workflows" hidden>
+      <section aria-labelledby="h-wf">
+        <h2 id="h-wf">Workflows</h2>
+        <p class="sub">Records your own clicks and entries in this tab as steps. A replay asks for each action again.</p>
+        <p class="row"><button id="wf-record">Record this tab</button></p>
+        <div id="wf-rec" aria-live="polite"></div>
+        <div id="wf-edit" hidden></div>
+        <ul id="wf-list"></ul>
+        <div id="wf-preview" hidden></div>
+        <div id="wf-replay" aria-live="polite"></div>
+        <div id="wf-skill" hidden></div>
+      </section>
+      <section aria-labelledby="h-gif">
+        <h2 id="h-gif">GIF recording</h2>
+        <p class="sub">A picture before and after each action in one attached tab. Secret fields and frames are covered. The start asks for your approval.</p>
+        <p class="fields">
+          <label>Tab <select id="gif-session"></select></label>
+          <button id="gif-start">Record pictures</button>
+        </p>
+        <div id="gifs"></div>
+      </section>
+    </main>
+
+    <main data-panel="activity" hidden>
+      <section aria-labelledby="h-log">
+        <h2 id="h-log">Activity</h2>
+        <ul id="log"></ul>
+      </section>
+    </main>
   </body>
 </html>

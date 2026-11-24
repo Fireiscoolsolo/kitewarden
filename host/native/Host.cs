@@ -1,5 +1,5 @@
 // Native messaging host and named-pipe server. Firefox starts it; it relays opaque message bodies between
-// authenticated pipe clients and the extension. C# 5, so that the compiler that ships with Windows builds it.
+// authenticated pipe clients and the extension, and starts chat runs (Chat.cs) when the extension says so. C# 5, so that the compiler that ships with Windows builds it.
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -20,8 +20,8 @@ static class Program
 {
     public const string HostName = "firefox_companion";
     public const string ExtensionId = "bridge@firefox-companion.invalid";
-    public const string Version = "0.1.0";
-    public const int Protocol = 1;
+    public const string Version = "0.2.0";
+    public const int Protocol = 2;
 
     static int Main(string[] args)
     {
@@ -251,7 +251,7 @@ sealed class Client
 
 sealed class Bridge
 {
-    const int PreAuthBytes = 8192, ToBrowser = 256 * 1024, FromBrowser = 16 * 1024 * 1024, AuthMs = 4500, MaxWaiting = 32;
+    const int PreAuthBytes = 8192, ToBrowser = 256 * 1024, FromBrowser = 64 * 1024 * 1024, AuthMs = 4500, MaxWaiting = 32;
 
     readonly Home home;
     readonly Stream input = Console.OpenStandardInput();
@@ -263,7 +263,7 @@ sealed class Bridge
 
     public Bridge(Home h) { home = h; }
 
-    static string Json(params object[] kv)
+    public static string Json(params object[] kv)
     {
         var d = new Dictionary<string, object>();
         for (int i = 0; i < kv.Length; i += 2) d[(string)kv[i]] = kv[i + 1];
@@ -272,14 +272,22 @@ sealed class Bridge
         return s.Serialize(d);
     }
 
-    static Dictionary<string, object> Parse(string json)
+    public static object ParseAny(string json)
     {
         var s = new JavaScriptSerializer();
         s.MaxJsonLength = int.MaxValue;
-        return s.DeserializeObject(json) as Dictionary<string, object>;
+        return s.DeserializeObject(json);
     }
 
-    static string Str(Dictionary<string, object> m, string name)
+    public static Dictionary<string, object> Parse(string json) { return ParseAny(json) as Dictionary<string, object>; }
+
+    public static bool Flag(Dictionary<string, object> m, string name)
+    {
+        object v;
+        return m != null && m.TryGetValue(name, out v) && v is bool && (bool)v;
+    }
+
+    public static string Str(Dictionary<string, object> m, string name)
     {
         object v;
         return m != null && m.TryGetValue(name, out v) ? v as string : null;
@@ -336,6 +344,8 @@ sealed class Bridge
         try { first = PipeServer.Create(pipeName, true); }
         catch (Win32Exception e) { return Fatal("pipe_in_use", "The pipe name is taken: " + e.Message, 4); }
 
+        Runs.Clean(home);
+        var runs = new Runs(home, delegate(object[] kv) { ToFirefox(Json(kv)); });
         WriteState("running");
         ToFirefox(Json("type", "hello", "protocol", Program.Protocol, "host", Program.Version));
         var accept = new Thread(delegate() { Accept(pipeName, first); });
@@ -360,12 +370,17 @@ sealed class Bridge
                     Client c;
                     if (clients.TryGetValue(Str(m, "session") ?? "", out c)) c.Finish(); // the writer sends what is queued, then closes
                 }
+                else if (type == "chat_run") runs.Start(m);
+                else if (type == "chat_stop") runs.Stop(Str(m, "run"));
+                else if (type == "claude_info") runs.Info(Str(m, "id"));
+                else if (type == "skill_write") ToFirefox(Json("type", "reply", "id", Str(m, "id"), "result", Skill.Write(m)));
                 else if (type == "bye") { end = "disconnected_by_user"; break; }
                 else Console.Error.WriteLine("refused message of type " + (type ?? "?"));
             }
         }
         catch (Exception e) { Console.Error.WriteLine("stdin: " + e.Message); }
 
+        runs.StopAll();
         WriteState(end);
         foreach (var c in clients.Values) c.Close();
         return 0;

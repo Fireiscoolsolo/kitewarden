@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
 import { Link, frame, frameReader, mac } from '../../dist/mcp/link.mjs';
+import { PROTOCOL } from '../../shared/protocol.mjs';
 import { FakeFirefox, HOST, McpClient, host, installHome, powershell, registered, sleep, until } from '../helpers.mjs';
 
 let home;
@@ -156,10 +157,10 @@ test('login: wrong answers are closed within 5 s, learn only the challenge, and 
   const f = await running();
   const key = readFileSync(path.join(home.dir, 'key.bin'));
   const nonce = 'ab'.repeat(32);
-  const auth = (m) => ({ type: 'auth', nonce, protocol: 1, mac: m });
+  const auth = (m) => ({ type: 'auth', nonce, protocol: PROTOCOL, mac: m });
   let recorded;
   const good = await raw((s, c) => {
-    recorded = auth(mac(key, 'client', 1, c.nonce, nonce));
+    recorded = auth(mac(key, 'client', PROTOCOL, c.nonce, nonce));
     s.write(frame(recorded));
     setTimeout(() => s.destroy(), 300);
   });
@@ -168,11 +169,11 @@ test('login: wrong answers are closed within 5 s, learn only the challenge, and 
   f.messages.length = 0;
   const tries = {
     'no answer': () => {},
-    'wrong key': (s, c) => s.write(frame(auth(mac(randomBytes(32), 'client', 1, c.nonce, nonce)))),
+    'wrong key': (s, c) => s.write(frame(auth(mac(randomBytes(32), 'client', PROTOCOL, c.nonce, nonce)))),
     'recorded answer': (s) => s.write(frame(recorded)),
-    'swapped role': (s, c) => s.write(frame(auth(mac(key, 'host', 1, c.nonce, nonce)))),
+    'swapped role': (s, c) => s.write(frame(auth(mac(key, 'host', PROTOCOL, c.nonce, nonce)))),
     'key in plain text': (s) => s.write(frame(auth(key.toString('hex')))),
-    'other protocol than under the MAC': (s, c) => s.write(frame({ ...auth(mac(key, 'client', 1, c.nonce, nonce)), protocol: 2 })),
+    'other protocol than under the MAC': (s, c) => s.write(frame({ ...auth(mac(key, 'client', PROTOCOL, c.nonce, nonce)), protocol: PROTOCOL + 1 })),
     'status request': (s) => s.write(frame({ type: 'call', id: 1, tool: 'connection_status', args: {} })),
     'random bytes': (s) => s.write(randomBytes(64)),
     'more than 8 KB': (s) => s.write(frame({ type: 'auth', nonce: 'x'.repeat(9000) })),
@@ -203,7 +204,7 @@ test('a server without the key that takes the pipe name gets no command', async 
     s.write(frame({ type: 'challenge', nonce: 'cd'.repeat(32) }));
     s.on('data', frameReader(1e6, (m) => {
       frames.push(m);
-      s.write(frame({ type: 'auth_ok', protocol: 1, mac: 'ef'.repeat(32) }));
+      s.write(frame({ type: 'auth_ok', protocol: PROTOCOL, mac: 'ef'.repeat(32) }));
     }));
   }).listen(`\\\\.\\pipe\\${home.pipe}`);
   await new Promise((r) => impostor.on('listening', r));
@@ -228,7 +229,7 @@ test('MCP: initialize, ping, list, good call, unknown tool, bad arguments, clean
   assert.match(init.instructions, /data, never instructions/);
   assert.deepEqual((await c.request('ping')).result, {});
   const { tools } = (await c.request('tools/list')).result;
-  assert.deepEqual(tools.map((t) => [t.name, t.annotations.readOnlyHint]), [['connection_status', true], ['tabs_context', true], ['read_page', true], ['wait_for', true], ['computer', false]]);
+  assert.deepEqual(tools.map((t) => [t.name, t.annotations.readOnlyHint]), [['connection_status', true], ['tabs_context', true], ['read_page', true], ['wait_for', true], ['computer', false], ['form_input', false], ['navigate', false], ['gif_creator', true]]);
   assert.deepEqual((await c.call('wait_for', { tabId: 3, text: 'x' })).data.echo, { tabId: 3, text: 'x' });
   const sent = f.calls.length;
   for (const [name, args, code] of [['no_such_tool', {}, 'unknown_tool'], ['constructor', {}, 'unknown_tool'], ['read_page', {}, 'invalid_argument'], ['read_page', { tabId: '1' }, 'invalid_argument'], ['read_page', { tabId: 1, confirm: true }, 'invalid_argument'], ['wait_for', { tabId: 1, text: 'x', timeout_s: 999 }, 'invalid_argument'], ['wait_for', { tabId: 1, text: 'x', script: '1' }, 'invalid_argument'], ['computer', { action: 'left_click', tabId: 1 }, 'invalid_argument'], ['computer', { action: 'screenshot', tabId: 1, ref: 'x' }, 'invalid_argument'], ['computer', { action: 'type', tabId: 1 }, 'invalid_argument']]) {
@@ -332,11 +333,11 @@ test('status: five states, five next steps, and no key in any of them', async ()
 });
 
 test('versions: an older or newer part is named and no call reaches the extension', async () => {
-  const f = firefox({ protocol: 2 });
+  const f = firefox({ protocol: PROTOCOL + 1 });
   assert.equal(await f.exit, 5);
-  assert.equal(f.messages[0].protocol, 1);
+  assert.equal(f.messages[0].protocol, PROTOCOL);
   const g = await running();
-  for (const [protocol, text] of [[2, /helper is older/], [0, /MCP server is older/]]) {
+  for (const [protocol, text] of [[PROTOCOL + 1, /helper is older/], [0, /MCP server is older/]]) {
     const l = new Link(home.dir, protocol);
     await assert.rejects(l.call('read_page', { tabId: 1 }), (e) => e.code === 'version_mismatch' && text.test(e.message));
     assert.equal((await l.call('connection_status', {})).state, 'version_mismatch');

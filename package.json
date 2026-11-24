@@ -1,6 +1,6 @@
 {
   "name": "firefox-companion",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "engines": { "node": ">=22" },
@@ -9,6 +9,9 @@
     "test": "npm run build && node --test \"test/unit/*.test.mjs\"",
     "test:integration": "npm run build && node --test --test-concurrency=1 \"test/integration/*.test.mjs\"",
     "test:firefox": "npm run build && node test/firefox/run.mjs",
-    "test:claude": "npm run build && node test/live/claude.mjs"
+    "test:companion": "npm run build && node test/firefox/companion.mjs",
+    "test:claude": "npm run build && node test/live/claude.mjs",
+    "test:chat": "npm run build && node test/live/chat.mjs",
+    "test:milestone": "npm run build && node test/live/milestone.mjs"
   }
 }

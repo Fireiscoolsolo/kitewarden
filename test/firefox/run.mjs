@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { VERSION } from '../../shared/protocol.mjs';
 import { McpClient, host, installHome, powershell, root, sleep, until } from '../helpers.mjs';
 import { Firefox, Sidebar } from './firefox.mjs';
 import { fixture } from './fixtures.mjs';
@@ -103,9 +104,9 @@ try {
   await check('AC-09', 'connection_status reports every hop', async () => {
     const s = (await c.call('connection_status')).data;
     assert.equal(s.state, 'connected');
-    assert.equal(s.mcp_server.version, '0.1.0');
-    assert.equal(s.extension.version, '0.1.0');
-    assert.deepEqual(s.helper, { state: 'connected', version: '0.1.0' });
+    assert.equal(s.mcp_server.version, VERSION);
+    assert.equal(s.extension.version, VERSION);
+    assert.deepEqual(s.helper, { state: 'connected', version: VERSION });
     assert.match(s.next_step, /attach a tab/);
   });
 
@@ -393,7 +394,7 @@ try {
   });
 
   await check('FC-SHOT', 'with all sites allowed, a background tab is captured without switching to it', async (note) => {
-    await sb.eval('document.querySelector("details").open = true');
+    await sb.eval('document.querySelector("#d-screens").open = true');
     await sb.click('#screens');
     note(`prompt: ${await prompt(true)}`);
     await until('allowed', async () => /are allowed/.test(await message()));
@@ -597,13 +598,13 @@ try {
     execFileSync('icacls', [key, '/remove', '*S-1-1-0']);
     await until('connected', async () => (await link()) === 'Connected', 35_000, 200);
 
-    const other = readFileSync(path.join(root, 'host/native/Host.cs'), 'utf8').replace('Protocol = 1', 'Protocol = 2');
+    const other = readFileSync(path.join(root, 'host/native/Host.cs'), 'utf8').replace('Protocol = 2', 'Protocol = 3');
     const src = path.join(home.dir, 'other.cs');
     writeFileSync(src, other);
     await kill(hostPids()[0]);
     await sb.click('#disconnect');
     await until('helper gone', () => hostPids().length === 0);
-    execFileSync(path.join(process.env.SystemRoot, 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'), ['/nologo', '/platform:x64', `/out:${home.exe}`, '/r:System.Web.Extensions.dll', '/r:System.Core.dll', src, path.join(root, 'host/native/Setup.cs')]);
+    execFileSync(path.join(process.env.SystemRoot, 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'), ['/nologo', '/platform:x64', `/out:${home.exe}`, '/r:System.Web.Extensions.dll', '/r:System.Core.dll', src, path.join(root, 'host/native/Setup.cs'), path.join(root, 'host/native/Chat.cs')]);
     await sb.click('#connect');
     await until('versions differ', async () => (await link()) === 'Versions differ');
     note(`versions: ${await sb.text('#link-detail')}`);

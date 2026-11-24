@@ -1,11 +1,12 @@
 // Shared by the integration, Firefox and live checks. Installs into a temporary home and restores the registry key.
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { frame, frameReader } from '../dist/mcp/link.mjs';
+import { PROTOCOL } from '../shared/protocol.mjs';
 
 export const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const HOST = path.join(root, 'dist/host/firefox-companion-host.exe');
@@ -64,9 +65,17 @@ export function installHome() {
   };
 }
 
+/** A folder with a TEST DOUBLE named claude.exe, to be put first on PATH. */
+export function fakeClaude() {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'fc-double-'));
+  execFileSync(path.join(process.env.SystemRoot, 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'), ['/nologo', `/out:${path.join(dir, 'claude.exe')}`, path.join(root, 'test/doubles/Stub.cs')]);
+  cpSync(path.join(root, 'test/doubles/claude.mjs'), path.join(dir, 'claude.mjs'));
+  return { dir, close: () => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }) };
+}
+
 /** Plays Firefox: starts the host and speaks native messaging with it. */
 export class FakeFirefox {
-  constructor(home, { protocol = 1, hello = true } = {}) {
+  constructor(home, { protocol = PROTOCOL, hello = true } = {}) {
     this.messages = [];
     this.stderr = '';
     this.child = spawn(home.exe, [path.join(home.dir, 'native-manifest.json'), EXTENSION_ID], { stdio: 'pipe' });
