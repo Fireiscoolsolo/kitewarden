@@ -246,9 +246,9 @@ async function request(r, call, spec, origin, a) {
   const id = `rq_${crypto.randomUUID().slice(0, 12)}`;
   let wake;
   const answered = new Promise((f) => (wake = f));
-  const x = { id, session: s, reason: oneLine(a.reason, 200), level: a.level, state: 'pending', tabId: null, answered, wake };
+  const x = { id, session: s, reason: oneLine(a.reason, 200), level: a.level, state: 'pending', tabId: null, answered, wake: () => (clearTimeout(timer), wake()) };
   r.requests.set(id, x);
-  setTimeout(() => {
+  const timer = setTimeout(() => {
     if (x.state === 'pending') x.state = 'timed_out';
     wake();
     r.onChange();

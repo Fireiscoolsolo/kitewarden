@@ -135,9 +135,10 @@ static class Setup
         string chat = Path.Combine(h.Dir, "chat");
         files.Add(Path.Combine(chat, "rules.txt"));
         if (Directory.Exists(chat)) files.AddRange(Directory.GetFiles(chat, "run-*.json"));
+        if (Directory.Exists(h.Profiles)) files.AddRange(Directory.GetFiles(h.Profiles, "*.json"));
         files.Add(h.Install);
         foreach (var f in files) if (File.Exists(f)) { string file = f; step("delete " + file, delegate { File.Delete(file); }); }
-        foreach (var d in new[] { Path.Combine(h.Dir, "mcp"), chat, h.Dir })
+        foreach (var d in new[] { Path.Combine(h.Dir, "mcp"), chat, h.Profiles, h.Dir })
             if (Directory.Exists(d) && (dry || Directory.GetFileSystemEntries(d).Length == 0)) { string dir = d; step("delete folder " + dir, delegate { Directory.Delete(dir); }); }
         return 0;
     }
@@ -156,7 +157,11 @@ static class Setup
         check("program", File.Exists(Path.Combine(h.Dir, Exe)) ? null : Exe + " is missing", "run install");
         check("registry", string.Equals(Registered(), Manifest(h), StringComparison.OrdinalIgnoreCase) ? null : "the key points to " + (Registered() ?? "nothing"), "run install");
         check("manifest", ManifestProblem(h), "run install");
-        string pipe = PipeProblem(h);
+        string pipe = "none";
+        var names = new List<string> { h.PipeName() };
+        if (Directory.Exists(h.Profiles))
+            foreach (var f in Directory.GetFiles(h.Profiles, "*.json")) names.Add(Bridge.Str(Bridge.Parse(File.ReadAllText(f)), "pipe"));
+        foreach (var name in names) if (name != null) { string p = PipeProblem(name); if (p != "none" && (pipe == "none" || pipe == null)) pipe = p; }
         if (pipe == "none") Console.WriteLine("info  pipe: the helper is not running; open Firefox and press Connect in the sidebar");
         else check("pipe", pipe, "close other programs that use the pipe name, then press Retry in the sidebar");
         Console.WriteLine("info  Claude Code: " + (Runs.FindClaude() ?? "claude.exe was not found; the sidebar chat needs it, MCP clients do not"));
@@ -186,11 +191,11 @@ static class Setup
         catch (Exception e) { return e.Message; }
     }
 
-    static string PipeProblem(Home h)
+    static string PipeProblem(string name)
     {
         try
         {
-            using (var c = new NamedPipeClientStream(".", h.PipeName(), PipeAccessRights.ReadWrite, PipeOptions.None,
+            using (var c = new NamedPipeClientStream(".", name, PipeAccessRights.ReadWrite, PipeOptions.None,
                 TokenImpersonationLevel.None, HandleInheritability.None))
             {
                 c.Connect(500);

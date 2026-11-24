@@ -28,6 +28,6 @@ execFileSync(path.join(process.env.SystemRoot, 'Microsoft.NET/Framework64/v4.0.3
   '/nologo', '/warnaserror+', '/optimize+', '/platform:x64', '/target:exe',
   `/out:${path.join(dist, 'host/firefox-companion-host.exe')}`,
   '/r:System.Web.Extensions.dll', '/r:System.Core.dll',
-  ...['Host.cs', 'Setup.cs', 'Chat.cs'].map((f) => path.join(root, 'host/native', f)),
+  ...['Host.cs', 'Setup.cs', 'Chat.cs', 'Files.cs'].map((f) => path.join(root, 'host/native', f)),
 ], { stdio: 'inherit' });
 console.log('built dist/extension, dist/mcp, dist/host');

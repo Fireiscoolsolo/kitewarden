@@ -75,7 +75,7 @@ export function fakeClaude() {
 
 /** Plays Firefox: starts the host and speaks native messaging with it. */
 export class FakeFirefox {
-  constructor(home, { protocol = PROTOCOL, hello = true } = {}) {
+  constructor(home, { protocol = PROTOCOL, hello = true, profile = undefined, label = undefined } = {}) {
     this.messages = [];
     this.stderr = '';
     this.child = spawn(home.exe, [path.join(home.dir, 'native-manifest.json'), EXTENSION_ID], { stdio: 'pipe' });
@@ -86,7 +86,7 @@ export class FakeFirefox {
       this.messages.push(m);
       this.onMessage?.(m);
     }));
-    if (hello) this.send({ type: 'hello', protocol, extension: 'test' });
+    if (hello) this.send({ type: 'hello', protocol, extension: 'test', profile, label });
   }
   send(m) {
     this.child.stdin.write(frame(m));

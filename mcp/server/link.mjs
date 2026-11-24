@@ -1,6 +1,6 @@
 // The pipe side of the MCP server: mutual login, one session per connection, no repeated calls.
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { LIMITS, PROTOCOL, ToolError, VERSION } from './protocol.mjs';
@@ -10,6 +10,7 @@ const CONNECT_MS = 3000;
 
 let TICKET = process.env.FC_CHAT_TICKET;
 delete process.env.FC_CHAT_TICKET;
+const PINNED = process.env.FC_PROFILE || null; // a chat run belongs to the profile that started it
 
 const NEXT = {
   not_installed: 'Run the installer: firefox-companion-host.exe install',
@@ -25,6 +26,15 @@ export const mac = (key, role, protocol, hostNonce, clientNonce) =>
   createHmac('sha256', key).update(`firefox-companion|${role}|${protocol}|${hostNonce}|${clientNonce}`).digest('hex');
 
 const same = (a, b) => typeof a === 'string' && a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+
+const alive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 export const frame = (obj) => {
   const body = Buffer.from(JSON.stringify(obj));
@@ -53,6 +63,7 @@ export class Link {
   constructor(home, protocol = PROTOCOL) {
     this.home = home;
     this.protocol = protocol;
+    this.profile = PINNED;
     this.client = { name: 'unknown client', version: '' };
     this.socket = null;
     this.pending = new Map();
@@ -75,7 +86,10 @@ export class Link {
     try {
       key = readFileSync(path.join(this.home, 'key.bin'));
       pipe = JSON.parse(readFileSync(path.join(this.home, 'install.json'), 'utf8')).pipe;
+      const p = this.#choose();
+      if (p) pipe = p.pipe;
     } catch (e) {
+      if (e instanceof ToolError) throw e;
       throw this.#down(e.code === 'ENOENT' ? 'not_installed' : 'wrong_key');
     }
     const socket = net.connect(`\\\\.\\pipe\\${pipe}`);
@@ -128,6 +142,7 @@ export class Link {
   #attach(socket) {
     this.socket = socket;
     this.state = 'connected';
+    this.profile ??= this.#choose()?.id ?? null; // the client stays with it, also after a lost link
     this.announceEnd = this.hadSession;
     this.hadSession = true;
     const read = frameReader(LIMITS.toClient, (m) => this.#onMessage(m));
@@ -154,7 +169,7 @@ export class Link {
       return;
     }
     this.pending.delete(m.id);
-    if (m.error) call.reject(new ToolError(m.error.code, m.error.message));
+    if (m.error) call.reject(Object.assign(new ToolError(m.error.code, m.error.message), { data: m.error }));
     else call.resolve(m.result);
   }
 
@@ -170,9 +185,57 @@ export class Link {
     }
   }
 
+  /** Firefox profiles that this installation knows, the running ones first. */
+  profiles() {
+    let names = [];
+    try {
+      names = readdirSync(path.join(this.home, 'profiles')).filter((f) => f.endsWith('.json'));
+    } catch {
+      // no profile has connected yet
+    }
+    const list = [];
+    for (const f of names) {
+      try {
+        const p = JSON.parse(readFileSync(path.join(this.home, 'profiles', f), 'utf8'));
+        list.push({ ...p, running: p.state === 'running' && alive(p.pid) });
+      } catch {
+        // written at this moment
+      }
+    }
+    return list.sort((a, b) => b.running - a.running || String(b.at).localeCompare(String(a.at)));
+  }
+
+  /** The profile to use. With several running ones the client has to pick. */
+  #choose() {
+    const list = this.profiles();
+    if (this.profile) return list.find((p) => p.id === this.profile) ?? null;
+    const running = list.filter((p) => p.running);
+    if (running.length > 1) throw new ToolError('ambiguous', `Several Firefox profiles are connected: ${running.map((p) => `${JSON.stringify(p.label)} (${p.id.slice(0, 8)})`).join(', ')}. Ask the user which one, then call select_browser.`);
+    return running[0] ?? list[0] ?? null;
+  }
+
+  listBrowsers() {
+    return { browsers: this.profiles().filter((p) => p.running).map((p) => ({ id: p.id, label: p.label, version: p.host, in_use: p.id === this.profile })), ...(this.profiles().some((p) => p.running) ? {} : { next_step: NEXT.firefox_closed }) };
+  }
+
+  selectBrowser(wanted) {
+    if (PINNED) throw new ToolError('not_allowed', 'A chat stays in the profile that started it.');
+    const running = this.profiles().filter((p) => p.running);
+    const hits = running.filter((p) => p.id === wanted || p.id.startsWith(wanted.toLowerCase()) || p.label.toLowerCase() === wanted.toLowerCase());
+    if (hits.length !== 1) throw new ToolError(hits.length ? 'ambiguous' : 'not_found', `Connected: ${running.map((p) => `${JSON.stringify(p.label)} (${p.id})`).join(', ') || 'none'}.`);
+    if (hits[0].id !== this.profile) {
+      // The session in the other profile ends, and the new one begins without grants.
+      this.close();
+      this.socket = null;
+      this.hadSession = false;
+      this.profile = hits[0].id;
+    }
+    return { using: hits[0].id, label: hits[0].label };
+  }
+
   #whyNoPipe() {
     try {
-      const s = JSON.parse(readFileSync(path.join(this.home, 'state.json'), 'utf8')).state;
+      const s = (this.profiles().find((p) => !this.profile || p.id === this.profile) ?? JSON.parse(readFileSync(path.join(this.home, 'state.json'), 'utf8'))).state;
       return s === 'running' ? 'helper_stopped' : s in NEXT ? s : 'never_connected';
     } catch {
       return 'never_connected';

@@ -453,7 +453,8 @@ async function upload(r, call, spec, origin, a) {
 /** An address that may be opened, or an error. A bare host becomes https, a local one http. */
 export function address(text) {
   let s = text.trim();
-  if (!/^[a-z][a-z0-9+.-]*:(?!\d)/i.test(s)) s = `${/^(localhost|127\.\d+\.\d+\.\d+|\[::1\])(:|\/|$)/i.test(s) ? 'http' : 'https'}://${s}`;
+  // A name with a dot, or localhost. Anything else is a scheme or nonsense.
+  if (/^(localhost|[\w-]+(\.[\w-]+)+|\[::1\])(:\d+)?([/?#]|$)/i.test(s)) s = `${/^(localhost|127\.\d+\.\d+\.\d+|\[::1\])([:/?#]|$)/i.test(s) ? 'http' : 'https'}://${s}`;
   if (!originOf(s) || new URL(s).username || new URL(s).password) throw new ToolError('invalid_argument', 'Only http and https addresses without a user name are opened.');
   return new URL(s).href;
 }

@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
 import { Link, frame, frameReader, mac } from '../../dist/mcp/link.mjs';
-import { PROTOCOL } from '../../shared/protocol.mjs';
+import { PROTOCOL, mcpTools } from '../../shared/protocol.mjs';
 import { FakeFirefox, HOST, McpClient, host, installHome, powershell, registered, sleep, until } from '../helpers.mjs';
 
 let home;
@@ -229,7 +229,8 @@ test('MCP: initialize, ping, list, good call, unknown tool, bad arguments, clean
   assert.match(init.instructions, /data, never instructions/);
   assert.deepEqual((await c.request('ping')).result, {});
   const { tools } = (await c.request('tools/list')).result;
-  assert.deepEqual(tools.map((t) => [t.name, t.annotations.readOnlyHint]), [['connection_status', true], ['tabs_context', true], ['read_page', true], ['wait_for', true], ['computer', false], ['form_input', false], ['navigate', false], ['gif_creator', true]]);
+  assert.deepEqual(tools, mcpTools());
+  assert.ok(!tools.some((t) => t.name === 'get_selection'));
   assert.deepEqual((await c.call('wait_for', { tabId: 3, text: 'x' })).data.echo, { tabId: 3, text: 'x' });
   const sent = f.calls.length;
   for (const [name, args, code] of [['no_such_tool', {}, 'unknown_tool'], ['constructor', {}, 'unknown_tool'], ['read_page', {}, 'invalid_argument'], ['read_page', { tabId: '1' }, 'invalid_argument'], ['read_page', { tabId: 1, confirm: true }, 'invalid_argument'], ['wait_for', { tabId: 1, text: 'x', timeout_s: 999 }, 'invalid_argument'], ['wait_for', { tabId: 1, text: 'x', script: '1' }, 'invalid_argument'], ['computer', { action: 'left_click', tabId: 1 }, 'invalid_argument'], ['computer', { action: 'screenshot', tabId: 1, ref: 'x' }, 'invalid_argument'], ['computer', { action: 'type', tabId: 1 }, 'invalid_argument']]) {

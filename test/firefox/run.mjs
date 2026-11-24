@@ -604,7 +604,7 @@ try {
     await kill(hostPids()[0]);
     await sb.click('#disconnect');
     await until('helper gone', () => hostPids().length === 0);
-    execFileSync(path.join(process.env.SystemRoot, 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'), ['/nologo', '/platform:x64', `/out:${home.exe}`, '/r:System.Web.Extensions.dll', '/r:System.Core.dll', src, path.join(root, 'host/native/Setup.cs'), path.join(root, 'host/native/Chat.cs')]);
+    execFileSync(path.join(process.env.SystemRoot, 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'), ['/nologo', '/platform:x64', `/out:${home.exe}`, '/r:System.Web.Extensions.dll', '/r:System.Core.dll', src, path.join(root, 'host/native/Setup.cs'), path.join(root, 'host/native/Chat.cs'), path.join(root, 'host/native/Files.cs')]);
     await sb.click('#connect');
     await until('versions differ', async () => (await link()) === 'Versions differ');
     note(`versions: ${await sb.text('#link-detail')}`);

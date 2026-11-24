@@ -46,6 +46,7 @@ sealed class Home
     public string Key { get { return Path.Combine(Dir, "key.bin"); } }
     public string Install { get { return Path.Combine(Dir, "install.json"); } }
     public string State { get { return Path.Combine(Dir, "state.json"); } }
+    public string Profiles { get { return Path.Combine(Dir, "profiles"); } }
 
     public string PipeName()
     {
@@ -260,6 +261,7 @@ sealed class Bridge
     readonly ConcurrentDictionary<string, Client> clients = new ConcurrentDictionary<string, Client>();
     byte[] key;
     int waiting;
+    string profile, label, pipeName;
 
     public Bridge(Home h) { home = h; }
 
@@ -293,7 +295,16 @@ sealed class Bridge
         return m != null && m.TryGetValue(name, out v) ? v as string : null;
     }
 
-    static int Int(Dictionary<string, object> m, string name)
+    /// <summary>One plain line.</summary>
+    static string Label(string s)
+    {
+        if (s == null) return "Firefox";
+        var b = new StringBuilder();
+        foreach (char c in s) if (!char.IsControl(c) && b.Length < 40) b.Append(c);
+        return b.ToString();
+    }
+
+    public static int Int(Dictionary<string, object> m, string name)
     {
         object v;
         return m != null && m.TryGetValue(name, out v) && v is int ? (int)v : -1;
@@ -312,15 +323,18 @@ sealed class Bridge
     {
         try
         {
-            File.WriteAllText(home.State, Json("state", state, "pid", Process.GetCurrentProcess().Id,
-                "at", DateTime.UtcNow.ToString("o"), "host", Program.Version, "protocol", Program.Protocol));
+            string json = Json("state", state, "pid", Process.GetCurrentProcess().Id, "at", DateTime.UtcNow.ToString("o"),
+                "host", Program.Version, "protocol", Program.Protocol, "id", profile, "label", label, "pipe", pipeName);
+            File.WriteAllText(home.State, json);
+            if (profile == null) return;
+            Directory.CreateDirectory(home.Profiles); // inherits the access list of the home folder
+            File.WriteAllText(Path.Combine(home.Profiles, profile + ".json"), json);
         }
         catch (Exception e) { Console.Error.WriteLine("state: " + e.Message); }
     }
 
     public int Run()
     {
-        string pipeName;
         try
         {
             string problem = home.AccessProblem();
@@ -333,6 +347,11 @@ sealed class Bridge
 
         var hello = Parse(Frame.Read(input, FromBrowser) ?? "{}");
         if (Str(hello, "type") != "hello") return Fatal("bad_hello", "The first message was not a hello.", 2);
+        // Each Firefox profile has a pipe of its own, so that two profiles never share one.
+        profile = Str(hello, "profile");
+        if (profile != null && !System.Text.RegularExpressions.Regex.IsMatch(profile, @"\A[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}\z")) return Fatal("bad_hello", "The profile ID is not valid.", 2);
+        label = Label(Str(hello, "label"));
+        if (profile != null) pipeName += "-" + profile.Replace("-", "").Substring(0, 16);
         if (Int(hello, "protocol") != Program.Protocol)
         {
             ToFirefox(Json("type", "hello", "protocol", Program.Protocol, "host", Program.Version));
@@ -345,7 +364,7 @@ sealed class Bridge
         catch (Win32Exception e) { return Fatal("pipe_in_use", "The pipe name is taken: " + e.Message, 4); }
 
         Runs.Clean(home);
-        var runs = new Runs(home, delegate(object[] kv) { ToFirefox(Json(kv)); });
+        var runs = new Runs(home, profile, delegate(object[] kv) { ToFirefox(Json(kv)); });
         WriteState("running");
         ToFirefox(Json("type", "hello", "protocol", Program.Protocol, "host", Program.Version));
         var accept = new Thread(delegate() { Accept(pipeName, first); });
@@ -371,6 +390,9 @@ sealed class Bridge
                     if (clients.TryGetValue(Str(m, "session") ?? "", out c)) c.Finish(); // the writer sends what is queued, then closes
                 }
                 else if (type == "chat_run") runs.Start(m);
+                else if (type == "file_stat" || type == "file_read" || type == "folder_check")
+                    ToFirefox(Json("type", "reply", "id", Str(m, "id"), "result", Files.Answer(type, m, home)));
+                else if (type == "label") { label = Label(Str(m, "label")); WriteState("running"); }
                 else if (type == "chat_stop") runs.Stop(Str(m, "run"));
                 else if (type == "claude_info") runs.Info(Str(m, "id"));
                 else if (type == "skill_write") ToFirefox(Json("type", "reply", "id", Str(m, "id"), "result", Skill.Write(m)));
