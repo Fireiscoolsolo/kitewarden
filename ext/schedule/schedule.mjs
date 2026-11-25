@@ -51,10 +51,9 @@ export class Schedules {
     this.list = schedules;
     for (const s of this.list) {
       // What ran when Firefox closed did not go on.
-      for (const r of s.runs) if (!r.ended) Object.assign(r, { state: 'interrupted', message: 'Firefox closed.', ended: this.now() });
+      for (const r of s.runs) if (!r.ended) this.#close(r, 'interrupted', 'Firefox closed.');
       if (s.on && s.next !== null && this.now() - s.next > LATE_MS) this.#missed(s, 'Firefox was not running.');
     }
-    this.#save();
     this.#tick();
   }
 

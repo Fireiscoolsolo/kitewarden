@@ -343,6 +343,7 @@ async function downloadsOf(r, s) {
 async function download(r, call, spec, origin, a) {
   const at = await r.authorize(call, { level: 'read' });
   const url = address(a.url);
+  if (storeOf((await r.tab(call.tabId)).cookieStoreId).cookieStoreId && !(await containersAllowed(r))) throw new ToolError('permission_required', 'That tab is in a container. Ask the user to allow containers in the sidebar.');
   if (originOf(url) !== at) throw new ToolError('not_allowed', `Only addresses of ${at} can be downloaded from this tab.`);
   if (a.filename !== undefined && (/[\\/:*?"<>|]/.test(a.filename) || /^\.+$/.test(a.filename))) throw new ToolError('invalid_argument', 'filename is a plain name without a folder.');
   await r.ask(call, spec, at, { tool: 'download_start', target: url, value: `Into the Downloads folder${a.filename ? ` as ${a.filename}` : ''}` }, a.reason);

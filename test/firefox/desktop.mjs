@@ -1,6 +1,7 @@
 // On the visible desktop: focus, minimized and covered windows, and the Windows input backend. A disposable profile in a window
 // of its own, temporary add-on, installed helper, MCP server, local pages. It opens windows for about a minute and sends mouse
-// messages to its own Firefox window only. The pointer of the user does not move.
+// messages to its own Firefox window only. The pointer of the user does not move. While somebody uses the computer it opens no
+// window above theirs, and shows only that the backend refuses then.
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -22,15 +23,20 @@ const WIN = `Add-Type -TypeDefinition 'using System; using System.Runtime.Intero
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);
   [DllImport("user32.dll")] public static extern bool GetCursorPos(out P p); public struct P { public int X, Y; }
-  public static string Now() { uint p; GetWindowThreadProcessId(GetForegroundWindow(), out p); P c; GetCursorPos(out c); return p + "," + c.X + "," + c.Y; } }'; [W]::Now()`;
-/** Process of the window in front, and where the pointer is. */
+  [DllImport("user32.dll")] static extern bool GetLastInputInfo(ref L i); struct L { public uint S, T; }
+  public static string Now() { uint p; GetWindowThreadProcessId(GetForegroundWindow(), out p); P c; GetCursorPos(out c); L i = new L(); i.S = 8; GetLastInputInfo(ref i); return p + "," + c.X + "," + c.Y + "," + unchecked((uint)Environment.TickCount - i.T); } }'; [W]::Now()`;
+/** Process of the window in front, where the pointer is, and for how long nobody used mouse or keyboard. */
 const front = () => {
-  const [pid, x, y] = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', WIN], { encoding: 'utf8' }).trim().split(',').map(Number);
-  return { pid, pointer: `${x},${y}` };
+  const [pid, x, y, idle] = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', WIN], { encoding: 'utf8' }).trim().split(',').map(Number);
+  return { pid, pointer: `${x},${y}`, idle };
 };
 /** With a screen saver or a lock no window is in front, and nothing about focus can be observed. */
 function needsDesktop() {
   if (front().pid === 0) throw Object.assign(new Error('not run: no window is in front, because the screen saver or the lock screen is up'), { skipped: true });
+}
+const active = front().idle < 60_000;
+function needsIdle() {
+  if (active) throw Object.assign(new Error('not run: somebody uses this computer'), { skipped: true });
 }
 /** Puts the windows of the test's own Firefox above all others, or back. It takes no focus. */
 const onTop = (on) => execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class T { delegate bool F(IntPtr h, IntPtr p); [DllImport("user32.dll")] static extern bool EnumWindows(F f, IntPtr p); [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint p); [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h); [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr a, int x, int y, int w, int e, uint f); public static void Go(uint pid, int top) { EnumWindows(delegate(IntPtr h, IntPtr q) { uint p; GetWindowThreadProcessId(h, out p); if (p == pid && IsWindowVisible(h)) SetWindowPos(h, new IntPtr(top), 0, 0, 0, 0, 0x13); return true; }, IntPtr.Zero); } }'; [T]::Go(${f.pid}, ${on ? -1 : -2})`]);
@@ -94,32 +100,31 @@ try {
 
   await check('FC-TAB', 'focus: reading, acting, opening a tab and selecting a tab leave another window in front', async (n) => {
     needsDesktop();
-    cover = await window2(40, 40, 260, 160);
+    // Any window of another program will do. Firefox must not come before it by itself.
     const before = front();
-    n(`in front: the other window: ${before.pid === cover.pid}`);
-    assert.equal(before.pid, cover.pid);
+    n(`in front: process ${before.pid}, this Firefox is ${f.pid}`);
+    if (before.pid === f.pid) throw Object.assign(new Error('not run: the new Firefox window is in front itself'), { skipped: true });
+    const behind = (what) => assert.notEqual(front().pid, f.pid, what);
     assert.equal((await call('read_page')).code, null);
-    const active = await f.chrome('return gBrowser.selectedTab === gBrowser.tabs[0]');
+    const shown = await f.chrome('return gBrowser.selectedTab === gBrowser.tabs[0]');
     const made = (await c.call('tabs_create', { url: `${A.origin}/second` })).data;
     assert.equal(made.state, 'loaded');
-    assert.equal(front().pid, cover.pid, 'a new tab does not raise Firefox');
-    assert.equal(await f.chrome('return gBrowser.selectedTab === gBrowser.tabs[0]'), active, 'the active tab is the same');
+    behind('a new tab does not raise Firefox');
+    assert.equal(await f.chrome('return gBrowser.selectedTab === gBrowser.tabs[0]'), shown, 'the active tab is the same');
     const r = (await c.call('computer', { action: 'hover', tabId: tab, ref: await refOf('Throw') })).data;
     assert.equal(r.dispatched, true);
     assert.equal((await c.call('tabs_select', { tabId: made.tabId })).data.active, true);
-    assert.equal(front().pid, cover.pid, 'tabs_select without focusWindow does not raise Firefox');
+    behind('tabs_select without focusWindow does not raise Firefox');
     assert.equal((await c.call('tabs_select', { tabId: tab })).data.active, true);
     const w = (await c.call('windows_create', {})).data;
     await sleep(500);
-    const after = front().pid === cover.pid ? 'the other window' : front().pid === f.pid ? 'Firefox' : 'a third program';
+    const after = front().pid === f.pid ? 'this Firefox' : 'another program';
     n(`after windows_create in front: ${after}; reply: ${JSON.stringify(w)}`);
     await c.call('windows_close', { windowId: w.windowId });
     const raised = (await c.call('tabs_select', { tabId: tab, focusWindow: true })).data;
     await sleep(300);
     n(`tabs_select with focusWindow says ${JSON.stringify(raised)}; in front: ${front().pid === f.pid ? 'Firefox' : 'not Firefox'}`);
     await c.call('tabs_close', { tabId: made.tabId });
-    cover.kill();
-    cover = null;
     await f.select(first);
   });
 
@@ -164,7 +169,17 @@ try {
     assert.deepEqual([again.trusted_event, again.observed, A.reports.includes('real click')], [false, false, false]);
   });
 
+  await check('FC-ACT', 'input while somebody uses the computer: refused, and nothing reaches the page', async (n) => {
+    if (!active) throw Object.assign(new Error('not run: nobody uses this computer'), { skipped: true });
+    const r = await act('windows_input', { action: 'click', ref: await refOf('Real only') });
+    n(r.text);
+    if (!/using mouse or keyboard/.test(r.text)) throw Object.assign(new Error(`not shown: the user rested in that moment (${r.text.slice(0, 80)})`), { skipped: true });
+    assert.equal(r.code, 'not_actionable');
+    assert.ok(!A.reports.includes('real click'));
+  });
+
   await check('FC-ACT', 'input on: denied sends nothing; approved, the page gets one real click and the pointer of the user stays where it was', async (n) => {
+    needsIdle();
     await f.chrome('window.focus()');
     onTop(true);
     const before = front();
@@ -180,6 +195,7 @@ try {
   });
 
   await check('FC-ACT', 'input refused: covered, hidden tab, minimized, changed element; nothing reaches the page', async (n) => {
+    needsIdle();
     A.reports.length = 0;
     const [x, y, w, h] = await f.chrome('return [window.screenX, window.screenY, window.outerWidth, window.outerHeight]'); // the other program counts like this
     onTop(false);
@@ -213,7 +229,9 @@ try {
   });
 
   await check('FC-ACT', 'input: a stop while it waits ends it, off refuses, and the backend that leaves is gone from the list', async (n) => {
-    const p = call('windows_input', { action: 'click', ref: await refOf('Delete all') });
+    const name = '(?:Real only|Got real input|Delete all)';
+    A.reports.length = 0;
+    const p = call('windows_input', { action: 'click', ref: await refOf(name) });
     await sb.waitCard();
     await sb.click('#halt');
     assert.equal((await p).code, 'stopped');
@@ -221,7 +239,7 @@ try {
     await sleep(600);
     assert.ok(!A.reports.includes('real click'));
     await sb.click('#backend-input .backend-off');
-    assert.equal((await call('windows_input', { action: 'click', ref: await refOf('Delete all') })).code, 'tool_off');
+    assert.equal((await call('windows_input', { action: 'click', ref: await refOf(name) })).code, 'tool_off');
     input.stdin.end();
     await new Promise((r) => input.on('exit', r));
     await until('gone', async () => (await c.call('connection_status')).data.optional_backends.find((b) => b.id === 'input').state === 'not running', 5000, 100);
@@ -235,7 +253,7 @@ try {
   await A.close();
   await home.close();
   const failed = results.filter((r) => !r.ok && !r.skipped);
-  writeFileSync(path.join(out, 'desktop.json'), JSON.stringify({ firefox: f.version, headless: f.capabilities['moz:headless'], at: new Date().toISOString(), results }, null, 1));
+  writeFileSync(path.join(out, `desktop-${active ? 'in-use' : 'idle'}.json`), JSON.stringify({ firefox: f.version, headless: f.capabilities['moz:headless'], at: new Date().toISOString(), results }, null, 1));
   console.log(`\n${results.filter((r) => r.ok).length} passed, ${failed.length} failed, ${results.filter((r) => r.skipped).length} not run`);
   process.exit(failed.length ? 1 : 0);
 }

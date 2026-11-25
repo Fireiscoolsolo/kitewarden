@@ -10,12 +10,10 @@
   const MAX = 2000;
   let waiting = [];
   let timer = null;
-  let sent = 0;
 
   /** The background checks sender, tab, frame and origin, and drops what no grant covers. */
   function report(entry) {
-    if (!consoleOn || sent > 5000) return;
-    sent++;
+    if (!consoleOn || waiting.length >= 500) return; // a flood loses its end, not what comes later
     waiting.push({ at: Date.now(), ...entry });
     timer ??= setTimeout(() => {
       timer = null;

@@ -605,7 +605,7 @@ try {
     execFileSync('icacls', [key, '/remove', '*S-1-1-0']);
     await until('connected', async () => (await link()) === 'Connected', 35_000, 200);
 
-    const other = readFileSync(path.join(root, 'host/native/Host.cs'), 'utf8').replace('Protocol = 3', 'Protocol = 4');
+    const other = readFileSync(path.join(root, 'host/native/Host.cs'), 'utf8').replace(/Protocol = (\d+)/, (_, v) => `Protocol = ${Number(v) + 1}`);
     const src = path.join(home.dir, 'other.cs');
     writeFileSync(src, other);
     await kill(hostPids()[0]);

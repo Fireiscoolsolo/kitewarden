@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { McpClient, installHome, root, sleep, until } from '../helpers.mjs';
@@ -390,14 +391,16 @@ try {
     iso = backend('backends/isolated.mjs', ['--home', home.dir, '--headless', '--out', path.join(work, 'out')]);
     await backendIs('isolated', 'off');
     const s = await backendState('isolated');
-    n(JSON.stringify({ channel: s.channel, detail: s.detail, version: s.version }));
+    const shown = await sb.text('#backend-isolated');
+    n(`${s.channel}, version ${s.version}; the sidebar adds: ${/isolated profile[^.]*\.0\.0\.1:\d+/.exec(shown)[0]}`);
+    assert.equal(s.detail, undefined, 'clients are told no address');
     assert.match(s.channel, /^Firefox \d+.*headless$/);
     assert.equal((await c.call('isolated_browser', { action: 'open', url: A.origin })).code, 'tool_off');
     const second = backend('backends/isolated.mjs', ['--home', home.dir, '--headless']);
     await until('second refused', () => /connected already/.test(second.text), 60_000, 300);
     await second.stop();
     assert.equal((await backendState('isolated')).state, 'off');
-    const port = Number(/127\.0\.0\.1:(\d+)/.exec(s.detail)[1]);
+    const port = Number(/127\.0\.0\.1:(\d+)/.exec(shown)[1]);
     const listen = execFileSync('netstat', ['-ano', '-p', 'TCP'], { encoding: 'utf8' }).split('\n').filter((l) => /LISTENING/.test(l) && l.includes(`:${port} `));
     n(listen.map((l) => l.trim().replace(/\s+/g, ' ')).join(' | '));
     assert.ok(listen.length && listen.every((l) => l.includes(`127.0.0.1:${port}`)));
@@ -604,6 +607,144 @@ try {
     assert.equal((await backendState('isolated')).state, 'off');
     await again.stop();
     assert.equal(readdirSync(os.tmpdir()).some((x) => x.startsWith('fc-isolated-')), false);
+  });
+
+  // Schedules and the remote link
+
+  const press = async (box, label) => {
+    const at = await sb.eval('return [...document.querySelectorAll("button")].indexOf([...document.querySelector(arguments[0]).querySelectorAll("button")].find((b) => b.textContent === arguments[1]))', box, label);
+    if (at < 0) throw new Error(`no button ${label} in ${box}`);
+    await sb.click('button', at);
+  };
+  const set = (sel, v) => sb.eval('const i = document.querySelector(arguments[0]); i.value = arguments[1]; i.dispatchEvent(new Event("input"))', sel, v);
+
+  await check('FC-AGT', 'schedule: a saved workflow starts at its time, waits for a tab and a text, asks for each action; a second one waits and is cancelled', async (n) => {
+    await open(`${A.origin}/form`);
+    await sb.attach('This sidebar', 'act', null);
+    await sb.click('#wf-record');
+    await until('recording', async () => /Recording in/.test(await sb.text('#wf-rec')));
+    await f.pageClick('[name=q]');
+    await f.pageKeys('[name=q]', 'recorded words');
+    await f.pageClick('form button');
+    await until('second page', async () => /\/done/.test(await sb.text('#wf-rec')), 5000);
+    await press('#wf-rec', 'Stop');
+    await until('review', async () => /Review the recording/.test(await sb.text('#wf-edit')));
+    await set('#wf-title', 'Weekly form');
+    await press('#wf-edit', 'Save');
+    await until('saved', async () => /Weekly form/.test(await sb.text('#wf-list')));
+    assert.ok(!(await sb.eval('return JSON.stringify(await browser.storage.local.get("workflows"))')).includes('recorded words'));
+    // The sidebar gives its tab back, so that the run has none.
+    await sb.eval('for (const x of document.querySelectorAll("#grants li")) if (x.textContent.includes("This sidebar")) x.querySelector(".revoke").id = "own-revoke"');
+    await sb.click('#own-revoke');
+    await open(`${A.origin}/form`);
+    const at = new Date(Date.now() + 65_000);
+    const local = new Date(at - at.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+    for (let i = 0; i < 2; i++) {
+      await say();
+      await set('#sched-at', local);
+      await sb.click('#sched-add');
+      await until('scheduled', async () => (await sb.text('#message')) !== '');
+    }
+    n((await sb.text('#schedules')).slice(0, 160));
+    assert.equal(await sb.text('#cards .card'), null);
+    await until('due', async () => /needs you: Attach a tab/.test(await sb.text('#schedules')), 130_000, 500);
+    n((await sb.eval('return [...document.querySelectorAll(".sched-state")].map((x) => x.textContent)')).join(' | '));
+    await sb.click('#schedules li:nth-child(2) .sched-cancel');
+    await until('second cancelled', async () => /cancelled: You cancelled it before it began/.test(await sb.text('#schedules')));
+    await sb.attach('This sidebar', 'act', null);
+    await until('asks for the text', () => sb.text('#schedules .sched-answer'), 5000);
+    await set('#schedules .sched-value', 'given now');
+    A.reports.length = 0;
+    await sb.click('#schedules .sched-answer');
+    await sb.waitCard();
+    n((await sb.text('#cards .card')).slice(0, 160));
+    await sb.answerCard(true);
+    await until('second card', async () => /click/.test((await sb.text('#cards .card')) ?? ''), 8000);
+    assert.ok(!A.reports.some((x) => x.startsWith('saved')));
+    await sb.answerCard(true);
+    await until('page saved', () => A.reports.some((x) => x.startsWith('saved q=given now')), 5000);
+    await until('done', async () => /done: All steps are done/.test(await sb.text('#schedules')), 15_000, 200);
+    const stored = await sb.eval('return JSON.stringify(await browser.storage.local.get("schedules"))');
+    assert.ok(!stored.includes('given now') && !stored.includes('recorded words'));
+    await sb.click('#schedules .sched-remove');
+    await sb.click('#schedules .sched-remove');
+    await until('none', async () => /Nothing runs by itself/.test(await sb.text('#schedules')));
+    await sb.eval('for (const x of document.querySelectorAll("#grants li")) if (x.textContent.includes("This sidebar")) x.querySelector(".revoke").id = "own-revoke2"');
+    await sb.click('#own-revoke2');
+  });
+
+  await check('FC-CONN', 'remote link: off, paired with a code, allowed by fingerprint, identified, under every rule; revoked in the middle of a call; nothing listens afterwards', async (n) => {
+    const PORT = 18_477;
+    const listens = () => new Promise((r) => {
+      const s = net.connect(PORT, '127.0.0.1', () => (s.destroy(), r(true)));
+      s.on('error', () => r(false));
+    });
+    await open(`${A.origin}/dev`);
+    await attach('act'); // an earlier check ended the session of the client
+    assert.equal(await sb.eval('return document.querySelector("#remote-offer").disabled'), true);
+    const gw = backend('remote/gateway.mjs', ['--home', home.dir, '--listen', `127.0.0.1:${PORT}`]);
+    await backendIs('remote', 'off', 15_000);
+    assert.equal(await listens(), false);
+    await turnOn('remote');
+    await until('listening', listens, 5000);
+    await set('#remote-name', 'Laptop');
+    await sb.click('#remote-offer');
+    const code = await until('code', () => sb.text('#remote-code .code'), 5000);
+    const env = { ...process.env, FC_REMOTE_HOME: path.join(work, 'laptop') };
+    const p = spawn(process.execPath, [path.join(root, 'dist/remote/client.mjs'), 'pair', '--host', `127.0.0.1:${PORT}`], { stdio: 'pipe', env });
+    let said = '';
+    p.stdout.on('data', (d) => (said += d));
+    p.stdin.end(`${code}\n`);
+    await new Promise((r) => p.on('exit', r));
+    const mark = /Fingerprint (\S+)\./.exec(said)[1];
+    await until('waits for the user', async () => (await sb.text('#pairings')).includes(mark), 5000);
+    n((await sb.text('#pairings')).slice(0, 220));
+    assert.equal(await sb.text('#remote-code .code'), null, 'the code is gone');
+    process.env.FC_REMOTE_HOME = env.FC_REMOTE_HOME;
+    const far2 = new McpClient({ server: path.join(root, 'dist/remote/client.mjs') }, { name: 'claude-far' });
+    delete process.env.FC_REMOTE_HOME;
+    await far2.init();
+    assert.equal((await far2.call('tabs_context')).code, 'not_connected', 'before the user allows it');
+    await sb.click('#pairings .remote-allow');
+    await until('allowed', async () => /allowed/.test(await sb.text('#pairings')));
+    const ctx = (await far2.call('tabs_context')).data;
+    assert.deepEqual(ctx.tabs, []);
+    await until('shown as remote', async () => /Remote Laptop: claude-far/.test(await sb.text('#sessions')));
+    assert.equal((await far2.call('read_page', { tabId: tab })).code, 'conflict');
+    const { request_id } = (await far2.call('tab_request', { reason: 'From far', level: 'act' })).data;
+    await until('request', async () => /Remote Laptop.*asks for a tab/.test(await sb.text('#requests')));
+    const answered = far2.call('tab_request_result', { request_id, wait_s: 20 });
+    await sb.click('#requests .give-act');
+    await until('conflict', async () => /conflict/.test(await sb.text('#message')), 4000);
+    await sb.click('#move');
+    await until('moved', async () => /Moved here/.test(await sb.text('#message')), 4000);
+    assert.equal((await answered).data.state, 'granted');
+    assert.match((await far2.call('read_page', { tabId: tab })).text, /Dev 3000/);
+    const ref = /"Work".*\[(ref_\w+)\]/.exec((await far2.call('read_page', { tabId: tab, filter: 'interactive' })).text)[1];
+    A.reports.length = 0;
+    const clicked = far2.call('computer', { action: 'left_click', tabId: tab, ref });
+    await sb.waitCard();
+    const text = await sb.text('#cards .card');
+    n(text.slice(0, 120));
+    assert.match(text, /^Remote Laptop: claude-far/);
+    await sb.answerCard(true);
+    assert.equal((await clicked).data.dispatched, true);
+    await reported('worked 42');
+    const waits = far2.call('wait_for', { tabId: tab, text: 'never there', timeout_s: 20 });
+    await sleep(400);
+    await sb.click('#pairings .remote-revoke');
+    const ended = (await waits).code;
+    n(`the call under way ended with ${ended}`);
+    assert.ok(['pairing_ended', 'stopped', 'outcome_unknown'].includes(ended));
+    assert.equal((await far2.call('tabs_context')).code, 'not_connected');
+    await until('session gone', async () => !/Remote Laptop/.test(await sb.text('#sessions')), 4000);
+    assert.ok(!(await sb.text('#grants')).includes('Remote'));
+    assert.ok(!gw.text.includes(code));
+    await sb.click('#backend-remote .backend-off');
+    await until('closed', async () => !(await listens()), 4000);
+    await far2.close();
+    await gw.stop();
+    await attach('act');
   });
 } finally {
   c?.child.kill();

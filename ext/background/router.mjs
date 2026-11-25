@@ -237,7 +237,7 @@ export class Router {
     const known = this.urls.get(tabId);
     for (const s of this.sessions.values()) {
       const mine = s.owned.delete(tabId) || this.grants.find(s.id, tabId);
-      if (mine && known && originOf(known.url)) s.closed = [{ id: `c${tabId}`, ...known }, ...s.closed].slice(0, LIMITS.closed);
+      if (mine && known && originOf(known.url) && tabId < VIRTUAL) s.closed = [{ id: `c${tabId}`, ...known }, ...s.closed].slice(0, LIMITS.closed);
       if (s.current === tabId) s.current = null;
     }
     this.urls.delete(tabId);

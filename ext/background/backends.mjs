@@ -84,11 +84,12 @@ export class Backends {
     return b;
   }
 
-  status() {
+  /** For clients. The sidebar also gets what a backend says of itself, like its address. */
+  status({ detail = false } = {}) {
     return Object.entries(KNOWN).map(([id, k]) => {
       const b = this.list.get(id);
       const on = b?.on === true && this.router.switches[id] === true;
-      return { id, title: k.title, state: !b ? 'not running' : on ? 'on' : 'off', ...(b && { version: b.info.version, channel: b.info.channel, ...(b.info.detail && { detail: b.info.detail }) }), permissions: k.permissions, ...(!on && { setup: k.setup }) };
+      return { id, title: k.title, state: !b ? 'not running' : on ? 'on' : 'off', ...(b && { version: b.info.version, channel: b.info.channel, ...(detail && b.info.detail && { detail: b.info.detail }) }), permissions: k.permissions, ...(!on && { setup: k.setup }) };
     });
   }
 

@@ -88,6 +88,14 @@ test('taken back, stopped or paused while the card is open: the message is not o
     end();
     assert.equal(await code(p), want);
   }
+  router.openSession('s1', 'mcp', 's1');
+  router.setPaused(false);
+  shares.set('s1', 'a1', true);
+  const p = call('mail_read', { message: 1 });
+  for (let i = 0; i < 100 && !approvals.cards.length; i++) await tick();
+  shares.set('s1', 'a1', false); // and the card is answered all the same
+  await answer(true);
+  assert.equal(await code(p), 'no_grant');
   assert.deepEqual(asked, []);
 });
 

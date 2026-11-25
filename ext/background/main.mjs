@@ -356,7 +356,6 @@ const fromSidebar = {
     if (m.name === 'remote' && on) remote.onEvent({ type: 'on' });
     changed();
   },
-  backend_info: () => ({ backends: backends.status() }),
   sched_add: (m) => schedules.add(m),
   sched_set: (m) => schedules.set(m.schedule, m.on === true),
   sched_remove: (m) => schedules.remove(m.schedule),
@@ -506,7 +505,7 @@ function view() {
     switches: router.switches,
     folders: router.folders,
     profile,
-    backends: backends.status(),
+    backends: backends.status({ detail: true }),
     backendTabs: [...backends.tabs.keys()].map((id) => backends.tab(id)),
     schedules: schedules.view(),
     remote: remote.view(),

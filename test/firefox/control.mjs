@@ -353,6 +353,10 @@ try {
     assert.equal(await active(), before);
     await c.call('tabs_close', { tabId: again.tabId });
     n((await c.call('containers_list')).text.replace(/\s+/g, ' ').slice(0, 160));
+    assert.equal((await c.call('tabs_create', { container: 'Work' })).code, 'permission_required', 'the cookies permission of containers is not there at install');
+    await sb.eval('document.querySelector("#d-data").open = true; document.querySelector("#message").textContent = ""');
+    await sb.click('#containers-ok');
+    n(await until('allowed', () => sb.text('#message'), 5000));
     const box = c.call('tabs_create', { url: `${A.origin}/second`, container: 'Work' });
     await sb.answerCard(true);
     const inBox = (await box).data;
