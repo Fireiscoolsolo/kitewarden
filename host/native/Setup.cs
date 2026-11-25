@@ -19,21 +19,24 @@ static class Setup
     public static int Run(string mode, string[] args)
     {
         string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FirefoxCompanion");
-        bool dry = false;
+        bool dry = false, mail = false;
         for (int i = 1; i < args.Length; i++)
         {
             if (args[i] == "--home" && i + 1 < args.Length) dir = args[++i];
             else if (args[i] == "--dry-run") dry = true;
+            else if (args[i] == "--thunderbird" && mode == "install") mail = true;
             else { Console.Error.WriteLine("Unknown option " + args[i]); return 2; }
         }
         var home = new Home(dir);
-        try { return mode == "install" ? Install(home, dry) : mode == "uninstall" ? Uninstall(home, dry) : Doctor(home); }
+        try { return mode == "install" ? Install(home, dry, mail) : mode == "uninstall" ? Uninstall(home, dry) : Doctor(home); }
         catch (Exception e) { Console.Error.WriteLine(mode + " failed: " + e.Message); return 1; }
     }
 
+    const string MailRegistryPath = @"Software\Mozilla\NativeMessagingHosts\" + Program.MailHostName;
     static string Manifest(Home h) { return Path.Combine(h.Dir, "native-manifest.json"); }
+    static string MailManifest(Home h) { return Path.Combine(h.Dir, "native-manifest-mail.json"); }
 
-    static int Install(Home h, bool dry)
+    static int Install(Home h, bool dry, bool mail)
     {
         string source = AppDomain.CurrentDomain.BaseDirectory;
         string mcpSource = Path.Combine(source, @"..\mcp");
@@ -74,24 +77,9 @@ static class Setup
             if (!File.Exists(h.Install)) step("write " + h.Install,
                 delegate { File.WriteAllText(h.Install, "{\"pipe\":\"firefox-companion-" + Crypto.Nonce(16) + "\"}"); }, delegate { File.Delete(h.Install); });
 
-            var manifest = new Dictionary<string, object>();
-            manifest["name"] = Program.HostName;
-            manifest["description"] = "Firefox Companion helper";
-            manifest["path"] = Path.Combine(h.Dir, Exe);
-            manifest["type"] = "stdio";
-            manifest["allowed_extensions"] = new[] { Program.ExtensionId };
-            bool had = File.Exists(Manifest(h));
-            step("write " + Manifest(h), delegate { File.WriteAllText(Manifest(h), new JavaScriptSerializer().Serialize(manifest)); },
-                had ? (Action)null : delegate { File.Delete(Manifest(h)); });
-
-            string old = Registered();
-            step(@"set HKCU\" + RegistryPath + " to " + Manifest(h),
-                delegate { using (var k = Registry.CurrentUser.CreateSubKey(RegistryPath)) k.SetValue("", Manifest(h)); },
-                delegate
-                {
-                    if (old == null) Registry.CurrentUser.DeleteSubKey(RegistryPath, false);
-                    else using (var k = Registry.CurrentUser.CreateSubKey(RegistryPath)) k.SetValue("", old);
-                });
+            Register(h, step, Program.HostName, Program.ExtensionId, Manifest(h), RegistryPath);
+            // Thunderbird reads the same place of the registry. Only when the user asks for it.
+            if (mail) Register(h, step, Program.MailHostName, Program.MailExtensionId, MailManifest(h), MailRegistryPath);
             if (!dry)
             {
                 string problem = h.AccessProblem();
@@ -107,6 +95,28 @@ static class Setup
         return 0;
     }
 
+    /// <summary>One registration allows exactly one add-on.</summary>
+    static void Register(Home h, Action<string, Action, Action> step, string name, string id, string file, string key)
+    {
+        var manifest = new Dictionary<string, object>();
+        manifest["name"] = name;
+        manifest["description"] = "Firefox Companion helper";
+        manifest["path"] = Path.Combine(h.Dir, Exe);
+        manifest["type"] = "stdio";
+        manifest["allowed_extensions"] = new[] { id };
+        bool had = File.Exists(file);
+        step("write " + file, delegate { File.WriteAllText(file, new JavaScriptSerializer().Serialize(manifest)); },
+            had ? (Action)null : delegate { File.Delete(file); });
+        string old = Registered(key);
+        step(@"set HKCU\" + key + " to " + file,
+            delegate { using (var k = Registry.CurrentUser.CreateSubKey(key)) k.SetValue("", file); },
+            delegate
+            {
+                if (old == null) Registry.CurrentUser.DeleteSubKey(key, false);
+                else using (var k = Registry.CurrentUser.CreateSubKey(key)) k.SetValue("", old);
+            });
+    }
+
     static void Copy(Action<string, Action, Action> step, string from, string to)
     {
         if (string.Equals(Path.GetFullPath(from), to, StringComparison.OrdinalIgnoreCase)) return;
@@ -114,9 +124,9 @@ static class Setup
         step("copy " + Path.GetFileName(from) + " to " + to, delegate { File.Copy(from, to, true); }, had ? (Action)null : delegate { File.Delete(to); });
     }
 
-    static string Registered()
+    static string Registered(string key)
     {
-        using (var k = Registry.CurrentUser.OpenSubKey(RegistryPath)) return k == null ? null : k.GetValue("") as string;
+        using (var k = Registry.CurrentUser.OpenSubKey(key)) return k == null ? null : k.GetValue("") as string;
     }
 
     static int Uninstall(Home h, bool dry)
@@ -127,10 +137,12 @@ static class Setup
             Console.WriteLine((dry ? "would: " : "") + what);
             if (!dry) act();
         };
-        if (string.Equals(Registered(), Manifest(h), StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(Registered(RegistryPath), Manifest(h), StringComparison.OrdinalIgnoreCase))
             step(@"delete HKCU\" + RegistryPath, delegate { Registry.CurrentUser.DeleteSubKey(RegistryPath, false); });
+        if (string.Equals(Registered(MailRegistryPath), MailManifest(h), StringComparison.OrdinalIgnoreCase))
+            step(@"delete HKCU\" + MailRegistryPath, delegate { Registry.CurrentUser.DeleteSubKey(MailRegistryPath, false); });
         // Only files of this program, by name. Anything else keeps its folder in place.
-        var files = new List<string> { Manifest(h), h.Key, h.State, Path.Combine(h.Dir, Exe) };
+        var files = new List<string> { Manifest(h), MailManifest(h), Path.Combine(h.Dir, "remote", "clients.json"), h.Key, h.State, Path.Combine(h.Dir, Exe) };
         foreach (var f in McpFiles) files.Add(Path.Combine(h.Dir, "mcp", f));
         string chat = Path.Combine(h.Dir, "chat");
         files.Add(Path.Combine(chat, "rules.txt"));
@@ -138,7 +150,7 @@ static class Setup
         if (Directory.Exists(h.Profiles)) files.AddRange(Directory.GetFiles(h.Profiles, "*.json"));
         files.Add(h.Install);
         foreach (var f in files) if (File.Exists(f)) { string file = f; step("delete " + file, delegate { File.Delete(file); }); }
-        foreach (var d in new[] { Path.Combine(h.Dir, "mcp"), chat, h.Profiles, h.Dir })
+        foreach (var d in new[] { Path.Combine(h.Dir, "mcp"), Path.Combine(h.Dir, "remote"), chat, h.Profiles, h.Dir })
             if (Directory.Exists(d) && (dry || Directory.GetFileSystemEntries(d).Length == 0)) { string dir = d; step("delete folder " + dir, delegate { Directory.Delete(dir); }); }
         return 0;
     }
@@ -155,8 +167,11 @@ static class Setup
         check("folder", Directory.Exists(h.Dir) ? Access.Problem(h.Dir, true) : h.Dir + " is missing", "run install");
         check("key file", File.Exists(h.Key) ? Access.Problem(h.Key, false) : h.Key + " is missing", "run install");
         check("program", File.Exists(Path.Combine(h.Dir, Exe)) ? null : Exe + " is missing", "run install");
-        check("registry", string.Equals(Registered(), Manifest(h), StringComparison.OrdinalIgnoreCase) ? null : "the key points to " + (Registered() ?? "nothing"), "run install");
-        check("manifest", ManifestProblem(h), "run install");
+        check("registry", string.Equals(Registered(RegistryPath), Manifest(h), StringComparison.OrdinalIgnoreCase) ? null : "the key points to " + (Registered(RegistryPath) ?? "nothing"), "run install");
+        check("manifest", ManifestProblem(Manifest(h), h, Program.ExtensionId), "run install");
+        if (File.Exists(MailManifest(h)))
+            check("thunderbird", string.Equals(Registered(MailRegistryPath), MailManifest(h), StringComparison.OrdinalIgnoreCase) ? ManifestProblem(MailManifest(h), h, Program.MailExtensionId) : "the key points to " + (Registered(MailRegistryPath) ?? "nothing"), "run install --thunderbird");
+        else Console.WriteLine("info  thunderbird: not registered; install --thunderbird does it");
         string pipe = "none";
         var names = new List<string> { h.PipeName() };
         if (Directory.Exists(h.Profiles))
@@ -179,13 +194,13 @@ static class Setup
         }
     }
 
-    static string ManifestProblem(Home h)
+    static string ManifestProblem(string file, Home h, string id)
     {
         try
         {
-            var m = (Dictionary<string, object>)new JavaScriptSerializer().DeserializeObject(File.ReadAllText(Manifest(h)));
+            var m = (Dictionary<string, object>)new JavaScriptSerializer().DeserializeObject(File.ReadAllText(file));
             var ids = (object[])m["allowed_extensions"];
-            if (ids.Length != 1 || (string)ids[0] != Program.ExtensionId) return "it does not allow exactly " + Program.ExtensionId;
+            if (ids.Length != 1 || (string)ids[0] != id) return "it does not allow exactly " + id;
             return string.Equals((string)m["path"], Path.Combine(h.Dir, Exe), StringComparison.OrdinalIgnoreCase) ? null : "it starts " + m["path"];
         }
         catch (Exception e) { return e.Message; }

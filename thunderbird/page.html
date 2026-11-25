@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Firefox Companion</title>
+    <style>
+      body { font: message-box; max-width: 46em; margin: 1em auto; padding: 0 1em; color: CanvasText; background: Canvas; }
+      .card { border: 2px solid AccentColor; border-radius: 6px; padding: 0.5em 1em; margin: 0.5em 0; }
+      label { display: block; }
+      h2 { font-size: 1em; }
+    </style>
+    <script type="module" src="page.mjs"></script>
+  </head>
+  <body>
+    <h1>Firefox Companion for Thunderbird</h1>
+    <p id="state" role="status">Starting</p>
+    <p id="controls"></p>
+    <p id="message" role="status"></p>
+    <div id="cards" aria-live="polite"></div>
+    <h2>Clients</h2>
+    <p>Each client sees nothing until you share an account with it. Opening a message asks you each time. Nothing can be sent, moved or deleted.</p>
+    <ul id="sessions"></ul>
+    <h2>Activity</h2>
+    <ul id="log"></ul>
+  </body>
+</html>

@@ -11,6 +11,7 @@
     "test:firefox": "npm run build && node test/firefox/run.mjs",
     "test:control": "npm run build && node test/firefox/control.mjs",
     "test:advanced": "npm run build && node test/firefox/advanced.mjs",
+    "test:desktop": "npm run build && node test/firefox/desktop.mjs",
     "test:companion": "npm run build && node test/firefox/companion.mjs",
     "test:claude": "npm run build && node test/live/claude.mjs",
     "test:chat": "npm run build && node test/live/chat.mjs",

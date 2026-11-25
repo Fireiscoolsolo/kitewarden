@@ -11,7 +11,7 @@ const INSTRUCTIONS =
 let link;
 let parts; // optional parts that this server was started for
 const running = new Map();
-const PAGE_DATA = ['find', 'find_text', 'list_frames', 'closed_tabs', 'search_bookmarks', 'search_history', 'list_downloads', 'read_console_messages', 'read_network_requests', 'observe_read', 'observe_stop', 'page_query', 'page_timing', 'page_storage', 'get_cookies', 'download_inspect', 'webmcp_list', 'webmcp_call', 'isolated_browser', 'isolated_debug', 'javascript_tool', 'mail_accounts', 'mail_search', 'mail_read'];
+const PAGE_DATA = ['find', 'find_text', 'list_frames', 'closed_tabs', 'search_bookmarks', 'search_history', 'list_downloads', 'read_console_messages', 'read_network_requests', 'observe_read', 'observe_stop', 'page_query', 'page_timing', 'page_storage', 'get_cookies', 'download_inspect', 'webmcp_list', 'webmcp_call', 'isolated_browser', 'isolated_debug', 'mail_accounts', 'mail_search', 'mail_read'];
 
 const send = (m) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...m }) + '\n');
 const text = (t) => ({ type: 'text', text: t });

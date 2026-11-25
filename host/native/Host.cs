@@ -20,6 +20,9 @@ static class Program
 {
     public const string HostName = "firefox_companion";
     public const string ExtensionId = "bridge@firefox-companion.invalid";
+    // The add-on for Thunderbird is another one, with a registration of its own that the user asks for.
+    public const string MailHostName = "firefox_companion_mail";
+    public const string MailExtensionId = "mail@firefox-companion.invalid";
     public const string Version = "0.4.0";
     public const int Protocol = 4;
 
@@ -28,12 +31,12 @@ static class Program
         string mode = args.Length > 0 ? args[0] : "";
         if (mode == "install" || mode == "uninstall" || mode == "doctor") return Setup.Run(mode, args);
         // Firefox passes the manifest path and the add-on ID.
-        if (args.Length != 2 || args[1] != ExtensionId)
+        if (args.Length != 2 || (args[1] != ExtensionId && args[1] != MailExtensionId))
         {
-            Console.Error.WriteLine("Usage: install | uninstall | doctor [--home <folder>] [--dry-run]. Firefox starts the host itself.");
+            Console.Error.WriteLine("Usage: install | uninstall | doctor [--home <folder>] [--dry-run] [--thunderbird]. Firefox starts the host itself.");
             return 2;
         }
-        return new Bridge(Home.Default()).Run();
+        return new Bridge(Home.Default(), args[1] == MailExtensionId ? "mail" : "firefox").Run();
     }
 }
 
@@ -262,8 +265,9 @@ sealed class Bridge
     byte[] key;
     int waiting;
     string profile, label, pipeName;
+    readonly string kind;
 
-    public Bridge(Home h) { home = h; }
+    public Bridge(Home h, string kind) { home = h; this.kind = kind; }
 
     public static string Json(params object[] kv)
     {
@@ -324,8 +328,8 @@ sealed class Bridge
         try
         {
             string json = Json("state", state, "pid", Process.GetCurrentProcess().Id, "at", DateTime.UtcNow.ToString("o"),
-                "host", Program.Version, "protocol", Program.Protocol, "id", profile, "label", label, "pipe", pipeName);
-            File.WriteAllText(home.State, json);
+                "host", Program.Version, "protocol", Program.Protocol, "id", profile, "label", label, "pipe", pipeName, "kind", kind);
+            if (kind == "firefox") File.WriteAllText(home.State, json);
             if (profile == null) return;
             Directory.CreateDirectory(home.Profiles); // inherits the access list of the home folder
             File.WriteAllText(Path.Combine(home.Profiles, profile + ".json"), json);
@@ -351,6 +355,7 @@ sealed class Bridge
         profile = Str(hello, "profile");
         if (profile != null && !System.Text.RegularExpressions.Regex.IsMatch(profile, @"\A[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}\z")) return Fatal("bad_hello", "The profile ID is not valid.", 2);
         label = Label(Str(hello, "label"));
+        if (profile == null && kind != "firefox") return Fatal("bad_hello", "The profile ID is missing.", 2);
         if (profile != null) pipeName += "-" + profile.Replace("-", "").Substring(0, 16);
         if (Int(hello, "protocol") != Program.Protocol)
         {
@@ -389,14 +394,15 @@ sealed class Bridge
                     Client c;
                     if (clients.TryGetValue(Str(m, "session") ?? "", out c)) c.Finish(); // the writer sends what is queued, then closes
                 }
+                else if (type == "label") { label = Label(Str(m, "label")); WriteState("running"); }
+                else if (type == "bye") { end = "disconnected_by_user"; break; }
+                else if (kind != "firefox") Console.Error.WriteLine("refused message of type " + (type ?? "?")); // no files, chats or skills for mail
                 else if (type == "chat_run") runs.Start(m);
                 else if (type == "file_stat" || type == "file_read" || type == "folder_check")
                     ToFirefox(Json("type", "reply", "id", Str(m, "id"), "result", Files.Answer(type, m, home)));
-                else if (type == "label") { label = Label(Str(m, "label")); WriteState("running"); }
                 else if (type == "chat_stop") runs.Stop(Str(m, "run"));
                 else if (type == "claude_info") runs.Info(Str(m, "id"));
                 else if (type == "skill_write") ToFirefox(Json("type", "reply", "id", Str(m, "id"), "result", Skill.Write(m)));
-                else if (type == "bye") { end = "disconnected_by_user"; break; }
                 else Console.Error.WriteLine("refused message of type " + (type ?? "?"));
             }
         }

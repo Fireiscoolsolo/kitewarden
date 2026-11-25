@@ -1,0 +1,11 @@
+
+// Developer build
+GROUPS.script = [];
+TOOLS.javascript_tool = {
+  title: 'Run page script (developer build)',
+  description: 'Runs the body of an async function in the attached page, after an approval that shows the whole code. Returns a JSON value with credential-like values masked. Off until the user turns script on.',
+  level: 'act',
+  approval: true,
+  group: 'script',
+  input: { properties: { tabId, code: str('Body of an async function', 10_000), timeout_s: { type: 'integer', minimum: 1, maximum: 25, description: 'Default 10' }, reason }, required: ['tabId', 'code'] },
+};

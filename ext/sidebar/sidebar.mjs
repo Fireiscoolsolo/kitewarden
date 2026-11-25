@@ -41,7 +41,7 @@ const WANTS = {
   type: 'type', key: 'press keys', form_input: 'fill in a field', form_fill: 'fill in fields', file_upload: 'upload files', navigate: 'open an address', gif_creator: 'record pictures', request_user: 'hand this tab to you',
   tabs_create: 'open a tab', tabs_close: 'close your tab', closed_tabs: 'reopen a tab', windows_create: 'open a window', resize_window: 'change a window', search_bookmarks: 'search your bookmarks',
   add_bookmark: 'add a bookmark', search_history: 'search your history', download_start: 'download a file', read_network_requests: 'keep what this tab sends and receives', page_storage: 'use the storage of this site',
-  get_cookies: 'see the cookies of this site', set_cookie: 'set a cookie', remove_cookie: 'remove a cookie', webmcp_call: 'use a tool of this page', windows_input: 'send real Windows input', isolated_browser: 'use the isolated Firefox', isolated_debug: 'debug in the isolated Firefox', javascript_tool: 'run script in this page',
+  get_cookies: 'see the cookies of this site', set_cookie: 'set a cookie', remove_cookie: 'remove a cookie', webmcp_call: 'use a tool of this page', windows_input: 'send real Windows input', isolated_browser: 'use the isolated Firefox', isolated_debug: 'debug in the isolated Firefox',
 };
 const LABEL = { console: 'console messages and errors of attached tabs', network: 'requests of attached tabs', bodies: 'bodies of requests', cookies: 'cookies of attached sites, without HttpOnly values and tokens', storage: 'the storage of attached sites', webmcp: 'tools that attached pages offer (WebMCP)' };
 const cards = new Map();
