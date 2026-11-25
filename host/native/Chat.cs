@@ -99,7 +99,10 @@ sealed class Runs
 
     string Folder { get { return Path.Combine(home.Dir, "chat"); } }
 
-    public static string FindClaude()
+    public static string FindClaude() { return Find("claude.exe"); }
+
+    /// <summary>A program on PATH, or where Claude Code installs itself.</summary>
+    public static string Find(string program)
     {
         var dirs = new List<string>((Environment.GetEnvironmentVariable("PATH") ?? "").Split(';'));
         dirs.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), @".local\bin"));
@@ -107,7 +110,7 @@ sealed class Runs
         {
             // A relative entry would look in the working folder.
             string dir = d.Trim().Trim('"');
-            try { if (dir.Length > 2 && dir[1] == ':' && File.Exists(Path.Combine(dir, "claude.exe"))) return Path.Combine(dir, "claude.exe"); }
+            try { if (dir.Length > 2 && dir[1] == ':' && File.Exists(Path.Combine(dir, program))) return Path.Combine(dir, program); }
             catch (ArgumentException) { }
         }
         return null;

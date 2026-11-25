@@ -1,10 +1,10 @@
 // Assembles dist/: the extension, the host program and the MCP server. No dependency: the host is built with the
 // C# compiler that ships with Windows.
-import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PROTOCOL, VERSION } from '../shared/protocol.mjs';
+import { compile } from './compile.mjs';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dist = path.join(root, 'dist');
@@ -32,14 +32,9 @@ for (const f of ['gateway.mjs', 'client.mjs', 'wire.mjs']) cpSync(path.join(root
 // The other computer needs the folder remote alone.
 for (const f of ['serve.mjs', 'link.mjs', 'protocol.mjs']) cpSync(path.join(dist, 'mcp', f), path.join(dist, 'remote', f));
 
-const CSC = path.join(process.env.SystemRoot, 'Microsoft.NET/Framework64/v4.0.30319/csc.exe');
-execFileSync(CSC, ['/nologo', '/warnaserror+', '/optimize+', '/platform:x64', '/target:exe', `/out:${path.join(dist, 'backends/firefox-companion-input.exe')}`, path.join(root, 'backends/Input.cs')], { stdio: 'inherit' });
-execFileSync(CSC, [
-  '/nologo', '/warnaserror+', '/optimize+', '/platform:x64', '/target:exe',
-  `/out:${path.join(dist, 'host/firefox-companion-host.exe')}`,
-  '/r:System.Web.Extensions.dll', '/r:System.Core.dll',
-  ...['Host.cs', 'Setup.cs', 'Chat.cs', 'Files.cs'].map((f) => path.join(root, 'host/native', f)),
-], { stdio: 'inherit' });
+compile(path.join(dist, 'backends/firefox-companion-input.exe'), [path.join(root, 'backends/Input.cs')]);
+compile(path.join(dist, 'host/firefox-companion-host.exe'), ['/r:System.Web.Extensions.dll', '/r:System.Core.dll', ...['Host.cs', 'Setup.cs', 'Chat.cs', 'Files.cs'].map((f) => path.join(root, 'host/native', f))]);
+cpSync(path.join(root, 'NOTICE.txt'), path.join(dist, 'host/NOTICE.txt'));
 // The add-on for Thunderbird: the rules of the everyday add-on, and tools of its own.
 cpSync(path.join(root, 'thunderbird'), path.join(dist, 'thunderbird/thunderbird'), { recursive: true });
 cpSync(path.join(dist, 'thunderbird/thunderbird/manifest.json'), path.join(dist, 'thunderbird/manifest.json'));

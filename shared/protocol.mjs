@@ -2,7 +2,7 @@
 // The extension enforces it. The MCP server uses it to list tools and to refuse bad arguments early.
 
 export const PROTOCOL = 4;
-export const VERSION = '0.4.0';
+export const VERSION = '0.5.0';
 
 export const LIMITS = {
   toBrowser: 256 * 1024, // one client frame; Firefox accepts at most 1 MB from a native host

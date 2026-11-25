@@ -1,5 +1,6 @@
 # build output, test artifacts and tool state
 dist/
+release/
 test-results/
 node_modules/
 .claude/

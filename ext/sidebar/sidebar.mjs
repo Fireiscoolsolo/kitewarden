@@ -14,14 +14,14 @@ const LINK = {
   connecting: ['Connecting', 'Starting the helper.'],
   connected: ['Connected', 'The helper is running.'],
   waiting: ['Helper stopped', 'It is started again by itself.'],
-  refused: ['The helper refused to start', 'Run the doctor: firefox-companion-host.exe doctor'],
+  refused: ['The helper refused to start', 'Start FirefoxCompanionSetup and choose Diagnose.'],
   version_mismatch: ['Versions differ', 'Update the older part, then press Retry now.'],
 };
 
 function drawLink() {
   const { link, paused } = ui.state;
   let [title, next] = LINK[link.state];
-  if (link.code === 'helper_missing') [title, next] = ['Helper not installed', 'Run the installer: firefox-companion-host.exe install'];
+  if (link.code === 'helper_missing') [title, next] = ['Helper not installed', 'Run the installer, FirefoxCompanionSetup. This page connects by itself after that.'];
   if (paused) [title, next] = [`Paused (${title.toLowerCase()})`, 'Every call is refused until you press Resume.'];
   document.body.dataset.link = paused ? 'paused' : link.state;
   $('link-title').textContent = title;

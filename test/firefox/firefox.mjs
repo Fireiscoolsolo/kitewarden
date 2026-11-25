@@ -65,9 +65,10 @@ class Marionette {
 }
 
 export class Firefox {
-  static async start({ headed = process.env.FC_HEADED === '1', prefs = {}, env = {} } = {}) {
+  static async start({ headed = process.env.FC_HEADED === '1', prefs = {}, env = {}, profile = null } = {}) {
     const f = new Firefox();
-    f.profile = mkdtempSync(path.join(os.tmpdir(), 'fc-profile-'));
+    f.profile = profile ?? mkdtempSync(path.join(os.tmpdir(), 'fc-profile-'));
+    rmSync(path.join(f.profile, 'MarionetteActivePort'), { force: true });
     writeFileSync(path.join(f.profile, 'user.js'), Object.entries({ ...PREFS, ...prefs }).map(([k, v]) => `user_pref(${JSON.stringify(k)}, ${JSON.stringify(v)});`).join('\n'));
     const args = ['-marionette', '-no-remote', '-profile', f.profile, '-width', '1280', '-height', '900'];
     if (!headed) args.unshift('-headless');
@@ -100,9 +101,9 @@ export class Firefox {
     return this.#script('content', script, args);
   }
 
-  async install(dir) {
+  async install(dir, temporary = true) {
     await this.m.send('Marionette:SetContext', { value: 'chrome' });
-    return (await this.m.send('Addon:Install', { path: dir, temporary: true })).value;
+    return (await this.m.send('Addon:Install', { path: dir, temporary })).value;
   }
 
   async navigate(url) {
@@ -151,9 +152,10 @@ export class Firefox {
     return text;
   }
 
-  async quit() {
-    await this.m.send('Marionette:Quit', { flags: ['eForceQuit'] }).catch(() => {});
+  async quit({ keep = false } = {}) {
+    await Promise.race([this.m.send('Marionette:Quit', { flags: ['eForceQuit'] }).catch(() => {}), sleep(15_000)]);
     this.m.socket.destroy();
+    if (keep) return until('Firefox ended', () => { try { process.kill(this.pid, 0); } catch { return true; } return false; }, 30_000, 200);
     await until('profile removed', async () => {
       try {
         rmSync(this.profile, { recursive: true, force: true });

@@ -1,6 +1,6 @@
 // Shared by the integration, Firefox and live checks. Installs into a temporary home and restores the registry key.
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
@@ -63,6 +63,14 @@ export function installHome() {
       }, 5000, 200);
     },
   };
+}
+
+/** dist/ of an earlier commit, built from its own files in the folder `src`. */
+export function buildAt(commit, src) {
+  mkdirSync(src, { recursive: true });
+  execFileSync('tar', ['-xf', '-'], { cwd: src, input: execFileSync('git', ['archive', commit], { cwd: root, maxBuffer: 1e8 }) });
+  execFileSync(process.execPath, ['build/build.mjs'], { cwd: src });
+  return path.join(src, 'dist');
 }
 
 /** A folder with a TEST DOUBLE named claude.exe, to be put first on PATH. */

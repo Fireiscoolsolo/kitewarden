@@ -1,0 +1,18 @@
+Firefox Companion (working name)
+
+License
+  No license has been chosen yet. Until the owner chooses one, all rights are reserved and nobody is given the right to
+  copy, change or distribute this software.
+
+Third-party code
+  None. The add-ons, the helper, the MCP server and the optional programs are original code. They contain no library, font
+  or artwork of others. The projects named in docs/feature-parity.md ("Pinned sources and licenses") were read as references
+  for behavior only (decision D8).
+
+Used on your computer, not part of this software
+  Firefox, the .NET Framework 4.8 of Windows, Node.js, Claude Code and Claude Desktop, each under its own terms. The .mcpb
+  file follows the MCP Bundle format (https://github.com/modelcontextprotocol/mcpb) and contains nothing of it.
+
+Trademarks
+  Firefox, Thunderbird and Mozilla are trademarks of the Mozilla Foundation. Claude and Anthropic are trademarks of
+  Anthropic, PBC. Windows is a trademark of Microsoft. This software is not made, endorsed or supported by any of them.

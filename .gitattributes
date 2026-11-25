@@ -1,0 +1,2 @@
+# The same bytes in every clone, so that two builds of a commit have the same hashes.
+* text=auto eol=lf

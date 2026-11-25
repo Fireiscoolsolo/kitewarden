@@ -5,9 +5,9 @@ import { LIMITS, ToolError, VIRTUAL, oneLine, originOf } from '../shared/protoco
 
 /** What exists, whether or not it runs: for the user and for connection_status. */
 export const KNOWN = {
-  isolated: { title: 'Isolated Firefox (WebDriver BiDi)', setup: 'Build, then run: node dist/backends/isolated.mjs  (add --headless for tests without a window). It starts a second Firefox with an empty profile and deletes that profile at the end.', permissions: 'No permission of this add-on. A debugging port on 127.0.0.1 of the second Firefox only, taken by the backend at once.' },
-  input: { title: 'Windows input', setup: 'Build, then run: node dist/backends/input.mjs  on the same desktop. Works while a Firefox window shows the attached tab.', permissions: 'No permission of this add-on. It posts mouse messages to one window of this Firefox.' },
-  remote: { title: 'Remote link', setup: 'Build, then run: node dist/remote/gateway.mjs --listen 127.0.0.1:8475  and pair a client here. Nothing listens unless you start it.', permissions: 'No permission of this add-on. A TLS port at the address that you give.' },
+  isolated: { title: 'Isolated Firefox (WebDriver BiDi)', setup: 'From the optional package, run: node backends/isolated.mjs  (add --headless for tests without a window). It starts a second Firefox with an empty profile and deletes that profile at the end.', permissions: 'No permission of this add-on. A debugging port on 127.0.0.1 of the second Firefox only, taken by the backend at once.' },
+  input: { title: 'Windows input', setup: 'From the optional package, run: node backends/input.mjs  on the same desktop. Works while a Firefox window shows the attached tab.', permissions: 'No permission of this add-on. It posts mouse messages to one window of this Firefox.' },
+  remote: { title: 'Remote link', setup: 'From the optional package, run: node remote/gateway.mjs --listen 127.0.0.1:8475  and pair a client here. Nothing listens unless you start it.', permissions: 'No permission of this add-on. A TLS port at the address that you give.' },
 };
 
 export class Backends {

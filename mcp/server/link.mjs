@@ -13,7 +13,7 @@ delete process.env.FC_CHAT_TICKET;
 const PINNED = process.env.FC_PROFILE || null; // a chat run belongs to the profile that started it
 
 const NEXT = {
-  not_installed: 'Run the installer: firefox-companion-host.exe install',
+  not_installed: 'Run the installer, FirefoxCompanionSetup, and then press Connect in the Firefox Companion sidebar.',
   mail_not_running: 'Start Thunderbird, open Firefox Companion there and press Connect.',
   never_connected: 'Open Firefox, open the Firefox Companion sidebar and press Connect.',
   firefox_closed: 'Start Firefox, open the Firefox Companion sidebar and press Connect.',

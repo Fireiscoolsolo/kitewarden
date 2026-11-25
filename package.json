@@ -1,14 +1,17 @@
 {
   "name": "firefox-companion",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "engines": { "node": ">=22" },
   "scripts": {
     "build": "node build/build.mjs",
     "build:developer": "node build/build.mjs --developer",
+    "release": "npm test && node build/release.mjs",
     "test": "npm run build && node --test \"test/unit/*.test.mjs\"",
     "test:integration": "npm run build && node --test --test-concurrency=1 \"test/integration/*.test.mjs\"",
+    "test:install": "npm run build && node build/release.mjs && node --test --test-concurrency=1 \"test/install/*.test.mjs\"",
+    "test:packaged": "npm run build && node build/release.mjs && node test/firefox/packaged.mjs",
     "test:firefox": "npm run build && node test/firefox/run.mjs",
     "test:control": "npm run build && node test/firefox/control.mjs",
     "test:advanced": "npm run build && node test/firefox/advanced.mjs",

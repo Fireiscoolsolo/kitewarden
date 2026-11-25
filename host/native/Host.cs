@@ -16,6 +16,11 @@ using System.Threading;
 using System.Web.Script.Serialization;
 using Microsoft.Win32.SafeHandles;
 
+[assembly: System.Reflection.AssemblyTitle("Firefox Companion helper")]
+[assembly: System.Reflection.AssemblyProduct("Firefox Companion (working name)")]
+[assembly: System.Reflection.AssemblyVersion(Program.Version)]
+[assembly: System.Reflection.AssemblyFileVersion(Program.Version)]
+
 static class Program
 {
     public const string HostName = "firefox_companion";
@@ -23,17 +28,18 @@ static class Program
     // The add-on for Thunderbird is another one, with a registration of its own that the user asks for.
     public const string MailHostName = "firefox_companion_mail";
     public const string MailExtensionId = "mail@firefox-companion.invalid";
-    public const string Version = "0.4.0";
+    public const string Version = "0.5.0";
     public const int Protocol = 4;
 
     static int Main(string[] args)
     {
         string mode = args.Length > 0 ? args[0] : "";
+        if (args.Length == 0 && Setup.Bundled) return Setup.Ask();
         if (mode == "install" || mode == "uninstall" || mode == "doctor") return Setup.Run(mode, args);
         // Firefox passes the manifest path and the add-on ID.
         if (args.Length != 2 || (args[1] != ExtensionId && args[1] != MailExtensionId))
         {
-            Console.Error.WriteLine("Usage: install | uninstall | doctor [--home <folder>] [--dry-run] [--thunderbird]. Firefox starts the host itself.");
+            Console.Error.WriteLine("Usage: install [--dry-run] [--claude-code] [--thunderbird] | uninstall [--dry-run] [--ask] | doctor [--claude-code], each with [--home <folder>]. Firefox starts the host itself.");
             return 2;
         }
         return new Bridge(Home.Default(), args[1] == MailExtensionId ? "mail" : "firefox").Run();
