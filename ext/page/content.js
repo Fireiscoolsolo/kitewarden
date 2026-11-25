@@ -5,7 +5,7 @@
   globalThis.companion = true;
 
   const frame = browser.runtime.getFrameId(window);
-  const id = crypto.randomUUID().slice(0, 8); // a ref names one element of one document and is never reused
+  const id = `d${crypto.randomUUID().slice(0, 8)}`; // a ref names one element of one document and is never reused; the d keeps it apart from a frame, "ref_f<number>_"
   const refs = new Map();
   let refOf = new WeakMap();
   const everPassword = new WeakSet();

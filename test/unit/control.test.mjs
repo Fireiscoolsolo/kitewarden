@@ -1,7 +1,8 @@
 // Mocked browser with frames, windows and a helper. Real: Router, tools, Grants, Approvals. Simulated evidence only.
 import assert from 'node:assert/strict';
 import { beforeEach, test } from 'node:test';
-import { Router } from '../../dist/extension/background/router.mjs';
+import { readFileSync } from 'node:fs';
+import { Router, frameOfRef } from '../../dist/extension/background/router.mjs';
 import { Approvals } from '../../dist/extension/grants/approvals.mjs';
 import { Grants } from '../../dist/extension/grants/grants.mjs';
 import { addRule, noRules, ruleFor } from '../../dist/extension/grants/rules.mjs';
@@ -450,6 +451,13 @@ test('a stop, a cancel or a revocation during the last question to the browser s
   assert.equal(await code(b), 'cancelled');
   await tick(30);
   assert.ok(!calls.some((c) => c[0] === 'update'), 'the step did not begin');
+});
+
+test('a ref of the tab itself is never read as one of a frame, whatever the random part of its document is', () => {
+  const src = readFileSync(new URL('../../dist/extension/page/content.js', import.meta.url), 'utf8');
+  const id = new Function('crypto', `return ${/const id = (.+?);/.exec(src)[1]}`)({ randomUUID: () => 'f1234567-0000-4000-8000-000000000000' });
+  assert.equal(frameOfRef(`ref_${id}_1`), 0);
+  assert.equal(frameOfRef(`ref_f12_${id}_1`), 12);
 });
 
 test('a copy of a tab that has just moved to another origin is not made', async () => {
