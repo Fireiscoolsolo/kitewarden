@@ -44,7 +44,7 @@ header .bar { flex-wrap: wrap; }
 header .bar + .bar { flex-wrap: nowrap; margin-top: 2px; min-height: 28px; align-items: baseline; }
 h1::before { content: ""; flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--warn); }
 [data-link="connected"] h1::before { background: var(--pine); }
-[data-link="paused"] h1::before, [data-link="refused"] h1::before { background: var(--bad); }
+[data-link="paused"] h1::before, [data-link="refused"] h1::before, body:has(#resume-work:not([hidden])) h1::before { background: var(--bad); }
 #notices { padding: 0 12px; }
 #message, #halt-report:not(:empty) { margin: 8px 0 0; padding: 7px 10px; border-radius: var(--r); background: var(--panel); overflow-wrap: anywhere; }
 main { padding: 0 12px 28px; }
@@ -56,7 +56,8 @@ nav { display: grid; grid-template-columns: repeat(5, 1fr); margin: 8px -6px 0; 
 nav button { display: grid; justify-items: center; gap: 2px; min-height: 0; padding: 6px 0 7px; border: 0; border-bottom: 2px solid transparent; border-radius: var(--r) var(--r) 0 0; background: none; color: var(--soft); font-size: 11.5px; line-height: 1.3; }
 nav button:hover:not(:disabled) { color: var(--ink); border-color: transparent; background: var(--panel); }
 nav button[aria-current], nav button[aria-current]:hover:not(:disabled) { color: var(--pine); border-bottom-color: var(--pine); font-weight: 600; }
-.i { flex: none; width: 17px; height: 17px; background: currentColor; mask: var(--i) center / contain no-repeat; }
+#send::before { content: ""; }
+.i, #send::before { flex: none; width: 17px; height: 17px; background: currentColor; mask: var(--i) center / contain no-repeat; }
 nav .i { width: 20px; height: 20px; }
 .i-chat { --i: url(icons/chat.svg); }
 .i-tabs { --i: url(icons/tabs.svg); }
@@ -69,6 +70,18 @@ nav .i { width: 20px; height: 20px; }
 .i-selection { --i: url(icons/selection.svg); }
 .i-camera { --i: url(icons/camera.svg); }
 .i-file { --i: url(icons/file.svg); }
+#send { --i: url(icons/send.svg); }
+
+/* Pictures of empty parts. The one of the chat also shows what state the link is in. */
+#chat-empty::before, #grants > .sub::before, #wf-list > .sub::before { content: ""; display: block; height: 106px; background: var(--art) center / contain no-repeat; }
+#grants > .sub, #wf-list > .sub { text-align: center; }
+#grants { --art: url(art/empty-tabs.svg); }
+#wf-list { --art: url(art/empty-workflows.svg); }
+#chat-empty { --art: url(art/empty-chat.svg); }
+:is([data-link="off"], [data-link="waiting"], [data-link="refused"], [data-link="version_mismatch"]) #chat-empty { --art: url(art/not-connected.svg); }
+body:has(#resume-work:not([hidden])) #chat-empty { --art: url(art/stopped.svg); }
+/* The pictures are drawn for light paper. Dark turns them into light lines on dark shapes. */
+@media (prefers-color-scheme: dark) { #chat-empty::before, #grants > .sub::before, #wf-list > .sub::before { filter: invert(.9) hue-rotate(180deg); } }
 
 /* Controls */
 button, select, input, textarea { font: inherit; min-height: 32px; max-width: 100%; padding: 4px 11px; border: 1px solid var(--line); border-radius: var(--r); background: var(--raised); color: var(--ink); }
@@ -82,7 +95,7 @@ button:disabled { opacity: .5; cursor: default; }
 .revoke, .end, #revoke-all, .rule-remove, .prompt-delete, .wf-drop, #chat-clear-yes { color: var(--bad); }
 .controls { flex-wrap: nowrap; }
 .controls button { min-height: 30px; padding: 3px 10px; white-space: nowrap; }
-.quiet { min-height: 24px; padding: 0 6px; border-color: transparent; background: none; color: var(--soft); }
+.quiet { min-height: 24px; padding: 0 6px; white-space: nowrap; border-color: transparent; background: none; color: var(--soft); }
 button.icon { width: 32px; padding: 0; border-color: transparent; background: none; color: var(--soft); }
 button.icon:hover:not(:disabled) { color: var(--ink); }
 select { width: 100%; text-overflow: ellipsis; }
@@ -120,9 +133,8 @@ dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; max-height: 40vh
 .pick button { flex: none; }
 #chat-items { max-height: 52vh; overflow: auto; margin: 10px 0 8px; padding-right: 2px; }
 #chat-items:empty { display: none; }
-#chat-empty { display: none; padding: 22px 8px 18px; text-align: center; color: var(--soft); }
+#chat-empty { display: none; padding: 8px 8px 18px; text-align: center; color: var(--soft); }
 #chat-items:empty ~ #chat-empty { display: block; }
-#chat-empty img { margin: 0 auto 12px; }
 #chat-empty p { max-width: 30ch; margin: 0 auto; }
 .msg { margin-bottom: 10px; overflow-wrap: anywhere; white-space: pre-line; }
 .msg.user { width: fit-content; max-width: 88%; margin-left: auto; padding: 8px 12px; border-radius: 12px 12px 3px 12px; background: var(--panel); }
@@ -158,4 +170,4 @@ dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; max-height: 40vh
 .step { padding: 9px 0; border-top: 1px solid var(--line); }
 #log li, #now li { padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 12px; font-variant-numeric: tabular-nums; }
 .code, .fingerprint { padding: 8px 10px; border-radius: var(--r); background: var(--panel); font-family: ui-monospace, Consolas, monospace; overflow-wrap: anywhere; user-select: all; }
-@media (forced-colors: active) { .i, summary::before { background: ButtonText; } }
+@media (forced-colors: active) { .i, #send::before, summary::before { background: ButtonText; } }
