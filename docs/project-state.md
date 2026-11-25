@@ -1,17 +1,20 @@
 # Project state
 
-Handoff after Prompt 4 (2026-11-24). Requirements and evidence per capability: [feature-parity.md](feature-parity.md). Decisions D1 to D9 hold.
+Handoff after Prompt 5 (2026-11-24). Requirements and evidence per capability: [feature-parity.md](feature-parity.md). Decisions D1 to D9 hold. Prompt 5 widened four rows in the user's words (FC-CONN-25, FC-AGT-11, FC-AGT-15, FC-DBG-06) and narrowed one (FC-DATA-01: no HttpOnly value and no token ever).
 
 ## Checkpoint
 
 - Local Git repository, nothing pushed. Author is a placeholder identity of this repository.
 - `main` = `4082ac1`, the audit baseline. `feat/windows-bridge-slice` = `bfb39b0`, the end of Prompt 2. `feat/sidebar-chat` = `d51c615`, the end of Prompt 3.
-- `feat/browser-control` starts there: `6b0f2a4` (text default of the recorder), then work in progress, then **`6b0e049`, the code and tests that every result below belongs to**, plus the commit that adds this file and the parity rows. The `wip:` commits in between are steps and were not squashed.
+- `feat/browser-control` = `70c9a70`, the end of Prompt 4 (code `6b0e049`).
+- `feat/optional-backends` starts there: two `wip:` commits, then **`0c95826`, the code and tests that every result below belongs to**, plus the commit that adds this file and the last parity rows. Nothing is signed, published or pushed, and no everyday Firefox profile was touched: every Firefox of the tests ran with `-no-remote` and a profile in the temp folder.
 - Prompt 1: the audit is complete and its checkers pass. The orchestrator's delivery was refused. Its record in `.claude/opus-orchestrator/` is unchanged and not in Git.
 
 ## What exists
 
-A Firefox add-on (Manifest V2, persistent background, native sidebar), a native messaging host with a named pipe per Firefox profile that also runs the user's own Claude Code and reads files for uploads, and an MCP server over stdio. No TCP port, no CDP, no debugger permission, no dependency to install. Node 22 or later runs the MCP server, the build and the tests. Protocol 3, version 0.3.0: add-on, helper and MCP server must be updated together.
+A Firefox add-on (Manifest V2, persistent background, native sidebar), a native messaging host with a named pipe per profile that also runs the user's own Claude Code and reads files for uploads, and an MCP server over stdio. That everyday product has no TCP port, no CDP, no debugger permission and no dependency to install. Node 22 or later runs the MCP server, the optional programs, the build and the tests. Protocol 4, version 0.4.0: add-on, helper and MCP server must be updated together.
+
+Beside it, separate and off: optional programs that the user starts, an add-on for Thunderbird, and a developer build.
 
 | Part | Files |
 |---|---|
@@ -30,7 +33,17 @@ A Firefox add-on (Manifest V2, persistent background, native sidebar), a native 
 | Files for uploads | [host/native/Files.cs](../host/native/Files.cs) |
 | Claude Code runs, skill file | [host/native/Chat.cs](../host/native/Chat.cs) |
 | Install, uninstall, doctor | [host/native/Setup.cs](../host/native/Setup.cs) |
-| MCP server, pipe client, choice of profile | [mcp/server/server.mjs](../mcp/server/server.mjs), [link.mjs](../mcp/server/link.mjs) |
+| MCP server, pipe client, choice of profile | [mcp/server/server.mjs](../mcp/server/server.mjs) (entry), [serve.mjs](../mcp/server/serve.mjs), [link.mjs](../mcp/server/link.mjs) |
+| Console, requests, bodies of granted tabs; hooks in the page | [ext/background/observe.mjs](../ext/background/observe.mjs), [ext/page/hooks.js](../ext/page/hooks.js) |
+| Diagnostics, page tools (WebMCP), calls of the backends | [ext/background/devtools.mjs](../ext/background/devtools.mjs) |
+| Cookies, storage, download details; the only code that reads cookies | [ext/background/sitedata.mjs](../ext/background/sitedata.mjs) |
+| Optional backends: attach, switch, commands, their tabs | [ext/background/backends.mjs](../ext/background/backends.mjs) |
+| Schedules; pairings of remote clients | [ext/schedule/schedule.mjs](../ext/schedule/schedule.mjs), [ext/remote/remote.mjs](../ext/remote/remote.mjs) |
+| One rule set that takes credentials out | [shared/redact.mjs](../shared/redact.mjs) |
+| Isolated Firefox (BiDi), Windows input | [backends/isolated.mjs](../backends/isolated.mjs), [input.mjs](../backends/input.mjs), [Input.cs](../backends/Input.cs), [link.mjs](../backends/link.mjs) |
+| Remote gateway and client | [remote/gateway.mjs](../remote/gateway.mjs), [client.mjs](../remote/client.mjs), [wire.mjs](../remote/wire.mjs) |
+| Thunderbird add-on | [thunderbird/](../thunderbird/mail.mjs) |
+| Developer build | [developer/](../developer/pagescript.mjs) |
 | Build to `dist/` | [build/build.mjs](../build/build.mjs) |
 | Test double of Claude Code | [test/doubles/](../test/doubles/claude.mjs) |
 
@@ -43,7 +56,21 @@ From Prompts 2 and 3, still valid:
 - A chat is a session of kind `chat`. A run is one `claude -p` process per message in a job object, with Companion tools only, joined to its chat by a ticket that works once. Skill files are written only after a preview. The list of options is in [Chat.cs](../host/native/Chat.cs).
 - `router.call(..., { user: true })` opens the tools that are for the user only (`get_selection`) and waives no other check.
 
-New in Prompt 4:
+New in Prompt 5:
+
+- **Groups:** `GROUPS` in protocol.mjs names every switch and the Firefox permissions that it needs. All are off at first. A switch counts before the card, after it and at the last gate; one that goes off ends what runs and waits (`stopGroup`). `switches.isolated`, `input` and `remote` live in memory for one connection of the backend.
+- **Backends:** a program logs in to the pipe and says `hello {backend: {id}}`. Known are `isolated`, `input`, `remote`; a second one of a kind is refused. It does nothing until the user turns it on, and is off again after each connection. It gets `command {id, method, params}` and answers in parts (`reply`, base64), and may send `event`s about its own tabs. `error.before` means that nothing was done; anything else leaves the outcome open. A backend holds no rule.
+- **Virtual tabs:** tabs of the isolated Firefox have IDs from `VIRTUAL` (1e9) on. `Backends.extend(api)` puts them into what the router takes for the browser, so every ordinary tool works there through the same session, grant, origin, frame, level, pause, take-over and card. Tools for windows, groups, downloads and uploads refuse them. `sent.trusted` becomes `trusted_event`.
+- **No fallback:** nothing calls a backend except the tools that name it and the tabs that belong to it.
+- **Captures** belong to one grant (`Observer`), in memory, and end with release, suspension, pause, stop and switch; what they held is dropped. Entries count by the sender that Firefox names. Requests come from webRequest only.
+- **Redaction:** `redactUrl`, `redactText`, `redactHeaders`, `redactBody`, `redactData`, by names and shapes. A value of an HttpOnly cookie, and one that looks like a credential, never leaves sitedata.mjs.
+- **Page script:** only in `dist/developer`, which `npm run build:developer` makes. `javascript_tool` runs in the world of the page through the page's own eval.
+- **Schedules** (`storage.local.schedules`): `{id, workflow, title, digest, kind, at, minutes, time, days, on, next, runs}`. Due: an ordinary replay of the sidebar session. A changed workflow, a pause, a stop or a time missed by 5 minutes means no run. Waits 30 minutes for the user. No tool reaches it.
+- **Remote** (`storage.local.pairings`): `{id, name, state, created, expires, fingerprint, device, address, seen}`, without keys. Keys are in `<home>\remote\clients.json` and in `link.json` of the other computer. States offered, pending, allowed, revoked, expired. The add-on decides at `hello {remote: {id}}` and at each call; the gateway checks as well. Kind `remote` gets no private tab, and its lost grants go to no local client.
+- **MCP server:** `--with isolated,input` lists those tools, `--mail` serves Thunderbird only, `--home` names another installation. Listing is no right.
+- **Profiles** have a `kind` in their record; the everyday server ignores `mail`.
+
+From Prompt 4, still valid:
 
 - **Adding a tool:** one entry in `TOOLS` (level, arguments, `group` for a switch, `approval`), and a handler in `pagetools.mjs` or `tabtools.mjs` with `(router, call, spec, origin, args)`. A handler describes, calls `r.ask`, then `r.sent` right before the side effect. **`r.sent` is the last gate:** it throws if the call was stopped, cancelled, paused or revoked. Set `call.sent.outcome = 'done'` when the outcome is known.
 - **Rights, in order:** session, pause or stop, grant of this session for this tab (`conflict` if another agent session has it), private flag, current origin, tab taken over, level, host permission. `authorize` runs at the start, again after the wait for the turn, and again after every approval. `authorizeFrame` asks the frame itself for its origin, which must be the tab's or one in `grant.frames`. The page compares the origin once more before it does anything.
@@ -61,21 +88,50 @@ New in Prompt 4:
 
 ## Commands and results
 
-Windows 11 build 26300, Firefox 160.0.1 (release, headless), Claude Code 2.1.302, on 2026-11-24, for `6b0e049`. Before any edit the suites of Prompt 3 passed on `d51c615`.
+Windows 11 build 26300, Firefox 160.0.1 (release), Node 26.12.1, Claude Code 2.1.302, on 2026-11-24, for `0c95826`.
 
 | Command | Kind of evidence | Result |
 |---|---|---|
-| `npm test` | **simulated**: browser, storage, helper, clock, hand-written Claude events | 79 of 79 |
-| `npm run test:integration` | real helper, pipes, files, links, access lists, MCP server and processes; **Firefox played by the test**; Claude Code is a test double | 36 of 36 |
-| `npm run test:firefox` | **observed in Firefox**, disposable profile, temporary add-on, real clicks; the Prompt 2 checks | 33 of 33, `test-results/firefox.json` |
-| `npm run test:companion` | **observed in Firefox** with the real helper; Claude Code is a test double; the Prompt 3 checks | 27 of 27, `test-results/companion.json` |
-| `npm run test:control` | **observed in Firefox**, disposable profiles, local pages on two ports that report what reached them, real clicks in the sidebar; the Prompt 4 checks | 24 of 24, `test-results/control.json`, `annotated.jpg` |
-| `npm run test:claude` | **live** Claude Code (haiku) as a standalone MCP client; run again because protocol, tools and the action path changed | exit 0, the page confirms one click |
-| `npm run test:milestone` | **live** Claude Code (haiku), real helper, real Firefox; run again for the same reason | 6 of 6, `test-results/milestone.json` |
-| `npm run test:chat` | **live** Claude Code through the real helper; Firefox played by the test; run once on the same helper, before the last change in the add-on's router, which it does not use | 7 of 7, `test-results/chat-lifecycle.json` |
+| `npm test` | **simulated**: browser, storage, helper, clock, Thunderbird, hand-written Claude events; plus checks of the built packages | 116 of 116 |
+| `npm run test:integration` | real helper, pipes, files, registry, MCP server, gateway, client and TLS; **Firefox and Thunderbird played by the test**; Claude Code is a test double | 51 of 51 |
+| `npm run test:firefox` | **observed in Firefox**, headless, disposable profile, temporary add-on, real clicks; the Prompt 2 checks | 33 of 33 |
+| `npm run test:companion` | the Prompt 3 checks, same kind, with the real helper | 27 of 27 |
+| `npm run test:control` | the Prompt 4 checks, same kind | 24 of 24 |
+| `npm run test:advanced` | **observed in Firefox**, headless: observation, site data, page tools, dialogs, isolated Firefox, schedule, remote link | 20 of 20, `test-results/advanced.json` |
+| `npm run test:developer` | **observed in Firefox**, headless: the developer build as a temporary add-on | 4 of 4, `test-results/developer.json` |
+| `npm run test:desktop` | **observed on the visible desktop**: focus, minimized windows, Windows input. Two modes | in use: 5 passed, 3 not run, `test-results/desktop-in-use.json`; see below |
+| `npm run test:claude` | **live** Claude Code (haiku); run again because the MCP entry, the protocol and the action path changed | exit 0, the page confirms one click |
+| `npm run test:milestone` | **live** Claude Code (haiku), real helper, real Firefox; run again for the same reason | 6 of 6 |
+| `npm run test:chat` | not run again: Chat.cs did not change, and the order of messages in the helper that did is covered by the integration and companion runs | 7 of 7 in Prompt 4 |
 | `node .opus-inbox/audit_tools.mjs check-parity` | documents | OK |
 
-After the runs: registry key absent, no process of the helper, no temporary folder of the tests. A test run that is killed leaves the key behind; `firefox-companion-host.exe uninstall --home <that folder>` removes it. `FC_HEADED=1` shows the Firefox window.
+The desktop runs, in order, with the same input files: (1) screen saver up, so no window was in front: 6 passed, the focus check not run. This run has the full input checks: denied, one real click on a page that ignores synthetic ones, then covered, hidden tab, minimized, changed element and stopped, with nothing sent. (2) The user came back in the middle: the click was refused with "the user is using mouse or keyboard" (the rest of that run failed for the same reason). (3) and (4) in use, with a window of another program in front: focus and minimized windows as in FC-TAB-11, FC-TAB-15 and FC-SHOT-01; in (3) the user rested and the page got a real click. The JSON file is from (4). Runs 1 to 3 are in this record only. Some checks failed only because of the test and were corrected before (4).
+
+26 guards were taken out of the build one at a time (senders, origins, HttpOnly, tokens, switches after the card, backends that are off, digest of a workflow, missed times, expiry, fingerprint, shares of mail and others). At first three were not noticed; those tests were made stricter, and then all 26 failed a test. Simulated evidence.
+
+After the runs: both registry keys absent, no process of the helper, the backends or a test Firefox, no temporary folder of these tests. A test run that is killed leaves the key behind; `firefox-companion-host.exe uninstall --home <that folder>` removes it.
+
+### What Prompt 5 asked for, by backend
+
+| Backend | Off or absent at first | Channel, version, permissions | Setup | Evidence |
+|---|---|---|---|---|
+| Console, network, bodies, cookies, storage, WebMCP (everyday add-on) | each `tool_off`, no card, console native, no object in the page (F) | Firefox 160 release. webRequest, webRequestBlocking, cookies: optional, and Firefox shows no question for them, so the switch in the sidebar is the only one. Others none | sidebar, Browser data | U, F |
+| `isolated` | not running; running is off; `unknown_tool` without `--with isolated` (F) | Firefox 160.0.1 release, WebDriver BiDi, no system access, headless or with a window. No permission of the add-on | `node dist/backends/isolated.mjs [--headless] [--out folder] [--firefox path] [--home folder]`, then Turn on | U, F (headless only) |
+| `input` | not running; running is off (D) | Windows messages, program built from Input.cs. No permission | `node dist/backends/input.mjs`, then Turn on | U, D |
+| `remote` | nothing listens before and after (I, F) | TLS 1.2 ECDHE-PSK-CHACHA20-POLY1305. No permission | `node dist/remote/gateway.mjs --listen 127.0.0.1:8475`, Turn on, Pair a client; there `node client.mjs pair --host ...`, compare the fingerprint, Allow | U, I, F on one computer |
+| Thunderbird | another add-on, another registration, another server | Thunderbird 140 or later, accountsRead, messagesRead, storage, nativeMessaging; no experiment | `install --thunderbird`, load `dist/thunderbird`, `server.mjs --mail` | U, I. **Thunderbird is not installed here: nothing was observed in it** |
+| Developer build | not in the everyday folder; the tool is off (U, I, F) | any Firefox that takes unsigned or temporary add-ons | `npm run build:developer`, load `dist/developer/extension`, server from `dist/developer/mcp --home <installation>` | U, I, F |
+
+### cookies and contextualIdentities
+
+- `contextualIdentities` stays required: Firefox refuses it as optional. Alone it lists containers.
+- `cookies` is **optional now**. Firefox opens a tab in a container only with it; without it: "No permission for cookieStoreId" (F, four variants of a manifest). Reopening and downloading there follow the same rule in the code and were not tried without it. The button Allow tabs in containers asks for it, `permission_required` says so before, and a container then works (F).
+- Everyday tools with the permission given: 14 replies, the activity list and the stored log hold no cookie value (F). One file reads cookies (U). `get_cookies` has a switch of its own and masks HttpOnly and token-like values also with `values: true` (U, F).
+- Having contextualIdentities still turns containers on in Firefox.
+
+### Found and fixed at the milestone
+
+In Firefox only: the console hook broke the page's own console (a page function may not read an array of a content script); a timer called as a method ended every command of a backend; the body filter came too late and lost answers; two commands at once loaded the page script of the isolated tab twice and left it without an answer; the question before leaving came after the card; a second question was swallowed by the first answer. By the older suites: an empty list of schedules was stored. By reading the diff: the port of the isolated Firefox was told to clients; a flood of console lines ended the capture; a closed isolated tab could be reopened in the everyday Firefox; a download from a container without the permission gave an internal error.
 
 ### The cases that Prompt 4 named
 
@@ -100,7 +156,7 @@ Found and fixed at the milestone: files dropped on a zone did not reach the page
 
 ## Acceptance criteria
 
-AC-01, AC-02, AC-05, AC-07, AC-08 and AC-09 are met (AC-02 with the temporary add-on). Their checks in `test:firefox`, `test:companion` and `test:claude` ran again on protocol 3. No new evidence for the open ones:
+AC-01, AC-02, AC-05, AC-07, AC-08 and AC-09 are met (AC-02 with the temporary add-on). Their checks in `test:firefox`, `test:companion` and `test:claude` ran again on protocol 4. No new evidence for the open ones:
 
 | ID | Status | Shown | Open |
 |---|---|---|---|
@@ -119,11 +175,18 @@ AC-01, AC-02, AC-05, AC-07, AC-08 and AC-09 are met (AC-02 with the temporary ad
 
 - Stricter: every acting call asks except hover; there is no work on a site without a card for each step (FC-GRANT-07, FC-GRANT-12).
 - Uploads come only from folders that the user lists in the sidebar. The roots of a client give nothing, and the helper reads the files, not the MCP server (FC-ACT-21).
-- `cookies` and `contextualIdentities` are required permissions, because Firefox refuses the second as optional and containers need both. Nothing reads cookies. Having `contextualIdentities` turns containers on in Firefox (FC-INST-19).
+- `contextualIdentities` is a required permission, because Firefox refuses it as optional; `cookies` is optional (FC-INST-19, "cookies and contextualIdentities" above).
+- Values of HttpOnly cookies and of token-like ones are never returned, also where FC-DATA-01 allowed it.
+- Console and network need a switch before a grant starts a capture (FC-DBG-01, FC-DBG-03).
+- Breakpoints that hold a page are not offered, only logpoints (FC-DBG-13).
 - FC-TAB-32 was deferred and is built, because Prompt 4 asked for a separate grant.
 - A reopened tab has no history (FC-DATA-15). Frames of the same origin are shown in pictures (FC-SHOT-08).
 
-Not built from the areas of this prompt: custom comboboxes (FC-ACT-14), strokes, upload of a screenshot, catching a file chooser, consent banners, sign-in notice, locators as arguments, articles as Markdown, links, HTML, element details, page summary, comparison, quality check, network idle, browser events, several addresses, filters and details of tabs, moving, pinning, muting, unloading and waking tabs, viewport size, changes of tabs at the end of a reply, changing bookmarks, cookies, storage, clipboard, site rules, 120 calls per minute, a capture queue, zoom, element and full-page pictures, `expect` in a batch, `switch_browser`, `ask_user`. The optional input backends (FC-ACT-35, FC-ACT-36) are absent as decided in D6.
+Not built from the areas of Prompt 4: custom comboboxes (FC-ACT-14), strokes, upload of a screenshot, catching a file chooser, consent banners, sign-in notice, locators as arguments, articles as Markdown, links, HTML, element details, page summary, comparison, quality check, network idle, browser events, several addresses, filters and details of tabs, moving, pinning, muting, unloading and waking tabs, changes of tabs at the end of a reply, changing bookmarks, clipboard, site rules, 120 calls per minute, a capture queue, zoom, element and full-page pictures, `expect` in a batch, `switch_browser`, `ask_user`. Element details are FC-DBG-10 now.
+
+Not built from the areas of Prompt 5: preferences, privileged script, other add-ons and process output of the isolated Firefox (FC-DBG-12); keys, dragging and frames of Windows input; uploads and WebMCP in isolated tabs; HTML drag and drop there (Firefox does not start it from BiDi input); bodies there; a relay for the remote link; page requests (FC-DATA-13); a first-run page (FC-GRANT-24); conditions of schedules and notices outside the sidebar.
+
+Limits of Prompt 5: console lines and WebMCP offers of the first scripts of a fast page are missed, and the reply says so. A page can tell that its console is wrapped. Redaction goes by names and shapes; page text of `read_page` is not masked. A backend is any program of this user that has the key (D2), so the user has to know what they turn on; its name and version are what it says. The isolated Firefox has a debugging port on 127.0.0.1 without a password, with its only session taken. A backend that is killed takes its Firefox with it and leaves the profile folder, which the next start deletes (observed once, headless, by a scratch script). Windows input is matched by process and title. `tabs_select` with `focusWindow` can say focused while Windows keeps another program in front. A paired remote client that is lost keeps its key until the user revokes it or it expires; a revoke while the gateway is not running reaches it when the link is turned on again, and the add-on refuses the client until then. Times of schedules are those of this computer, and nothing runs while Firefox is closed.
 
 Limits: any program of the same user can read the key, and a run file while its run lasts (D2). Secret and personal fields are found by type, name and shape, which is a heuristic. Values of selects and checkboxes, names of clicked elements and paths of pages are still recorded. Hover needs no card. A stop cannot take back what the page already has; the report says so. Synthetic events are ignored by pages that check for trusted input. A client chooses its own name; its label in the sidebar always says that it is a client.
 
@@ -137,11 +200,14 @@ Still true from Prompt 3: skills and agents are listed only after the first mess
    3. Second user: `$c = New-Object IO.Pipes.NamedPipeClientStream('.', '<name>', 'InOut'); $c.Connect(2000)` must fail with "Access to the path is denied".
    4. First user: press Disconnect, then `dist\host\firefox-companion-host.exe uninstall --home C:\Users\Public\fc-acl-test`.
 2. Restart of Firefox (AC-06, FC-GRANT-16, FC-UI-03): after the user signs a build, attach a tab, start a chat, press Stop everything, restart Firefox with session restore. Expected: no grant, paused, the helper reconnects, the chat is listed and goes on.
-3. Visible desktop: focus and minimized windows were observed headless only (FC-TAB-11, FC-SHOT-01). Run `npm run test:control` with `FC_HEADED=1` while another window is in front.
+3. Visible desktop: focus and minimized windows are observed now (FC-TAB-11, FC-SHOT-01). Open there: clicks and typing while another program is in front, the isolated Firefox with a window, and one JSON record of the idle mode: leave the computer alone for a minute and run `npm run test:desktop`.
 4. Open from Prompt 3, not worked on: saved prompts (FC-AGT-10), the switch for file and shell tools in a chat (FC-AGT-02), the run of an exported skill by a model (FC-AGT-08).
 5. Public distribution with a subscription sign-in: a decision for the user. Event page wake (D1): an inference, not tested.
-6. Mozilla review of `incognito: spanning`, `cookies` and the other new permissions: not asked.
-7. Not tried: screen reader, two windows with the sidebar, real sites with editors and drag targets (open question 16), an add-on update from protocol 2 with stored data of a real user (old recordings were seeded in a test profile).
+6. Mozilla review of `incognito: spanning`, of the optional cookies, webRequest and webRequestBlocking, of WebMCP offered by an add-on, and the data declaration (cookies and storage of sites; mail in the Thunderbird add-on): not asked.
+7. Not tried: screen reader, two windows with the sidebar, real sites with editors and drag targets (open question 16), an add-on update from protocol 2 or 3 with stored data of a real user (old recordings were seeded in a test profile), in particular one that takes the cookies permission away from containers.
+8. Thunderbird (FC-DATA-20): not installed, and nothing was downloaded. With it: `npm run build`, `dist\host\firefox-companion-host.exe install --thunderbird`, load `dist\thunderbird\manifest.json` as a temporary add-on, Connect, share one account with a client of `server.mjs --mail`, use a dummy account.
+9. Remote link between two computers, and what a firewall does with it. Developer Edition with the developer build.
+10. Packaging: everyday add-on and helper as before. Optional programs need Node 22 and their folders (`dist/backends` and `dist/remote` with `dist/mcp` beside them; the other computer needs `dist/remote` alone). The developer build must not be signed or published (P2). The Thunderbird add-on needs its own review. None of it has an installer.
 
 ## Try it by hand
 
@@ -150,11 +216,11 @@ Still true from Prompt 3: skills and agents are listed only after the first mess
 3. Open the sidebar with the toolbar button and press Connect. Tabs: attach this tab; Frames shows frames of other sites; Take over and Give back hold one tab; Stop everything holds all of it. Browser data has the switches, the upload folders and the name of this profile.
 4. In PowerShell, `claude mcp add -s user firefox-companion -- node "$env:LOCALAPPDATA\FirefoxCompanion\mcp\server.mjs"` registers the MCP server. It needs no chat.
 
-## What Prompt 5 can build on
+## What comes next can build on
 
-- `router.mjs` holds every rule and needs no change for a new tool. Hooks for console, network or storage belong in a handler plus a content or background part, ended by `onGrantEnd` and `api.forget`, which already fire on revoke, suspension, pause and stop.
-- `TOOLS[x].group` gives a user switch with a Firefox permission. New groups need the name in `set_switch` and in the sidebar.
-- `r.page(call, origin, {cmd}, frame)` is the only way into a page. A new page command is one function and one entry in the table of `content.js`.
-- `effect()` in `pagetools.mjs` is the place for more observed effects. An optional input backend would replace the dispatch inside `send()` and set `trusted_event`.
+- `router.mjs` holds every rule. A new tool is an entry in `TOOLS`, a handler, and a sample in `router.test.mjs`. A new switch is a line in `GROUPS`.
+- A new backend is a name in `KNOWN` (backends.mjs) and a program with `Backend` of `backends/link.mjs`.
+- `r.page(call, origin, {cmd}, frame)` is the only way into a page, also of an isolated tab, which loads the same `content.js`.
+- `test/firefox/advanced.mjs "<part>"` runs its setup and the checks that match.
 - `test/firefox/control.mjs` with the pages of [fixtures.mjs](../test/firefox/fixtures.mjs) is the place for further real checks; `node test/firefox/control.mjs "<part of a name>"` stops after that check.
 - Not decided: whether file and shell tools in a chat get the approval card through `--permission-prompt-tool`.
