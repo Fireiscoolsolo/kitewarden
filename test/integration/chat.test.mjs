@@ -65,6 +65,7 @@ const ask = async (type, data) => {
 };
 
 test('run: the documented options in a folder of the helper, no shell, and the ticket in no command line', async () => {
+  ff.answer(() => ({ result: {} }));
   const r = await say('args', { model: 'haiku' });
   assert.equal(r.end.code, 0, r.end.detail);
   const { argv, cwd } = JSON.parse(r.answer);
@@ -82,6 +83,26 @@ test('run: the documented options in a folder of the helper, no shell, and the t
   const x = JSON.parse((await say('args', { extras: true })).answer).argv;
   assert.deepEqual([x[x.indexOf('--setting-sources') + 1], x[x.indexOf('--tools') + 1], x.includes('--disable-slash-commands')], ['user', 'Skill,Task', false]);
   assert.match(x[x.indexOf('--disallowedTools') + 1], /Bash/);
+});
+
+test('file and shell tools: only for a chat that has them on, each call asks through the add-on, and anything but an allow denies', async () => {
+  ff.answer((call) => (call.tool === 'chat_permission' ? (call.args.input.command === 'yes' ? { result: { behavior: 'allow' } } : { error: { code: 'approval_denied', message: 'no' } }) : { result: {} }));
+  const off = JSON.parse((await say('args')).answer);
+  assert.ok(!off.tools.includes('chat_permission') && !off.argv.includes('--permission-prompt-tool'));
+  const on = JSON.parse((await say('args', { tools: true })).answer);
+  const after1 = (n) => on.argv[on.argv.indexOf(n) + 1];
+  assert.ok(on.tools.includes('chat_permission'));
+  assert.deepEqual([after1('--permission-prompt-tool'), after1('--permission-mode'), after1('--allowedTools'), after1('--disallowedTools'), after1('--setting-sources')], ['mcp__firefox-companion__chat_permission', 'manual', 'mcp__firefox-companion', 'NotebookEdit', '']);
+  const list = after1('--tools').split(',');
+  assert.deepEqual(list, ['Bash', 'PowerShell', 'Read', 'Edit', 'Write', 'Glob', 'Grep', 'WebFetch', 'WebSearch']);
+  const settings = JSON.parse(after1('--settings'));
+  assert.deepEqual(settings, { disableAllHooks: true, disableSkillShellExecution: true, permissions: { ask: list } }, 'every offered tool has an ask rule');
+  const rules = readFileSync(after1('--append-system-prompt-file'), 'utf8');
+  assert.ok(/whole input/.test(rules) && !/no file, shell or web tools/.test(rules));
+  assert.match((await say('shell yes', { tools: true })).answer, /^Permission: \{"content":\[\{"type":"text","text":"\{\\"behavior\\":\\"allow\\"\}"\}\]\}$/);
+  assert.match((await say('shell no', { tools: true })).answer, /"text":"\{\\"behavior\\":\\"deny\\",\\"message\\":\\"approval_denied: no\\"\}"\}\]\}$/);
+  assert.match((await say('shell yes')).answer, /behavior\\":\\"deny\\",\\"message\\":\\"unknown_tool/, 'a run without the switch has no such tool');
+  for (const f of ['rules.txt', 'rules-tools.txt']) rmSync(path.join(home.dir, 'chat', f), { force: true }); // later checks look at the folder
 });
 
 test('streaming in parts, a second message and a resume, also after the helper ended', async () => {
@@ -210,7 +231,9 @@ test('a skill is written to its own folder only: names, links and replacing', as
 
 test('uninstall removes the files of the chat too, and doctor names Claude Code', async () => {
   await say('hello');
+  await say('hello', { tools: true });
   await ff.quit();
+  assert.ok(existsSync(path.join(home.dir, 'chat', 'rules-tools.txt')));
   assert.match(host('doctor', '--home', home.dir).stdout, /info {2}Claude Code: .*claude\.exe/);
   writeFileSync(path.join(home.dir, 'chat', 'run-left.json'), '{}');
   assert.equal(host('uninstall', '--home', home.dir).status, 0);

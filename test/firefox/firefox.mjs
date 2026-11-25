@@ -201,13 +201,21 @@ export class Sidebar {
     // The part of the sidebar that holds the element is opened first, as a user would.
     const closed = await this.eval('return document.querySelectorAll(arguments[0])[arguments[1]]?.closest("[data-panel][hidden]")?.dataset.panel ?? null', selector, index);
     if (closed) await this.click(`[data-show="${closed}"]`);
-    const at = await this.eval(`
+    const place = () => this.eval(`
       const e = document.querySelectorAll(arguments[0])[arguments[1]];
       if (!e) return null;
       e.scrollIntoView({ block: 'center', behavior: 'instant' });
       const r = e.getBoundingClientRect();
       return [r.left + r.width / 2, r.top + r.height / 2];
     `, selector, index);
+    // The sidebar may redraw between the measuring and the click, so the place has to be the same twice.
+    let at = await place();
+    for (let i = 0; i < 20 && at; i++) {
+      await sleep(20);
+      const again = await place();
+      if (String(again) === String(at)) break;
+      at = again;
+    }
     if (!at) throw new Error(`no ${selector} in the sidebar`);
     await this.f.chrome(`
       const [x, y] = arguments[0];

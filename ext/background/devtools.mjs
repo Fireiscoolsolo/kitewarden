@@ -164,7 +164,7 @@ async function isolated(r, call, spec, origin, a) {
   if (a.action === 'open') {
     const url = address(a.url);
     if (s.owned.size >= LIMITS.tabsOwned) throw new ToolError('limit_reached', `This session has ${LIMITS.tabsOwned} tabs. Close one first.`);
-    const site = originOf(url);
+    const site = r.allowedSite(originOf(url));
     await r.ask(call, spec, site, { tool: 'isolated_browser', target: url, value: 'Opens in the isolated Firefox, which has no logins of yours. The new tab gets level read and act on this site' }, a.reason);
     r.sent(call, 'opening a tab in the isolated Firefox');
     const tab = await b.command('isolated', 'open', { url }, call);

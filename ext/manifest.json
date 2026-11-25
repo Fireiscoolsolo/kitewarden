@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Firefox Companion (working name)",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Connects the tabs you choose to Claude on this computer.",
   "incognito": "spanning",
   "browser_specific_settings": {
@@ -14,7 +14,8 @@
     }
   },
   "permissions": ["tabs", "storage", "activeTab", "nativeMessaging", "contextualIdentities"],
-  "optional_permissions": ["<all_urls>", "bookmarks", "history", "downloads", "tabGroups", "cookies", "webRequest", "webRequestBlocking"],
+  "optional_permissions": ["<all_urls>", "bookmarks", "history", "downloads", "clipboardWrite", "tabGroups", "cookies", "webRequest", "webRequestBlocking"],
+  "content_security_policy": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src data: blob:",
   "background": { "page": "background/index.html", "persistent": true },
   "sidebar_action": {
     "default_title": "Firefox Companion",

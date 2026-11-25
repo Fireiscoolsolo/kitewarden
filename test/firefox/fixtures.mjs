@@ -3,6 +3,35 @@ import http from 'node:http';
 
 const page = (title, body) => `<!doctype html><html lang="en"><meta charset="utf-8"><title>${title}</title><body>${body}</body></html>`;
 
+/** Lists that a page builds itself: a button with a search box and late options, an input, and an open listbox. */
+const lists = (port) =>
+  page(
+    `Lists ${port}`,
+    `<h1>Lists ${port}</h1>
+<div id="city" role="combobox" tabindex="0" aria-label="City" aria-expanded="false" aria-controls="cities" style="width:200px;border:1px solid">Choose</div>
+<div id="pop" hidden><input id="search" aria-label="Search a city"><ul id="cities" role="listbox"></ul></div>
+<p><label>Fruit <input id="fruit" role="combobox" aria-expanded="false" aria-controls="fruits" autocomplete="off"></label><ul id="fruits" role="listbox" hidden></ul></p>
+<ul id="sizes" role="listbox" aria-label="Size"><li role="option" aria-selected="false">Small</li><li role="option" aria-selected="false">Large</li><li role="option" aria-selected="false" aria-disabled="true">Huge</li></ul>
+<div id="twice" role="combobox" tabindex="0" aria-label="Twice" aria-expanded="false" aria-controls="twins" style="width:200px;border:1px solid">None</div><ul id="twins" role="listbox" hidden><li role="option">Same</li><li role="option">Same</li></ul>
+<label>Card number <input id="cardnumber" role="combobox" aria-expanded="false"></label>
+<p><label>Paste here <input id="paste"></label> <label>Password <input id="pw" type="password"></label></p>
+<p><label>Cookie <output id="jar"></output></label></p>
+<script>
+const $ = (id) => document.getElementById(id);
+const report = (s) => fetch('/report?' + encodeURIComponent(s));
+const all = ['Berlin', 'Bern', 'Paris'];
+const show = (open) => { $('city').setAttribute('aria-expanded', open); $('pop').hidden = !open; if (open) { $('search').value = ''; fill(''); $('search').focus(); } };
+const fill = (q) => setTimeout(() => { $('cities').replaceChildren(...all.filter((c) => c.toLowerCase().startsWith(q.toLowerCase())).map((c) => Object.assign(document.createElement('li'), { textContent: c, role: 'option', onclick: () => { $('city').textContent = c; show(false); report('city ' + c); } }))); }, 400);
+$('city').addEventListener('click', () => show($('city').getAttribute('aria-expanded') !== 'true'));
+$('search').addEventListener('input', (e) => fill(e.target.value));
+addEventListener('keydown', (e) => e.key === 'Escape' && show(false));
+$('fruit').addEventListener('input', () => { const open = $('fruit').value !== ''; $('fruit').setAttribute('aria-expanded', open); $('fruits').hidden = !open; $('fruits').replaceChildren(...['Apple', 'Apricot'].filter((x) => x.toLowerCase().startsWith($('fruit').value.toLowerCase())).map((x) => Object.assign(document.createElement('li'), { textContent: x, role: 'option', onclick: () => { $('fruit').value = x; $('fruit').setAttribute('aria-expanded', false); $('fruits').hidden = true; report('fruit ' + x); } }))); });
+for (const o of $('sizes').children) o.onclick = () => { for (const x of $('sizes').children) x.setAttribute('aria-selected', x === o); report('size ' + o.textContent); };
+$('twice').onclick = () => { const open = $('twins').hidden; $('twins').hidden = !open; $('twice').setAttribute('aria-expanded', open); };
+$('jar').textContent = document.cookie;
+</script>`,
+  );
+
 const main = (port) =>
   page(
     `Fixture ${port}`,
@@ -160,6 +189,7 @@ export async function fixture(wanted, other = 'about:blank') {
     else if (url.pathname === '/file.txt') res.writeHead(200, { 'content-type': 'text/plain', 'content-disposition': 'attachment' }).end('download body');
     else if (url.pathname === '/dev') res.end(dev(port));
     else if (url.pathname === '/devframe') res.end(page('Dev frame', `<script>setTimeout(() => console.log('from frame ${port}'), 900)</script>frame`));
+    else if (url.pathname === '/lists') res.end(lists(port));
     else if (url.pathname === '/form') res.end(form(port));
     else if (url.pathname === '/done') res.end(page('Done', `<h1>Saved on ${port}</h1><a href="/form">Back</a>`));
     else if (url.pathname === '/second') res.end(page('Second', `<h1>Second page ${port}</h1>`));

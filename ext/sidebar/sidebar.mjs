@@ -23,6 +23,8 @@ function drawLink() {
   let [title, next] = LINK[link.state];
   if (link.code === 'helper_missing') [title, next] = ['Helper not installed', 'Run the installer, FirefoxCompanionSetup. This page connects by itself after that.'];
   if (paused) [title, next] = [`Paused (${title.toLowerCase()})`, 'Every call is refused until you press Resume.'];
+  if (ui.state.unreadable) [title, next] = ['Settings cannot be read', 'Every call is refused. Restart Firefox. If it stays, reset the site rules below; nothing else is deleted.'];
+  $('reset-rules').hidden = !ui.state.unreadable;
   document.body.dataset.link = paused ? 'paused' : link.state;
   $('link-title').textContent = title;
   const retry = link.retryAt ? ` Next try in ${Math.max(0, Math.ceil((link.retryAt - Date.now()) / 1000))} s.` : '';
@@ -39,11 +41,12 @@ function drawLink() {
 const WANTS = {
   left_click: 'click', right_click: 'click with the right button', middle_click: 'click with the middle button', double_click: 'double-click', triple_click: 'click three times', left_click_drag: 'drag',
   type: 'type', key: 'press keys', form_input: 'fill in a field', form_fill: 'fill in fields', file_upload: 'upload files', navigate: 'open an address', gif_creator: 'record pictures', request_user: 'hand this tab to you',
+  site_rule: 'read this site', copy_to_clipboard: 'put something on your clipboard', chat_permission: 'use a tool on this computer',
   tabs_create: 'open a tab', tabs_close: 'close your tab', closed_tabs: 'reopen a tab', windows_create: 'open a window', resize_window: 'change a window', search_bookmarks: 'search your bookmarks',
   add_bookmark: 'add a bookmark', search_history: 'search your history', download_start: 'download a file', read_network_requests: 'keep what this tab sends and receives', page_storage: 'use the storage of this site',
   get_cookies: 'see the cookies of this site', set_cookie: 'set a cookie', remove_cookie: 'remove a cookie', webmcp_call: 'use a tool of this page', windows_input: 'send real Windows input', isolated_browser: 'use the isolated Firefox', isolated_debug: 'debug in the isolated Firefox',
 };
-const LABEL = { console: 'console messages and errors of attached tabs', network: 'requests of attached tabs', bodies: 'bodies of requests', cookies: 'cookies of attached sites, without HttpOnly values and tokens', storage: 'the storage of attached sites', webmcp: 'tools that attached pages offer (WebMCP)' };
+const LABEL = { clipboard: 'putting something on your clipboard', console: 'console messages and errors of attached tabs', network: 'requests of attached tabs', bodies: 'bodies of requests', cookies: 'cookies of attached sites, without HttpOnly values and tokens', storage: 'the storage of attached sites', webmcp: 'tools that attached pages offer (WebMCP)' };
 const cards = new Map();
 
 function drawCards() {
@@ -115,6 +118,19 @@ function approveOrigin(grant, origin, tabId) {
   siteFor(tabId, origin).then((ok) => (ok ? run('approve_origin', { grant, origin }, 'Approved.') : ($('message').textContent = 'Firefox did not allow this site.')));
 }
 
+async function goTo(tabId) {
+  const tab = await browser.tabs.update(tabId, { active: true });
+  await browser.windows.update(tab.windowId, { focused: true });
+}
+
+function drawRules() {
+  const say = { block: 'never', ask: 'asks before each read', allow: 'only these' };
+  part('rules', ui.state.rules, (r) => {
+    const list = Object.entries(r).flatMap(([kind, hosts]) => hosts.map((host) => el('li', {}, `${host} (${say[kind]}) `, onPress(el('button', { textContent: 'Remove', className: 'rule-remove' }), () => run('rule_remove', { kind, host }, 'Removed.')))));
+    return list.length ? list : [el('li', { className: 'sub', textContent: 'None' })];
+  });
+}
+
 function drawGrants() {
   const data = ui.state.grants.map((g) => {
     const tab = ui.tabs.find((t) => t.id === g.tabId);
@@ -127,6 +143,8 @@ function drawGrants() {
           const row = el('p', { className: 'row' });
           if (g.state === 'suspended' && g.now) row.append(onPress(el('button', { textContent: `Approve ${g.now}`, className: 'approve' }), () => approveOrigin(g.id, g.now, g.tabId)));
           if (g.state === 'active') row.append(onPress(el('button', { textContent: 'Frames…', className: 'frames' }), () => showFrames(g.id)));
+          if (g.tabId < VIRTUAL) row.append(onPress(el('button', { textContent: 'Go to', className: 'go-to' }), () => goTo(g.tabId)));
+          row.append(onPress(el('button', { textContent: g.level === 'act' ? 'Only read' : 'Read and act', className: 'level' }), () => run('set_level', { grant: g.id, level: g.level === 'act' ? 'read' : 'act' }, 'Changed.')));
           row.append(g.stopped ? onPress(el('button', { textContent: 'Give back', className: 'give-back' }), () => run('resume_tab', { tabId: g.tabId }, 'Given back.')) : onPress(el('button', { textContent: 'Take over', className: 'take-over' }), () => run('stop_tab', { tabId: g.tabId }, 'You have this tab.').then(report)));
           row.append(onPress(el('button', { textContent: 'Revoke', className: 'revoke' }), () => run('revoke', { grant: g.id }, 'Revoked.')));
           li.append(row);
@@ -223,6 +241,7 @@ async function draw() {
   drawCards();
   drawAttach();
   drawGrants();
+  drawRules();
   drawSessions();
   drawTry();
   drawControl();
@@ -258,6 +277,8 @@ onPress($('move'), () => {
   moving?.();
 });
 onPress($('folder-add'), () => run('add_folder', { path: $('folder-path').value }, 'Added.').then((r) => !r.error && ($('folder-path').value = '')));
+onPress($('reset-rules'), () => run('reset_rules'));
+onPress($('rule-add'), () => run('rule_add', { kind: $('rule-kind').value, host: $('rule-host').value }, 'Added.').then((r) => !r.error && ($('rule-host').value = '')));
 onPress($('profile-save'), () => run('set_label', { label: $('profile-label').value }, 'Saved.'));
 onPress($('groups-ok'), () => browser.permissions.request({ permissions: ['tabGroups'] }));
 onPress($('attach'), attach);

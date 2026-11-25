@@ -1,5 +1,6 @@
 // Tools that read or act in a granted tab. Each gets the router, the call, its spec and the origin that was authorized.
 // An action is described, approved, checked again and dispatched; what the page did with it is looked up afterwards.
+import { ruleFor } from '../grants/rules.mjs';
 import { LIMITS, ToolError, VIRTUAL, oneLine, originOf, plainUrl } from '../shared/protocol.mjs';
 import { elements } from '../workflow/elements.mjs';
 import { frameOfRef, sleep } from './router.mjs';
@@ -333,7 +334,41 @@ async function type(r, call, spec, origin, a) {
 
 const SHORTCUTS = /^(F\d{1,2}|(ctrl|meta)\+(shift\+)?([rtwnlpqjhdfgsu0+=-]|plus|minus|Tab|PageUp|PageDown))$/i;
 
+/** Nothing reads the clipboard: ctrl+v inserts the text that this session copied itself. */
+async function paste(r, call, spec, origin, a) {
+  await r.group('clipboard');
+  const text = call.session.copied;
+  if (text === null) throw new ToolError('not_allowed', 'This session copied no text. What others put on the clipboard is not read.');
+  return withRef(r, call, origin, a.ref, async (f) => {
+    const t = a.ref ? await r.page(call, f.origin, { cmd: 'describe', ref: a.ref, fill: true }, f.frame) : { description: 'the field with the focus' };
+    await r.ask(call, spec, origin, { tool: 'key', target: t.description, value: `${a.keys} inserts: ${text}`, ...(f.frame && { frame: f.origin }) }, a.reason, f);
+    await r.group('clipboard');
+    const sent = await send(r, call, f, `paste in ${t.description}`, { cmd: 'type', ref: a.ref, fingerprint: t.fingerprint, text });
+    call.sent.outcome = 'done';
+    await r.frame(call, spec, origin, { label: `Paste in ${t.description}`, at: null });
+    return { key: a.keys, inserted: 'the text that this session copied, not what the clipboard holds now', dispatched: true, trusted_event: call.trusted, observed: sent.arrived > 0, characters_arrived: sent.arrived };
+  });
+}
+
+async function copy(r, call, spec, origin, a) {
+  if (a.action === 'text') {
+    await r.ask(call, spec, null, { tool: 'copy_to_clipboard', target: `${a.text.length} characters`, value: a.text }, a.reason);
+    r.sent(call, 'copying a text');
+    await r.api.clipboard.text(a.text);
+    call.session.copied = a.text;
+  } else {
+    const s = await screenshot(r, call, spec, origin);
+    const bytes = Uint8Array.from(atob(s.image), (c) => c.charCodeAt(0));
+    await r.ask(call, spec, origin, { tool: 'copy_to_clipboard', target: 'A picture of this tab', value: `${bytes.length} bytes, secret fields covered` }, a.reason);
+    r.sent(call, 'copying a picture');
+    await r.api.clipboard.picture(bytes.buffer);
+  }
+  call.sent.outcome = 'done';
+  return { copied: a.action };
+}
+
 async function key(r, call, spec, origin, a) {
+  if (/^(ctrl|control|cmd|meta)\+v$/i.test(a.keys)) return paste(r, call, spec, origin, a);
   if (SHORTCUTS.test(a.keys)) throw new ToolError('not_allowed', 'Shortcuts of the browser are not sent. Use navigate to reload.');
   const parts = a.keys === '+' ? ['+'] : a.keys.split('+');
   const name = parts.pop();
@@ -389,7 +424,7 @@ async function fill(r, call, spec, origin, a) {
     const x = await send(r, call, f, `entry in ${t.description}`, { cmd: 'fill', ref: a.ref, fingerprint: t.fingerprint, value: a.value, commit: a.commit === true });
     call.sent.outcome = 'done';
     await r.frame(call, spec, origin, { label: `Fill ${t.description}`, at: f.frame ? null : x.at });
-    return { field: t.description, set: true, dispatched: true, observed: true, changed: x.changed };
+    return { field: t.description, set: true, dispatched: true, observed: true, changed: x.changed, ...(x.shown !== undefined && { shown: x.shown }) };
   });
 }
 
@@ -482,7 +517,7 @@ async function navigate(r, call, spec, origin, a) {
     if (x.asks && a.dialog !== 'accept') throw new ToolError('not_allowed', 'The page asks before it is left, so it stays. Say dialog: accept to leave it anyway; the user sees that on the card.');
     return x;
   };
-  if (a.url !== undefined) address(a.url); // a bad address is told first
+  if (a.url !== undefined) r.allowedSite(originOf(address(a.url))); // a bad address is told first
   await leave();
   if (a.url !== undefined) {
     const url = address(a.url);
@@ -565,7 +600,8 @@ async function gif(r, call, spec, origin, a) {
 const COMPUTER = { screenshot: look, left_click: click, right_click: click, middle_click: click, double_click: click, triple_click: click, hover, type, key, scroll, scroll_to: scrollTo, left_click_drag: drag, wait: pause };
 
 export const pageTools = {
-  list_frames: async (r, call, spec, origin) => ({ origin, frames: (await listFrames(r, call, origin)).map(({ frame, parent, origin: o, granted: g, name }) => ({ frame, parent, origin: o, granted: g, ...(name && { name }) })) }),
+  list_frames: async (r, call, spec, origin) => ({ origin, frames: (await listFrames(r, call, origin)).map(({ frame, parent, origin: o, granted: g, name }) => ({ frame, parent, origin: o, granted: g, ...(!g && originOf(o) && ruleFor(r.rules, o) === 'block' && { blocked: true }), ...(name && { name }) })) }),
+  copy_to_clipboard: copy,
   read_page: readPage,
   get_page_text: pageText,
   find,

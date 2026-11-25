@@ -39,7 +39,7 @@ cpSync(path.join(root, 'NOTICE.txt'), path.join(dist, 'host/NOTICE.txt'));
 cpSync(path.join(root, 'thunderbird'), path.join(dist, 'thunderbird/thunderbird'), { recursive: true });
 cpSync(path.join(dist, 'thunderbird/thunderbird/manifest.json'), path.join(dist, 'thunderbird/manifest.json'));
 rmSync(path.join(dist, 'thunderbird/thunderbird/manifest.json'));
-for (const f of ['icon.svg', 'background/router.mjs', 'background/native.mjs', 'background/pagetools.mjs', 'background/tabtools.mjs', 'background/devtools.mjs', 'background/sitedata.mjs', 'background/observe.mjs', 'grants/grants.mjs', 'grants/approvals.mjs', 'workflow/elements.mjs', 'shared/protocol.mjs', 'shared/redact.mjs']) cpSync(path.join(dist, 'extension', f), path.join(dist, 'thunderbird', f));
+for (const f of ['icon.svg', 'background/router.mjs', 'background/native.mjs', 'background/pagetools.mjs', 'background/tabtools.mjs', 'background/devtools.mjs', 'background/sitedata.mjs', 'background/observe.mjs', 'grants/grants.mjs', 'grants/approvals.mjs', 'grants/rules.mjs', 'workflow/elements.mjs', 'shared/protocol.mjs', 'shared/redact.mjs']) cpSync(path.join(dist, 'extension', f), path.join(dist, 'thunderbird', f));
 
 // The developer build is another add-on with the same ID, for a Firefox of its own that takes unsigned add-ons. It is never signed.
 rmSync(path.join(dist, 'developer'), { recursive: true, force: true });

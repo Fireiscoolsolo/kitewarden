@@ -29,6 +29,7 @@ let tab;
 
 async function check(row, name, fn) {
   if (results.stopped) return;
+  await c?.pace();
   const t = Date.now();
   const notes = [];
   let error = null;

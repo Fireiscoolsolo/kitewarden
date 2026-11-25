@@ -352,6 +352,53 @@ try {
     assert.equal((await c.call('get_cookies', { tabId: await mine() })).code, 'tool_off');
   });
   await end();
+
+  // ---- upgrade from 0.5.0, the packages of Prompt 6
+
+  h = place('previous');
+  const v5 = earlier('67b4e72');
+  await begin();
+  await load(v5.xpi);
+
+  await check('FC-INST-12', 'from 0.5.0: helper first, then the add-on; what the user set stays, and nothing new is on', async (n) => {
+    assert.equal(spawnSync(v5.host, ['install', '--home', h.dir], { env: clean }).status, 0);
+    const key = readFileSync(path.join(h.dir, 'key.bin')).toString('hex');
+    await sb.click('#connect');
+    await is('Connected');
+    await sb.eval('document.querySelector("#d-data").open = true');
+    await sb.click('#switch-console');
+    await until('switch', () => sb.eval('return document.querySelector("#switch-console").checked'));
+    const now = Date.now();
+    await sb.eval('await browser.storage.local.set(arguments[0])', { chats: [{ id: 'c5', title: 'Chat of 0.5.0', created: now, updated: now, claude: '11111111-2222-3333-4444-555555555555', started: true, model: null, extras: true, running: false }], 'chat:c5': [] });
+    await load(v5.xpi);
+    await is('Connected', 15_000);
+    const was = await storage();
+    const before = await permissions();
+    const t = Date.now();
+    assert.equal(setup('install', '--home', h.dir).status, 0);
+    await until('the new helper under the 0.5.0 add-on', async () => new RegExp(`Helper ${VERSION.replaceAll('.', '[.]')}`).test(await sb.text('#link-detail')), 35_000, 200);
+    n(`0.5.0 add-on with ${VERSION} helper after ${Date.now() - t} ms`);
+    c = await client('driver');
+    assert.equal((await c.call('connection_status')).data.state, 'connected');
+    await load(XPI);
+    await is('Connected', 35_000);
+    const after = await storage();
+    for (const k of Object.keys(was).filter((x) => x !== 'log')) assert.deepEqual(after[k], was[k], k);
+    assert.equal(readFileSync(path.join(h.dir, 'key.bin')).toString('hex'), key);
+    assert.deepEqual(await permissions(), before, 'no permission was added');
+    const s = await sb.eval('return [...document.querySelectorAll("#rules li")].map((e) => e.textContent)');
+    assert.deepEqual(s, ['None'], 'no site rule');
+    c = await client('driver-2');
+    const st = (await c.call('connection_status')).data;
+    n(`on: ${st.switches_on}; backends: ${st.optional_backends.map((b) => `${b.id} ${b.state}`).join(', ')}; ${st.extension.version}`);
+    assert.deepEqual(st.switches_on, ['console']);
+    assert.ok(st.optional_backends.every((b) => b.state === 'not running'));
+    assert.equal((await c.call('copy_to_clipboard', { action: 'text', text: 'x' })).code, 'tool_off');
+    await sb.choose('#chat-list', 'c5');
+    await until('the chat', () => sb.eval('return document.getElementById("chat-list").value === "c5"'));
+    assert.deepEqual(await sb.eval('return [document.getElementById("extras").checked, document.getElementById("tools").checked]'), [true, false], 'a chat of 0.5.0 has no file and shell tools');
+  });
+  await end();
 } finally {
   await end().catch((e) => console.error(e.message));
   for (const dir of homes) setup('uninstall', '--home', dir);

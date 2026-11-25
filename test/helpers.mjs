@@ -128,6 +128,7 @@ export class McpClient {
     this.lines = [];
     this.stderr = '';
     this.next = 1;
+    this.times = [];
     this.waiting = new Map();
     this.child = spawn(process.execPath, [home.server, ...args], { stdio: 'pipe' });
     this.exit = new Promise((r) => this.child.on('exit', (code) => r(code)));
@@ -153,8 +154,14 @@ export class McpClient {
     this.notify('notifications/initialized');
     return r.result;
   }
+  /** Waits until a check has room under the 120 calls a minute that the add-on allows a session (FC-GRANT-22). */
+  async pace(room = 50) {
+    const recent = () => (this.times = this.times.filter((t) => Date.now() - t < 61_000)).length;
+    while (recent() > 120 - room) await sleep(500);
+  }
   /** The tool result, with `code` for an error and `data` for a JSON text. */
   async call(name, args = {}) {
+    for (let i = 0; i < (args.steps?.length ?? 1); i++) this.times.push(Date.now());
     const { result } = await this.request('tools/call', { name, arguments: args });
     const text = result.content.find((c) => c.type === 'text')?.text ?? '';
     let data = null;

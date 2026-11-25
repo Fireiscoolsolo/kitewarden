@@ -449,7 +449,7 @@ try {
     assert.match((await c.call('read_page', { tabId: idA })).text, new RegExp(`ALPHA-${B.port}`));
     assert.equal((await d.call('read_page', { tabId: idA })).code, 'conflict');
     await f.navigate('about:support');
-    assert.equal((await c.call('read_page', { tabId: idA })).code, 'grant_suspended');
+    assert.equal((await c.call('read_page', { tabId: idA })).code, 'restricted_page');
     await f.navigate(`${A.origin}/`);
     assert.equal((await c.call('read_page', { tabId: idA })).code, 'grant_suspended', 'coming back does not resume by itself');
   });

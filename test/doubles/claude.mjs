@@ -77,7 +77,19 @@ async function call(name, args) {
 
 const [word, ...rest] = text.split('\n').at(-1).split(' ');
 const answers = {
-  args: () => say(JSON.stringify({ argv, cwd: process.cwd(), ticket: 'FC_CHAT_TICKET' in process.env })),
+  args: async () => {
+    await ask('tools/call', { name: 'connection_status', arguments: {} }); // the server is logged in before this run ends
+    return say(JSON.stringify({ argv, cwd: process.cwd(), ticket: 'FC_CHAT_TICKET' in process.env, tools: tools.map((t) => t.name) }));
+  },
+  /** As Claude Code asks with --permission-prompt-tool, and it runs nothing. */
+  shell: async () => {
+    const input = { command: rest.join(' ') };
+    const id = `toolu_${++n}`;
+    out({ type: 'assistant', message: { id: `msg_${n}`, content: [{ type: 'tool_use', id, name: 'Bash', input }] } });
+    const r = await ask('tools/call', { name: 'chat_permission', arguments: { tool_name: 'Bash', input, tool_use_id: id } });
+    out({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'nothing was run by the double' }] } });
+    return say(`Permission: ${JSON.stringify(r)}`);
+  },
   recall: () => say(`Earlier you wrote: ${past.join(' | ')}`),
   blocks: () => say(JSON.stringify(blocks.map((b) => b.type))),
   big: () => say('🦊é"\\'.repeat(120_000)),

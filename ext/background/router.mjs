@@ -1,5 +1,6 @@
 // The one command path. The sidebar and every MCP server end up in `call`, with the same sessions, checks and log.
 // What the tools do is in the *tools.mjs files and sitedata.mjs; every rule about who may do it is here.
+import { noRules, ruleFor } from '../grants/rules.mjs';
 import { GROUPS, LIMITS, PROTOCOL, TOOLS, ToolError, VERSION, VIRTUAL, checkArgs, oneLine, originOf, plainUrl, toolSpec } from '../shared/protocol.mjs';
 import { devTools } from './devtools.mjs';
 import { pageTools, screenshot } from './pagetools.mjs';
@@ -18,6 +19,8 @@ const WHY = {
   cancelled: 'The client cancelled the call.',
   timeout: 'The time of the batch is over.',
   tool_off: 'The user turned this off in the sidebar.',
+  site_blocked: 'A site rule of the user forbids this site.',
+  read_only_grant: 'The user allowed reading only.',
   grant_suspended: SUSPENDED.origin[1],
   permission_required: SUSPENDED.permission[1],
 };
@@ -42,10 +45,12 @@ export class Router {
     this.sessions = new Map();
     this.calls = new Set();
     this.paused = false;
+    this.unreadable = false; // the stored settings, so that no rule or pause of the user is missed
     this.halted = null; // after an emergency stop: what was under way
     this.stoppedTabs = new Map(); // tab -> why
     this.clicking = null; // the click under way, to tell whose tab a new tab is
     this.switches = {};
+    this.rules = noRules(); // sites of the user, see ext/grants/rules.mjs
     this.folders = [];
     this.requests = new Map(); // tab requests that wait for the user
     this.lost = []; // grants that went with a lost link
@@ -56,7 +61,7 @@ export class Router {
   // Sessions
 
   openSession(id, kind, label) {
-    this.sessions.set(id, { id, kind, owned: new Set(), windows: new Set(), acted: [], shots: new Map(), seen: new Map(), closed: [], downloads: [], group: null, current: null, handover: new Set() });
+    this.sessions.set(id, { id, kind, owned: new Set(), windows: new Set(), acted: [], shots: new Map(), seen: new Map(), closed: [], downloads: [], group: null, current: null, handover: new Set(), recent: [], copied: null });
     this.label(id, label);
   }
 
@@ -136,6 +141,39 @@ export class Router {
     this.onChange();
   }
 
+  /** The site of an address, if no rule of the user forbids it. */
+  allowedSite(origin) {
+    if (ruleFor(this.rules, origin) === 'block') throw new ToolError('site_blocked', WHY.site_blocked);
+    return origin;
+  }
+
+  /** The user changed the site rules. What they forbid now is suspended, and no grant or frame covers it any more. */
+  async setRules(rules) {
+    this.rules = rules;
+    const blocked = (o) => ruleFor(rules, o) === 'block';
+    const hit = [];
+    for (const g of this.grants.all) {
+      const tab = await this.tab(g.tabId);
+      g.origins = g.origins.filter((o) => !blocked(o));
+      g.frames = g.frames.filter((o) => !blocked(o));
+      if (g.state === 'active' && blocked(originOf(tab?.url))) hit.push(g);
+    }
+    for (const g of hit) this.grants.suspend(g, 'origin');
+    this.lost = this.lost.map((l) => ({ ...l, grants: l.grants.filter((g) => !g.origins.some(blocked)) })).filter((l) => l.grants.length);
+    this.#suspended(hit, 'site_blocked');
+    this.onChange();
+  }
+
+  /** The user changes what a grant allows. Less of it ends the acting calls of that tab, waiting ones as well. */
+  setLevel(grantId, level) {
+    const g = this.grants.get(grantId);
+    if (!g || !['read', 'act'].includes(level)) throw new ToolError('invalid_argument', 'That grant is gone.');
+    g.level = level;
+    if (level === 'read') this.#abort((c) => c.session.id === g.sessionId && c.tabId === g.tabId && c.level === 'act', 'read_only_grant');
+    this.#note(this.sessions.get(g.sessionId), 'grant', g.private ? null : g.origins.at(-1) ?? null, `level ${level}`);
+    this.onChange();
+  }
+
   #report(c) {
     return { session: c.session.label, tool: c.tool, tabId: c.tabId, state: c.state, may_have_taken_effect: c.sent?.what ?? null };
   }
@@ -146,6 +184,7 @@ export class Router {
     const session = this.sessions.get(sessionId);
     if (!session || !['read', 'act'].includes(level)) throw new ToolError('invalid_argument', 'That session is gone.');
     if (!tab || !origin || originOf(tab.url) !== origin) throw new ToolError('origin_changed', 'The tab shows another page now.');
+    this.allowedSite(origin);
     if (tab.incognito && allowPrivate !== true) throw new ToolError('not_allowed', 'This is a private window. It needs a grant of its own.');
     if (tab.incognito && session.kind !== 'mcp') throw new ToolError('not_allowed', 'Chats and this sidebar keep a history, so a private tab can be given to an MCP client only.');
     if (!(await this.api.hasHost(origin, tabId))) throw new ToolError('permission_required', 'Firefox did not allow this site.');
@@ -170,6 +209,7 @@ export class Router {
     const g = this.grants.get(grantId);
     const tab = g && (await this.tab(g.tabId));
     if (!tab || originOf(tab.url) !== origin) throw new ToolError('origin_changed', 'The tab shows another page now.');
+    this.allowedSite(origin);
     if (!(await this.api.hasHost(origin, g.tabId))) throw new ToolError('permission_required', 'Firefox did not allow this site.');
     this.grants.approveOrigin(g, origin);
     this.#note(this.sessions.get(g.sessionId), 'grant', g.private ? null : origin, 'origin approved');
@@ -180,6 +220,7 @@ export class Router {
   async approveFrames(grantId, origin) {
     const g = this.grants.get(grantId);
     if (!g || originOf(origin) !== origin) throw new ToolError('invalid_argument', 'That grant is gone.');
+    this.allowedSite(origin);
     if (!(await this.api.hasHost(origin, g.tabId))) throw new ToolError('permission_required', 'Firefox did not allow this site.');
     if (!g.frames.includes(origin)) g.frames.push(origin);
     this.#note(this.sessions.get(g.sessionId), 'grant', g.private ? null : origin, 'frames approved');
@@ -319,13 +360,28 @@ export class Router {
     if (tool === 'browser_batch') return this.#batch(call, args);
     const spec = toolSpec(tool, args);
     await this.#ready(tool);
+    this.#count(call.session);
     if (spec.level === 'none') return this.handlers[tool](this, call, spec, null, args);
+    call.level = spec.level;
     let origin = await this.authorize(call, spec);
     if (spec.level === 'act') {
       await this.#turn(call);
       origin = await this.authorize(call, spec); // the one before may have moved the page
     }
+    // The user wants to be asked for this site. A call with a card of its own asks there.
+    if (ruleFor(this.rules, origin) === 'ask' && !spec.approval && !call.user) {
+      await this.ask(call, spec, origin, { tool: 'site_rule', target: toolSpec(tool, args).title, value: 'You asked to be asked for this site' }, args.reason);
+    }
     return this.handlers[tool](this, call, spec, origin, args);
+  }
+
+  /** Calls of one session in the last minute. The sidebar is the user. */
+  #count(session) {
+    if (session.kind === 'sidebar') return;
+    const now = this.now();
+    session.recent = session.recent.filter((t) => now - t < 60_000);
+    if (session.recent.length >= LIMITS.callsPerMinute) throw new ToolError('rate_limited', `More than ${LIMITS.callsPerMinute} calls in a minute. Wait ${Math.ceil((60_000 - (now - session.recent[0])) / 1000)} s.`);
+    session.recent.push(now);
   }
 
   /** The switch of a tool, and the optional backend that it needs. Nothing falls back to another backend. */
@@ -339,6 +395,7 @@ export class Router {
   }
 
   #open() {
+    if (this.unreadable) throw new ToolError('settings_unreadable', 'The stored settings of Firefox Companion cannot be read, so nothing is allowed. Ask the user to look into the sidebar.');
     if (this.paused) throw new ToolError('paused', WHY.paused);
     if (this.halted) throw new ToolError('stopped', 'The user stopped Firefox Companion. Ask the user to press Resume work in the sidebar.');
   }
@@ -371,6 +428,9 @@ export class Router {
     const origin = originOf(tab.url);
     call.origin = origin;
     call.private = g.private;
+    // Before the move counts, which ends this call with another code.
+    if (origin) this.allowedSite(origin);
+    else if (g.state !== 'pending' && tab.url !== 'about:blank' && !call.session.owned.has(tabId)) throw new ToolError('restricted_page', 'The tab shows a page of Firefox itself, which no tool may use.');
     this.tabMoved(tabId, tab.url);
     if (g.state === 'suspended' && g.reason === 'origin') throw new ToolError(...SUSPENDED.origin);
     if (g.state === 'pending') throw new ToolError('grant_suspended', 'The new tab has not loaded yet. Try again.');
@@ -400,6 +460,7 @@ export class Router {
     const w = await this.#ask1(call, { cmd: 'where' }, frame);
     const g = this.grants.find(call.session.id, call.tabId);
     if (!w || w.error) throw new ToolError('no_grant', 'That frame is gone, or Firefox does not let add-ons into it.');
+    if (ruleFor(this.rules, w.origin) === 'block' && w.origin !== origin) throw new ToolError('no_grant', `${WHY.site_blocked} (${w.origin})`);
     if (!g || (w.origin !== origin && !(g.frames.includes(w.origin) && (await this.api.hasHost(w.origin, call.tabId))))) {
       throw new ToolError('no_grant', `The frame belongs to ${w.origin}. Ask the user to allow its frames in the sidebar.`);
     }
@@ -496,7 +557,7 @@ export class Router {
 
   #status(session) {
     const mine = this.grants.of(session.id);
-    const state = this.halted ? 'stopped' : this.paused ? 'paused' : 'connected';
+    const state = this.unreadable ? 'settings_unreadable' : this.halted ? 'stopped' : this.paused ? 'paused' : 'connected';
     return {
       state,
       session: { id: session.id, label: session.label },
@@ -509,6 +570,7 @@ export class Router {
       switches_on: Object.keys(GROUPS).filter((n) => this.switches[n]),
       ...(this.backends && { optional_backends: this.backends.status() }),
       next_step: {
+        settings_unreadable: 'The stored settings cannot be read. Ask the user to look into the sidebar.',
         stopped: 'The user stopped Firefox Companion. Ask the user to press Resume work in the sidebar.',
         paused: 'The user paused Firefox Companion. Ask the user to press Resume in the sidebar.',
         connected: mine.length ? 'Call tabs_context.' : 'Ask the user to attach a tab to this session in the Firefox Companion sidebar, or call tab_request.',

@@ -4,6 +4,7 @@ import { beforeEach, test } from 'node:test';
 import { Router } from '../../dist/extension/background/router.mjs';
 import { Approvals } from '../../dist/extension/grants/approvals.mjs';
 import { Grants } from '../../dist/extension/grants/grants.mjs';
+import { addRule, noRules, ruleFor } from '../../dist/extension/grants/rules.mjs';
 
 const A = 'https://a.example';
 const B = 'https://b.example';
@@ -451,6 +452,35 @@ test('a stop, a cancel or a revocation during the last question to the browser s
   assert.ok(!calls.some((c) => c[0] === 'update'), 'the step did not begin');
 });
 
+test('a copy of a tab that has just moved to another origin is not made', async () => {
+  tabs[0].url = `${B}/moved`; // Firefox knows it, the event has not arrived yet
+  browser.tabs.duplicate = async (id) => (calls.push(['duplicate', id]), tabs.push({ ...tabs[0], id: 60 }), tabs.at(-1));
+  assert.equal(await code(call('tabs_create', { duplicateOf: 1 })), 'no_grant');
+  assert.deepEqual([calls.filter(([c]) => c === 'duplicate').length, grants.all.filter((x) => x.tabId === 60).length], [0, 0]);
+});
+
+test('a window that holds a tab which the user took over or is busy with stays open', async () => {
+  const { result } = await call('windows_create', {});
+  router.stopTab(result.tabId);
+  assert.equal(await code(call('windows_close', { windowId: result.windowId })), 'stopped');
+  router.resumeTab(result.tabId);
+  router.sessions.get('s1').handover.add(result.tabId);
+  assert.equal(await code(call('windows_close', { windowId: result.windowId })), 'paused');
+  assert.equal(await code(call('tabs_close', { tabId: result.tabId })), 'paused');
+  assert.equal(calls.filter(([c]) => c === 'close window').length, 0);
+  router.sessions.get('s1').handover.clear();
+  assert.equal(await code(call('windows_close', { windowId: result.windowId })), 'ok');
+});
+
+test('after the user closed the window of a session, its next tab opens in another one', async () => {
+  const { result } = await call('windows_create', {});
+  const get = browser.windows.get;
+  browser.windows.get = async (id, ...a) => (id === result.windowId ? Promise.reject(new Error('Invalid window ID')) : get(id, ...a));
+  const create = browser.tabs.create;
+  browser.tabs.create = async (o) => (o.windowId === result.windowId ? Promise.reject(new Error('Invalid window ID')) : create(o));
+  assert.equal(await code(call('tabs_create', {})), 'ok');
+});
+
 test('browser data: the switch counts again after the approval, and a download from a private tab stays private', async () => {
   router.switches = { history: true, downloads: true };
   let p = call('search_history', { query: 'x' });
@@ -466,4 +496,129 @@ test('browser data: the switch counts again after the approval, and a download f
     assert.equal(await code(p), 'ok');
   }
   assert.deepEqual(calls.filter((c) => c[0] === 'download'), [['download', false], ['download', true]]);
+});
+
+test('site rules: block, only, and ask cover subdomains, stand above grants, and hold in every listing', async () => {
+  const host = (s) => ruleFor({ ...noRules(), block: ['b.example'] }, s);
+  assert.deepEqual(['https://b.example', 'https://x.b.example:8443', 'https://B.EXAMPLE', 'https://b.example.'].map(host), ['block', 'block', 'block', 'block']);
+  assert.deepEqual(['https://ab.example', 'https://b.example.org', null, 'about:config'].map(host), [null, null, 'block', 'block']);
+  assert.equal(ruleFor({ block: ['x.a.example'], ask: ['a.example'], allow: ['a.example'] }, 'https://x.a.example'), 'block', 'never wins');
+  assert.equal(ruleFor({ ...noRules(), allow: ['a.example'] }, B), 'block', 'a list of allowed sites blocks the others');
+  for (const bad of ['', 'a b', 'https://u:p@a.example', '*.*']) assert.throws(() => addRule(noRules(), 'block', bad), { code: 'invalid_argument' }, bad);
+  assert.deepEqual(addRule(noRules(), 'ask', ' *.Example.COM. ').ask, ['example.com']);
+
+  const p = click();
+  await card();
+  await router.setRules(addRule(noRules(), 'block', 'a.example'));
+  assert.equal(await code(p), 'site_blocked', 'what waits ends');
+  assert.deepEqual([approvals.cards.length, sent.length], [0, 0]);
+  for (const [t, a] of [['read_page', { tabId: 1 }], ['computer', { action: 'left_click', tabId: 1, ref: 'ref_d_1' }], ['tab_info', { tabId: 1 }], ['tabs_create', { url: `${A}/new` }], ['windows_create', { url: `${A}/` }]]) assert.equal(await code(call(t, a)), 'site_blocked', t);
+  const [entry] = (await call('tabs_context')).result.tabs;
+  assert.deepEqual([entry.state, entry.url, entry.title], ['site_blocked', undefined, undefined]);
+  await assert.rejects(router.grant({ sessionId: 's2', tabId: 1, origin: A, level: 'read', move: true }), { code: 'site_blocked' });
+  await assert.rejects(router.approveOrigin(grants.all[0].id, A), { code: 'site_blocked' });
+
+  await router.setRules(noRules());
+  assert.equal(await code(call('read_page', { tabId: 1 })), 'grant_suspended', 'the user approves the site again');
+  await router.approveOrigin(grants.all[0].id, A);
+  await router.approveFrames(grants.all[0].id, B);
+  assert.match((await call('read_page', { tabId: 1 })).result.outline, /In frame 6/);
+  await router.setRules(addRule(noRules(), 'block', 'b.example'));
+  const o = (await call('read_page', { tabId: 1 })).result.outline;
+  assert.ok(/forbids this site/.test(o) && !o.includes('In frame 6'));
+  assert.equal((await call('list_frames', { tabId: 1 })).result.frames.find((f) => f.frame === 6).blocked, true);
+  await assert.rejects(router.approveFrames(grants.all[0].id, B), { code: 'site_blocked' });
+  assert.equal(await code(call('navigate', { tabId: 1, url: `${B}/x` })), 'site_blocked');
+  browser.history.search = async () => [{ title: 'H', url: `${A}/h`, lastVisitTime: 0 }, { title: 'S', url: `${B}/s`, lastVisitTime: 0 }];
+  router.switches.history = true;
+  const h = call('search_history', { query: 'x' });
+  await answer(true);
+  assert.deepEqual((await h).result.entries.map((e) => e.title), ['H']);
+
+  await router.setRules(addRule(noRules(), 'ask', 'a.example'));
+  let r = call('read_page', { tabId: 1 });
+  assert.equal((await answer(false)).tool, 'site_rule');
+  assert.equal(await code(r), 'approval_denied');
+  r = call('read_page', { tabId: 1 });
+  await answer(true);
+  assert.equal(await code(r), 'ok');
+  r = click();
+  assert.equal((await answer(false)).tool, 'left_click', 'an action asks once, with its own card');
+  await r;
+});
+
+test('tab_info, tab_update and tabs_move: the tab record alone, what Firefox says afterwards, and only tabs of the session', async () => {
+  Object.assign(tabs[0], { index: 0, pinned: false, mutedInfo: { muted: false }, audible: true });
+  browser.contextualIdentities = { get: async () => ({ name: 'Work' }) };
+  browser.tabs.update = async (id, o) => Object.assign(tabs.find((t) => t.id === id), o.pinned === undefined ? {} : { pinned: o.pinned }, o.muted === undefined ? {} : { mutedInfo: { muted: o.muted } });
+  pages.length = 0;
+  const i = (await call('tab_info', { tabId: 1 })).result;
+  assert.deepEqual([i.url, i.pinned, i.muted, i.audible, pages.length], [`${A}/x`, false, false, true, 0]);
+  assert.deepEqual((await call('tab_update', { tabId: 1, pinned: true, muted: true })).result, { tabId: 1, pinned: true, muted: true });
+  assert.equal(await code(call('tab_update', { tabId: 1 })), 'invalid_argument');
+  assert.equal(await code(call('tab_update', { tabId: 2, pinned: false })), 'no_grant');
+  router.setLevel(grants.all[0].id, 'read');
+  assert.equal(await code(call('tab_update', { tabId: 1, muted: false })), 'read_only_grant');
+  browser.tabs.move = async (ids, { index }) => calls.push(['move', ids, index]); // Firefox declines without an error
+  assert.deepEqual((({ requested, moved }) => [requested, moved])((await call('tabs_move', { tabIds: [1], index: 5 })).result), [1, 0]);
+  assert.equal(await code(call('tabs_move', { tabIds: [1, 2], index: 0 })), 'no_grant');
+  assert.equal(await code(call('tabs_move', { tabIds: [1], index: 0, windowId: 2 })), 'no_grant', 'a window without a tab of the session');
+  assert.equal(calls.filter(([c]) => c === 'move').length, 1);
+});
+
+test('a lower level ends acting calls that wait, and reading goes on', async () => {
+  const p = click();
+  await card();
+  router.setLevel(grants.all[0].id, 'read');
+  assert.deepEqual([await code(p), approvals.cards.length], ['read_only_grant', 0]);
+  assert.equal(await code(click()), 'read_only_grant');
+  assert.equal(await code(call('read_page', { tabId: 1 })), 'ok');
+  assert.throws(() => router.setLevel(grants.all[0].id, 'all'), { code: 'invalid_argument' });
+});
+
+test('a page of Firefox itself in an attached tab is refused, and the tab is not closed', async () => {
+  tabs[0].url = 'about:config';
+  for (const [t, a] of [['navigate', { tabId: 1, url: `${A}/y` }], ['tabs_select', { tabId: 1 }], ['tabs_close', { tabId: 1 }], ['read_page', { tabId: 1 }], ['tab_info', { tabId: 1 }]]) assert.equal(await code(call(t, a)), 'restricted_page', t);
+  assert.ok(tabs.some((t) => t.id === 1));
+});
+
+test('clipboard: off at first, asks, and ctrl+v inserts only what this session copied', async () => {
+  const put = [];
+  router.api.clipboard = { text: async (t) => put.push(t), picture: async (b) => put.push(b.byteLength) };
+  const paste = (s) => call('computer', { action: 'key', tabId: 1, ref: 'ref_d_1', keys: 'ctrl+v' }, s);
+  for (const p of [call('copy_to_clipboard', { action: 'text', text: 'x' }), paste()]) assert.equal(await code(p), 'tool_off');
+  router.switches.clipboard = true;
+  assert.equal(await code(paste()), 'not_allowed', 'nothing was copied');
+  let p = call('copy_to_clipboard', { action: 'text', text: 'from Claude' });
+  assert.equal((await answer(false)).value, 'from Claude');
+  assert.deepEqual([await code(p), put.length], ['approval_denied', 0]);
+  p = call('copy_to_clipboard', { action: 'text', text: 'from Claude' });
+  await answer(true);
+  assert.deepEqual([await code(p), put], ['ok', ['from Claude']]);
+  p = paste();
+  assert.match((await answer(true)).value, /inserts: from Claude/);
+  assert.deepEqual([await code(p), sent.at(-1)[0]], ['ok', 'type']);
+  assert.equal(await code(paste('s2')), 'conflict');
+  router.sessions.get('s1').copied = null; // as in a new session
+  assert.equal(await code(paste()), 'not_allowed');
+  p = call('copy_to_clipboard', { action: 'picture', tabId: 1 });
+  await answer(true);
+  assert.deepEqual([await code(p), put.at(-1)], ['ok', 3]);
+  p = call('copy_to_clipboard', { action: 'text', text: 'late' });
+  await card();
+  router.switches.clipboard = false;
+  router.stopGroup('clipboard');
+  assert.deepEqual([await code(p), put.length], ['tool_off', 2]);
+});
+
+test('more than 120 calls in a minute are refused with the time to wait, for each session apart', async () => {
+  let now = 1_000_000;
+  router.now = () => now;
+  for (let i = 0; i < 120; i++) assert.equal(await code(call('tabs_context')), 'ok');
+  assert.match((await call('tabs_context')).error.message, /Wait \d+ s/);
+  assert.equal(await code(call('tabs_context')), 'rate_limited');
+  assert.equal(await code(call('connection_status')), 'ok');
+  assert.equal(await code(call('tabs_context', {}, 's2')), 'ok');
+  now += 60_001;
+  assert.equal(await code(call('tabs_context')), 'ok');
 });

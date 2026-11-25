@@ -12,6 +12,8 @@ import { Backends, KNOWN } from './backends.mjs';
 import { NativeLink } from './native.mjs';
 import { Observer } from './observe.mjs';
 import { Router } from './router.mjs';
+import { Prompts } from '../chat/prompts.mjs';
+import { addRule, noRules, readable, removeRule } from '../grants/rules.mjs';
 
 const HOST = 'firefox_companion';
 const SIDEBAR = browser.runtime.getURL('sidebar/sidebar.html');
@@ -43,6 +45,7 @@ const firefox = {
   host: (type, data) => ask(type, data),
   windowState: async (id) => (await browser.windows.get(id)).state,
   annotate,
+  clipboard: { text: (t) => navigator.clipboard.writeText(t), picture: (bytes) => browser.clipboard.setImageData(bytes, 'jpeg') },
   sessionEnded(s) {
     // Its tabs stay open and leave the group of the session.
     if (s.group !== null && s.owned.size) browser.tabs.ungroup([...s.owned]).catch(() => {});
@@ -196,6 +199,13 @@ function backendEvent(name, m) {
   if (name === 'remote') remote.onEvent(m);
 }
 const chats = new Chats({ store: browser.storage.local, post: (m) => native.post(m), connected: () => native.connected, router, onChange: chatChanged });
+router.handlers.chat_permission = (...a) => chats.permission(...a);
+const prompts = new Prompts({ store: browser.storage.local, onChange: changed });
+
+async function setRules(rules) {
+  browser.storage.local.set({ siteRules: rules });
+  await router.setRules(rules);
+}
 
 /** The mark of a GIF recording in the page. A workflow recording puts its own there. */
 async function pill(tabId, kind) {
@@ -386,7 +396,19 @@ const fromSidebar = {
   pause: ({ on }) => {
     browser.storage.local.set({ paused: on === true });
     router.setPaused(on === true);
+    if (on === true) chats.stopAll((run) => run.tools);
   },
+  /** The user lets the damaged rules go. Everything else that is stored stays. */
+  async reset_rules() {
+    if (!router.unreadable) return;
+    await browser.storage.local.remove('siteRules');
+    browser.runtime.reload();
+  },
+  rule_add: (m) => setRules(addRule(router.rules, m.kind, m.host)),
+  rule_remove: (m) => setRules(removeRule(router.rules, m.kind, m.host)),
+  set_level: (m) => router.setLevel(m.grant, m.level),
+  prompt_save: (m) => prompts.save(m),
+  prompt_remove: (m) => prompts.remove(m.name),
   grant: (m) => router.grant({ sessionId: m.session, tabId: m.tabId, origin: m.origin, level: m.level, private: m.private === true, move: m.move === true }),
   approve_origin: (m) => router.approveOrigin(m.grant, m.origin),
   revoke: (m) => router.revoke((g) => g.id === m.grant),
@@ -403,9 +425,16 @@ const fromSidebar = {
   call: (m) => router.call('sidebar', m.id, m.tool, m.args, { user: true }),
 
   claude_info: (m) => claudeInfo(m.fresh === true),
-  chat_new: (m) => void chats.create({ model: m.model || null, extras: m.extras === true }),
-  chat_select: (m) => chats.select(m.chat),
-  chat_configure: (m) => chats.configure(m.chat, { model: m.model || null, extras: m.extras }),
+  // The sidebar gets the other chat before the answer, so that what the user does next belongs to it.
+  chat_new(m) {
+    chats.create({ model: m.model || null, extras: m.extras === true, tools: m.tools === true });
+    showChat();
+  },
+  chat_select(m) {
+    chats.select(m.chat);
+    showChat();
+  },
+  chat_configure: (m) => chats.configure(m.chat, { model: m.model || null, extras: m.extras, tools: m.tools }),
   chat_delete: (m) => chats.remove(m.chat),
   chat_undo: (m) => chats.undo(m.chat),
   chat_clear: () => chats.clear(),
@@ -424,6 +453,7 @@ const fromSidebar = {
   chat_send: (m) => chats.send(m.chat, m.text),
   chat_retry: (m) => chats.retry(m.chat),
   chat_unqueue: (m) => chats.unqueue(m.chat, m.index),
+  chat_edit: (m) => chats.editQueued(m.chat, m.index),
   chat_flush: (m) => chats.flush(m.chat),
   chat_stop: (m) => chats.stop(m.chat),
 
@@ -489,6 +519,7 @@ function view() {
   return {
     link: { ...native.status },
     paused: router.paused,
+    unreadable: router.unreadable,
     sessions: [...router.sessions.values()].map(({ id, kind, label }) => ({ id, kind, label })),
     grants: grants.all.map((g) => ({ ...g })),
     approvals: approvals.cards,
@@ -504,6 +535,8 @@ function view() {
     lost: router.lost.map(({ id, kind, name, grants: g }) => ({ id, kind, name, tabs: g.length })),
     switches: router.switches,
     folders: router.folders,
+    rules: router.rules,
+    prompts: prompts.list,
     profile,
     backends: backends.status({ detail: true }),
     backendTabs: [...backends.tabs.keys()].map((id) => backends.tab(id)),
@@ -538,11 +571,14 @@ function changed() {
 // shortcut: the whole open chat goes to the sidebar each time (at most 400 items); send only what changed if that is slow.
 let chatTimer = null;
 function chatChanged() {
-  chatTimer ??= setTimeout(() => {
-    chatTimer = null;
-    for (const p of ports) p.postMessage({ type: 'chat', chat: chats.open() });
-    changed();
-  }, CHAT_MS);
+  chatTimer ??= setTimeout(showChat, CHAT_MS);
+}
+
+function showChat() {
+  clearTimeout(chatTimer);
+  chatTimer = null;
+  for (const p of ports) p.postMessage({ type: 'chat', chat: chats.open() });
+  changed();
 }
 
 // Browser events
@@ -565,7 +601,8 @@ browser.permissions.onRemoved.addListener(() => router.permissionsRemoved());
 
 // developer build: more tools
 router.openSession('sidebar', 'sidebar', 'This sidebar');
-browser.storage.local.get({ connect: false, paused: false, log: [], switches: {}, folders: [], profile: null }).then(async (s) => {
+router.unreadable = true; // until they are read
+browser.storage.local.get({ connect: false, paused: false, log: [], switches: {}, folders: [], siteRules: noRules(), profile: null }).then(async (s) => {
   log = [...s.log, ...log].slice(-LOG_LINES);
   router.setPaused(s.paused);
   router.switches = s.switches;
@@ -573,7 +610,14 @@ browser.storage.local.get({ connect: false, paused: false, log: [], switches: {}
   // A random ID of this profile and nothing else. The helper keeps one pipe for each.
   Object.assign(profile, s.profile ?? { id: crypto.randomUUID(), label: 'Firefox' });
   if (!s.profile) browser.storage.local.set({ profile });
-  await Promise.all([chats.load(), workflows.load(), remote.load()]);
+  if (!readable(s.siteRules)) throw new Error('site rules');
+  router.rules = s.siteRules;
+  await Promise.all([chats.load(), workflows.load(), remote.load(), prompts.load()]);
   await schedules.load();
+  router.unreadable = false;
   if (s.connect) native.start();
+  changed();
+}).catch((e) => {
+  console.error('settings', e); // everything stays refused
+  changed();
 });

@@ -5,7 +5,9 @@ import { LIMITS, ToolError, oneLine, wrapFileText, wrapPageText } from '../share
 const UNDO_MS = 5000;
 const SAVE_MS = 500;
 const TOOL = /^mcp__firefox-companion__/;
-const LOGIN = /not logged in|\/login|authentication|oauth|invalid api key|401/i;
+const CHAT_TOOLS = ['Bash', 'PowerShell', 'Read', 'Edit', 'Write', 'Glob', 'Grep', 'WebFetch', 'WebSearch']; // the same list is in Chat.cs
+const HIDDEN = /[\p{Cf}\p{Zl}\p{Zp}]|(?![\n\t])\p{Cc}/gu; // what a card could not show as it is
+const LOGIN =/not logged in|\/login|authentication|oauth|invalid api key|401/i;
 
 const hex = (n) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, '0')).join('');
 const textOf = (content) => (typeof content === 'string' ? content : (content ?? []).map((b) => (b.type === 'text' ? b.text : `[${b.type === 'image' ? 'picture' : oneLine(b.type, 20)}]`)).join('\n'));
@@ -51,9 +53,9 @@ export class Chats {
 
   // Chats
 
-  create({ model = null, extras = false } = {}) {
+  create({ model = null, extras = false, tools = false } = {}) {
     if (this.list.length >= LIMITS.chats) throw new ToolError('limit_reached', `There are ${LIMITS.chats} chats. Delete one first.`);
-    const c = { id: this.uuid(), title: 'New chat', created: this.now(), updated: this.now(), claude: this.uuid(), started: false, model, extras, running: false };
+    const c = { id: this.uuid(), title: 'New chat', created: this.now(), updated: this.now(), claude: this.uuid(), started: false, model, extras, tools, running: false };
     this.list.unshift(c);
     this.#items.set(c.id, []);
     this.select(c.id);
@@ -68,11 +70,30 @@ export class Chats {
     this.onChange();
   }
 
-  configure(id, { model, extras }) {
+  configure(id, { model, extras, tools }) {
     const c = this.#chat(id);
     if (model !== null && !(typeof model === 'string' && /^[a-z0-9][a-z0-9.\-[\]]{0,59}$/.test(model))) throw new ToolError('invalid_argument', 'That is not a model name.');
-    Object.assign(c, { model, extras: extras === true });
+    Object.assign(c, { model, extras: extras === true, tools: tools === true });
     this.#save(id);
+  }
+
+  /** Claude Code asks before a file, shell or web tool of a run. The user sees the whole input; nothing runs here. */
+  async permission(r, call, spec, origin, a) {
+    const run = [...this.#runs.values()].find((x) => x.sid === call.session.id && x.tools);
+    const on = () => {
+      if (!run || run.stopped || !this.#runs.has(run.id) || this.#find(run.chat)?.tools !== true) throw new ToolError('tool_off', 'The user has not turned file and shell tools on in this chat.');
+    };
+    on();
+    if (!CHAT_TOOLS.includes(a.tool_name)) throw new ToolError('not_allowed', `${oneLine(a.tool_name, 60)} is not offered in this chat.`);
+    const text = Object.entries(a.input).map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`).join('\n').replace(HIDDEN, (c) => `\\u{${c.codePointAt(0).toString(16)}}`);
+    if (text.length > LIMITS.chatToolInput) throw new ToolError('too_large', 'The input is too long to be shown whole on the card, so it is not allowed.');
+    const lines = text.split('\n').length;
+    const size = lines > 8 || text.length > 600 ? ` (${lines} lines, ${text.length} characters: scroll to see all)` : '';
+    await r.ask(call, spec, null, { tool: 'chat_permission', target: a.tool_name + size, value: text }, '');
+    on();
+    r.sent(call, `${a.tool_name} ${oneLine(a.input.command ?? a.input.file_path ?? a.input.url ?? a.input.pattern ?? '', 80)}`.trim());
+    call.sent.use = a.tool_use_id; // its result tells the outcome
+    return { behavior: 'allow' };
   }
 
   /** The chat leaves the list at once, and the stored text goes after five seconds, unless the user takes it back. */
@@ -256,6 +277,15 @@ export class Chats {
     this.#start(c, msg);
   }
 
+  /** A waiting message goes back to the input: its text is returned, its attachments are drafts again. */
+  editQueued(id, i) {
+    const msg = (this.#queues.get(id) ?? [])[i];
+    if (!msg) throw new ToolError('not_found', 'That message is not waiting any more.');
+    this.#drafts.set(id, [...msg.files, ...(this.#drafts.get(id) ?? [])].slice(0, LIMITS.attachments));
+    this.unqueue(id, i);
+    return { text: msg.text };
+  }
+
   unqueue(id, i) {
     this.#queues.set(id, (this.#queues.get(id) ?? []).filter((_, n) => n !== i));
     this.onChange();
@@ -277,12 +307,13 @@ export class Chats {
 
   #input(msg) {
     const content = [...msg.files.map((f) => f.block), ...(msg.text ? [{ type: 'text', text: msg.text }] : [])];
-    return JSON.stringify({ type: 'user', message: { role: 'user', content } });
+    // One line, also for a reader that ends a line at these two.
+    return JSON.stringify({ type: 'user', message: { role: 'user', content } }).replace(/[\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16)}`);
   }
 
   #start(c, msg) {
     const sid = this.session(c.id);
-    const run = { id: this.uuid(), chat: c.id, sid, ticket: hex(32), line: '', text: null, streamed: new Set(), stopped: false, result: null, failed: false, before: new Set(this.router.sessions.get(sid).acted) };
+    const run = { id: this.uuid(), chat: c.id, sid, tools: c.tools === true, ticket: hex(32), line: '', text: null, streamed: new Set(), stopped: false, result: null, failed: false, before: new Set(this.router.sessions.get(sid).acted) };
     if (c.title === 'New chat') {
       c.title = oneLine(msg.text || msg.files[0].name, 60);
       this.router.label(sid, `Chat: ${c.title}`);
@@ -291,7 +322,7 @@ export class Chats {
     this.#last.set(c.id, msg);
     this.#push(c.id, { type: 'user', text: msg.text, files: msg.files.map(({ kind, name, size }) => ({ kind, name, size })) });
     this.#runs.set(run.id, run);
-    this.post({ type: 'chat_run', run: run.id, session: c.claude, resume: c.started, model: c.model, extras: c.extras, ticket: run.ticket, input: this.#input(msg) });
+    this.post({ type: 'chat_run', run: run.id, session: c.claude, resume: c.started, model: c.model, extras: c.extras, tools: run.tools, ticket: run.ticket, input: this.#input(msg) });
   }
 
   #runOf(id) {
@@ -309,9 +340,9 @@ export class Chats {
     this.#note(id, 'warn', `Stopped. ${this.#outcome(run)}`);
   }
 
-  /** Emergency stop: every run ends. */
-  stopAll() {
-    for (const run of [...this.#runs.values()]) this.stop(run.chat);
+  /** Emergency stop: every run ends. A pause ends those that may have a command under way, which no call here could end. */
+  stopAll(match = () => true) {
+    for (const run of [...this.#runs.values()]) if (match(run)) this.stop(run.chat);
   }
 
   #outcome(run) {
@@ -410,6 +441,8 @@ export class Chats {
       for (const b of e.message.content) {
         const item = b.type === 'tool_result' && this.#items.get(c.id).findLast((i) => i.type === 'tool' && i.id === b.tool_use_id);
         if (item) Object.assign(item, { state: b.is_error ? 'error' : 'ok', result: textOf(b.content).slice(0, LIMITS.toolResultChars) });
+        const allowed = this.router.sessions.get(run.sid)?.acted.find((x) => x.use && x.use === b.tool_use_id);
+        if (allowed) allowed.outcome = 'done';
       }
     } else if (e.type === 'result') {
       run.result = e;

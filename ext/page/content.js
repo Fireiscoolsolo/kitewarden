@@ -545,8 +545,108 @@
     return hits[0];
   }
 
+  // Lists that a page built itself
+
+  const isDropdown = (el) => !(el instanceof HTMLSelectElement) && (['combobox', 'listbox'].includes(el.getAttribute('role')?.trim().split(/\s+/)[0]) || el.getAttribute('aria-haspopup') === 'listbox');
+  const isOpen = (el) => el.getAttribute('aria-expanded') === 'true';
+  const shownIn = (el) => line(el.value ?? el.innerText, 200);
+
+  function checkDropdown(el) {
+    if (isSecret(el)) fail('secret_field', 'Passwords, codes and payment fields are filled in by the user only.');
+    checkTarget(el);
+    if (isOpen(el)) fail('not_actionable', 'The list is open already.');
+    if (el.readOnly && !el.hasAttribute('aria-haspopup')) fail('not_actionable', 'The field is read-only.');
+  }
+
+  /** One synthetic press, as the lists of pages expect it. */
+  function press(el) {
+    const { x, y, hit } = pointOf(el);
+    const init = { bubbles: true, cancelable: true, composed: true, view: window, clientX: x, clientY: y, button: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true, detail: 1 };
+    hit.dispatchEvent(new PointerEvent('pointerdown', { ...init, buttons: 1 }));
+    if (hit.dispatchEvent(new MouseEvent('mousedown', { ...init, buttons: 1 }))) el.focus({ preventScroll: true });
+    hit.dispatchEvent(new PointerEvent('pointerup', init));
+    hit.dispatchEvent(new MouseEvent('mouseup', init));
+    hit.click();
+  }
+
+  const visibleOptions = () => [...rendered()].filter((e) => roleOf(e) === 'option' && e.getBoundingClientRect().height > 0);
+
+  /** Opens the list, searches in it, and takes the one option whose whole text is the value. */
+  async function choose(el, value) {
+    checkDropdown(el);
+    observe();
+    guardDialogs(false, '');
+    try {
+      return await chooseIn(el, value);
+    } finally {
+      releaseDialogs();
+    }
+  }
+
+  async function chooseIn(el, value) {
+    const mine = epoch;
+    const at = placeOf(el.getBoundingClientRect());
+    const before = shownIn(el);
+    const list = el.getAttribute('role') === 'listbox' ? el : null;
+    const there = new Set(list ? [] : visibleOptions());
+    if (!list) press(el);
+    const box = isText(el) ? el : null;
+    const close = () => {
+      if (list) return;
+      for (const t of ['keydown', 'keyup']) (box ?? document.activeElement ?? el).dispatchEvent(new KeyboardEvent(t, { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true, composed: true }));
+      if (isOpen(el)) press(el);
+      if (box && box.value !== before) {
+        box.value = before;
+        box.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true }));
+      }
+    };
+    const options = () => {
+      const named = (el.getAttribute('aria-controls') ?? el.getAttribute('aria-owns') ?? '').split(/\s+/).map((n) => n && el.getRootNode().getElementById?.(n)).filter(Boolean);
+      return visibleOptions().filter((o) => (list ? list.contains(o) : named.length ? named.some((n) => n.contains(o)) : !there.has(o)));
+    };
+    const same = (o, fold) => (fold ? line(o.innerText, 500).toLowerCase() === value.trim().toLowerCase() : line(o.innerText, 500) === value.trim());
+    let searched = false;
+    let hits = [];
+    let seen = [];
+    for (const end = Date.now() + 5000; Date.now() < end; await sleep(100)) {
+      if (epoch !== mine) {
+        close();
+        fail('not_taken', 'It was stopped before an option was taken.');
+      }
+      seen = options();
+      hits = seen.filter((o) => same(o, false));
+      if (!hits.length) hits = seen.filter((o) => same(o, true));
+      if (hits.length) break;
+      // A search box of the list, or the field itself. Typed once; the options may come later.
+      const field = box ?? (document.activeElement !== el && document.activeElement instanceof HTMLInputElement && isText(document.activeElement) && !isSecret(document.activeElement) ? document.activeElement : null);
+      if (field && !searched) {
+        searched = true;
+        field.focus({ preventScroll: true });
+        field.select?.();
+        insert(field, value.trim());
+      }
+    }
+    if (hits.length !== 1) {
+      const names = (hits.length ? hits : seen).slice(0, 50).map((o) => JSON.stringify(line(o.innerText, 80))).join(', ');
+      close();
+      fail(hits.length ? 'ambiguous' : 'no_match', `Options: ${names || 'none'}`);
+    }
+    const [option] = hits;
+    if (option.getAttribute('aria-disabled') === 'true') {
+      close();
+      fail('not_actionable', 'That option is disabled.');
+    }
+    press(option);
+    for (const end = Date.now() + 1000; Date.now() < end && isOpen(el); ) await sleep(50);
+    const shown = list ? line(option.innerText, 200) : shownIn(el);
+    const taken = list ? option.getAttribute('aria-selected') === 'true' : !isOpen(el) && shown.toLowerCase().includes(value.trim().toLowerCase());
+    if (!taken) fail('not_taken', `The page did not keep the choice. It shows ${JSON.stringify(shown)}.`);
+    return { changed: shown !== before, at, shown };
+  }
+
   /** The values of one field as a check without any write. */
   function checkValue(el, value) {
+    if (isDropdown(el)) return checkDropdown(el);
     checkField(el);
     if (isChoice(el) && value !== 'true' && value !== 'false') fail('invalid_argument', 'A checkbox or radio button takes "true" or "false".');
     if (el instanceof HTMLSelectElement) for (const v of el.multiple ? value.split('\n') : [value]) optionFor(el, v);
@@ -1175,11 +1275,14 @@
     scroll_to: scrollTo,
     drag,
     upload,
-    fill: (m) => fill(approved(m), m.value, m.commit),
+    fill: (m) => (isDropdown(target(m.ref)) ? choose(approved(m), m.value) : fill(approved(m), m.value, m.commit)),
     fill_many: ({ fields }) => {
       // Everything is checked before the first write.
       const list = fields.map((f) => [approved(f), f.value]);
-      for (const [el, v] of list) checkValue(el, v);
+      for (const [el, v] of list) {
+        if (isDropdown(el)) fail('not_supported', 'A list that the page built itself is set with form_input.');
+        checkValue(el, v);
+      }
       const set = [];
       for (const [i, [el, v]] of list.entries()) {
         try {

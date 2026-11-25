@@ -16,7 +16,7 @@ Firefox Companion is a working name. It needs Windows 11 and Firefox 160 or late
 Check a file before you use it. The value must be the one in `SHA256SUMS.txt`, taken from a place you trust:
 
 ```powershell
-Get-FileHash .\FirefoxCompanionSetup-0.5.0.exe -Algorithm SHA256
+Get-FileHash .\FirefoxCompanionSetup-0.6.0.exe -Algorithm SHA256
 ```
 
 ## Install the helper
@@ -35,11 +35,11 @@ It changes no Firefox profile, no Firefox setting, no PATH, and starts nothing a
 Without questions, for scripts:
 
 ```powershell
-.\FirefoxCompanionSetup-0.5.0.exe install --dry-run
+.\FirefoxCompanionSetup-0.6.0.exe install --dry-run
 ```
 
 ```powershell
-.\FirefoxCompanionSetup-0.5.0.exe install
+.\FirefoxCompanionSetup-0.6.0.exe install
 ```
 
 Further options: `--home <folder>` for another folder, `--claude-code` to register with Claude Code, `--thunderbird` for the mail add-on. Exit code 0 is done, 1 failed and undone, 2 a wrong option, 3 installed but Claude Code was not changed.
@@ -57,7 +57,7 @@ Then open the sidebar with the toolbar button and press **Connect**. If the help
 
 - At install: tabs, storage, the active tab, native messaging, and containers (Firefox does not allow that one as optional).
 - Firefox asks for a site when you attach the first tab of it. Declining attaches nothing.
-- Bookmarks, history, downloads, names of tab groups, requests and cookies are optional and off.
+- Bookmarks, history, downloads, names of tab groups, requests, cookies and writing to the clipboard are optional and off. Nothing can read the clipboard.
 - **cookies** is optional. Firefox ties containers to it: it opens a tab in a container only for an add-on that has `cookies`, also if no cookie is read. **Allow tabs in containers** (Tabs, Browser data) asks for it; without it containers are listed and no tab opens in one. The permission alone lets no client see a cookie. Reading cookies has a switch of its own, off at first, asks each time, and never returns HttpOnly values or tokens. Firefox shows no question of its own for cookies; take it back in `about:addons`, Permissions. Version 0.3 required cookies; Firefox keeps it as given after an update, and you can take it back.
 
 ## Connect Claude
@@ -77,6 +77,19 @@ claude mcp add -s user firefox-companion -- node "$env:LOCALAPPDATA\FirefoxCompa
 Instead of the `.mcpb` file, with Node installed: add the entry that the installer printed under "Other clients" to `claude_desktop_config.json` (Settings, Developer, Edit Config). Use one of the two, not both.
 
 **The chat in the sidebar** runs your own installed and signed-in Claude Code. The add-on holds no account and no key.
+
+The run has the tools of Firefox Companion and no others. Two switches of a chat, both off at first, add to that:
+
+- **Skills, plugins and agents** of your Claude Code. Hooks and shell commands in skills stay off.
+- **File, shell and web tools on this computer.** Each use shows its whole input on a card and runs only after Allow, read-only commands included. What you allow there is not limited to attached tabs: a command can do what you can do, and it starts in the folder of the helper. Text of a page can try to talk Claude into a command, so read the card. Pause and Stop end such a run; a command that began may have taken effect. Needs Claude Code 2.1.302 or later.
+
+**Saved prompts** (Chat): write a message, name it, press Save the message as a prompt, and start it with `/name`. A blank like `{{city}}` is asked for each time. A saved prompt gives no right.
+
+## Site rules
+
+Tabs, Site rules: sites that Claude never sees, sites that ask before each read, or only these sites. A rule covers the site and everything below it, holds in every tool, list, frame and search, and stands above every grant. Never wins over the others. A site that a rule blocks is suspended at once; after you remove the rule you approve it again. If the stored rules cannot be read, every call is refused and the sidebar offers to reset them.
+
+Instructions hidden in a page can still mislead Claude inside what you attached. Rules, levels and cards limit what that can do; they do not make a page harmless.
 
 ## Upgrade
 
@@ -99,7 +112,7 @@ Extract the optional zip to a folder of your choice. Each program works with the
 Run the check first. It names each problem with its fix and prints no key:
 
 ```powershell
-.\FirefoxCompanionSetup-0.5.0.exe doctor --claude-code
+.\FirefoxCompanionSetup-0.6.0.exe doctor --claude-code
 ```
 
 | You see | Do |
@@ -117,4 +130,7 @@ Run the check first. It names each problem with its fix and prints no key:
 | Claude Code: Failed to connect | `node --version` must be 22 or later, then the doctor |
 | Chat: Claude Code was not found | Install Claude Code, restart Firefox |
 | Claude Desktop shows no tools | Restart Claude Desktop; look at the extension's log under Settings, Extensions |
+| Client: site_blocked | A site rule of yours. Tabs, Site rules |
+| Client: rate_limited | More than 120 calls of one client in a minute; the message says how long to wait |
+| Sidebar: Settings cannot be read | Restart Firefox. If it stays, press Reset the site rules; nothing else is deleted |
 | Add-on gone after a restart | Expected until it is signed |

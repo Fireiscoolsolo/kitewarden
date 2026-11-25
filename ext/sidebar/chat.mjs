@@ -1,4 +1,5 @@
 // The chat part of the sidebar. Replies and tool results are shown as text or through markdown.mjs, never as HTML.
+import { blanks, called, filled } from '../chat/prompts.mjs';
 import { oneLine, originOf } from '../shared/protocol.mjs';
 import { parse, render } from './markdown.mjs';
 import { $, button, current, el, onPress, options, part, run, say, send, ui, withSite } from './ui.mjs';
@@ -12,10 +13,15 @@ let shown = null; // chat ID of the drawn items
 let info = null; // what Claude Code reports about itself
 let found = null; // chat IDs of a search
 
+const choices = () => ({ model: $('model').value, extras: $('extras').checked, tools: $('tools').checked });
+
+let making = Promise.resolve(); // a new chat that is under way; what the user does meanwhile belongs to it
+
 /** The open chat, or a new one. */
 async function ensure() {
+  await making;
   if (ui.chat) return ui.chat.id;
-  const r = await run('chat_new', { model: $('model').value, extras: $('extras').checked });
+  const r = await run('chat_new', choices());
   if (r.error) return null;
   while (!ui.chat) await new Promise((f) => setTimeout(f, 20));
   return ui.chat.id;
@@ -143,12 +149,24 @@ async function addFiles(list) {
   }
 }
 
-async function submit() {
-  const text = $('prompt').value;
+function submit() {
+  const saved = called(ui.state.prompts, $('prompt').value);
+  const names = saved ? blanks(saved.prompt.text) : [];
+  if (names.length) return askBlanks(saved, names);
+  return sendText(saved ? [saved.prompt.text, saved.rest].filter(Boolean).join('\n') : $('prompt').value);
+}
+
+async function sendText(text) {
   const chat = await ensure();
   if (!chat) return;
   const r = await run('chat_send', { chat, text });
   if (!r.error) $('prompt').value = '';
+}
+
+async function editWaiting(chat, index) {
+  const r = await run('chat_edit', { chat, index });
+  if (!r.error) $('prompt').value = [r.text, $('prompt').value].filter(Boolean).join('\n');
+  $('prompt').focus();
 }
 
 const stop = () => ui.chat?.running && run('chat_stop', { chat: ui.chat.id });
@@ -205,7 +223,7 @@ export function drawChat() {
   drawItems(chat);
   drawDraft(chat);
   part('queue', { id: chat?.id, queue: chat?.queue ?? [], running: chat?.running }, (d) => [
-    ...d.queue.map((q, index) => el('p', { className: 'row' }, el('span', { className: 'sub', textContent: `Waiting: ${oneLine(q.text, 60)}${q.files ? ` (${q.files} attachments)` : ''}` }), button('Remove', () => run('chat_unqueue', { chat: d.id, index })))),
+    ...d.queue.map((q, index) => el('p', { className: 'row' }, el('span', { className: 'sub', textContent: `Waiting: ${oneLine(q.text, 60)}${q.files ? ` (${q.files} attachments)` : ''}` }), button('Edit', () => editWaiting(d.id, index), 'edit-waiting'), button('Remove', () => run('chat_unqueue', { chat: d.id, index })))),
     ...(d.queue.length && !d.running ? [button('Send waiting messages', () => run('chat_flush', { chat: d.id }))] : []),
   ]);
   const card = approvals.some((a) => a.session === chat?.session);
@@ -217,7 +235,9 @@ export function drawChat() {
   if (chat) {
     if (document.activeElement !== $('model')) $('model').value = chat.model ?? '';
     $('extras').checked = chat.extras;
+    $('tools').checked = chat.tools === true;
   }
+  drawPrompts();
   drawLists();
   if (link.state === 'connected' && !info && !loadInfo.asked) {
     loadInfo.asked = true;
@@ -226,10 +246,57 @@ export function drawChat() {
   if (link.state !== 'connected') loadInfo.asked = false;
 }
 
-const configure = () => ui.chat && run('chat_configure', { chat: ui.chat.id, model: $('model').value, extras: $('extras').checked });
+function configure() {
+  const chosen = choices();
+  making.then(() => ui.chat && run('chat_configure', { chat: ui.chat.id, ...chosen }));
+}
+
+function drawPrompts() {
+  const list = ui.state.prompts;
+  part('prompts', list, (all) =>
+    all.length
+      ? all.map((p) => el('li', {}, el('strong', { textContent: `/${p.name}` }), el('span', { className: 'sub', textContent: ` ${oneLine(p.text, 80)} ` }), button('Delete', () => run('prompt_remove', { name: p.name }, 'Deleted.'), 'prompt-delete')))
+      : [el('li', { className: 'sub', textContent: 'None' })],
+  );
+  options('prompt-pick', [['', 'Insert a saved prompt'], ...list.map((p) => [p.name, `/${p.name}`])]);
+  $('prompt-pick').hidden = $('prompt-export').hidden = !list.length;
+}
+
+/** Asks for the blanks of a saved prompt, and sends what comes out. */
+function askBlanks({ prompt, rest }, names) {
+  const fields = names.map((n) => [n, el('input', { maxLength: 2000 })]);
+  $('prompt-blanks').replaceChildren(
+    ...fields.map(([n, input]) => el('label', {}, `${n} `, input)),
+    el('p', { className: 'row' }, button('Send filled in', () => {
+      $('prompt-blanks').replaceChildren();
+      sendText([filled(prompt.text, Object.fromEntries(fields.map(([n, i]) => [n, i.value]))), rest].filter(Boolean).join('\n'));
+    }, 'send-filled'), button('Cancel', () => $('prompt-blanks').replaceChildren())),
+  );
+  fields[0][1].focus();
+}
+
+function exportPrompts() {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(ui.state.prompts, null, 1)], { type: 'application/json' }));
+  $('prompt-file').replaceChildren(el('a', { href: url, download: 'saved-prompts.json', textContent: 'Save saved-prompts.json' }));
+}
 
 export function startChat() {
-  onPress($('chat-new'), () => run('chat_new', { model: $('model').value, extras: $('extras').checked }));
+  onPress($('chat-new'), () => (making = run('chat_new', { ...choices(), tools: false }))); // on is a choice for one chat
+  $('tools').addEventListener('change', configure);
+  onPress($('prompt-save'), () => {
+    const [name, text] = [$('prompt-name').value.trim().replace(/^\//, ''), $('prompt').value];
+    run('prompt_save', { name, text, replace: $('prompt-save').dataset.replace === name }, 'Saved.').then((r) => {
+      // The second press on the same name replaces it.
+      if (r.error?.code === 'conflict') $('prompt-save').dataset.replace = name;
+      else delete $('prompt-save').dataset.replace;
+    });
+  });
+  onPress($('prompt-export'), exportPrompts);
+  $('prompt-pick').addEventListener('change', (e) => {
+    if (e.target.value) $('prompt').value = `/${e.target.value} ${$('prompt').value}`.trim();
+    e.target.value = '';
+    $('prompt').focus();
+  });
   onPress($('chat-delete'), () => run('chat_delete', { chat: ui.chat.id }));
   onPress($('chat-clear'), () => ($('chat-clear-sure').hidden = false));
   onPress($('chat-clear-yes'), () => {

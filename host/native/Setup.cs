@@ -472,6 +472,7 @@ static class Setup
         foreach (var n in Names) files.Add(Path.Combine(h.Dir, n));
         string chat = Path.Combine(h.Dir, "chat");
         files.Add(Path.Combine(chat, "rules.txt"));
+        files.Add(Path.Combine(chat, "rules-tools.txt"));
         if (Directory.Exists(chat)) files.AddRange(Directory.GetFiles(chat, "run-*.json"));
         if (Directory.Exists(h.Profiles)) files.AddRange(Directory.GetFiles(h.Profiles, "*.json"));
         foreach (var f in files) if (File.Exists(f)) { string file = f; step("delete " + file, delegate { Delete(h, file); }); }

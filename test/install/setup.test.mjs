@@ -204,7 +204,7 @@ test('helper and server of the installation find each other by the shared key, a
   const d = setup('doctor', '--home', h.dir);
   assert.equal(d.status, 0, d.stdout);
   assert.match(d.stdout, /ok {4}pipe/);
-  assert.match(d.stdout, /info {2}profile Test \(firefox\): last state running, helper 0\.5\.0/);
+  assert.match(d.stdout, new RegExp(`info {2}profile Test .firefox.: last state running, helper ${VERSION.replaceAll('.', '[.]')}`));
   assert.equal(f.messages.filter((m) => m.type === 'session_open').length, sessions);
   writeFileSync(h.file('key.bin'), Buffer.alloc(32, 7));
   const wrong = setup('doctor', '--home', h.dir);

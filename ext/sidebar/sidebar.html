@@ -19,6 +19,7 @@
         <button id="pause" aria-pressed="false">Pause</button>
         <button id="halt">Stop everything</button>
         <button id="resume-work" hidden>Resume work</button>
+        <button id="reset-rules" hidden>Reset the site rules</button>
         <!-- Last, so that it moves no other button when it appears. -->
         <button id="retry" hidden>Retry now</button>
       </p>
@@ -61,7 +62,9 @@
           <p class="row">
             <button id="send">Send</button>
             <select id="skill-pick" aria-label="Insert a skill" hidden></select>
+            <select id="prompt-pick" aria-label="Insert a saved prompt" hidden></select>
           </p>
+          <div id="prompt-blanks" role="group" aria-label="Blanks of the saved prompt"></div>
           <fieldset>
             <legend>Add to the message</legend>
             <p class="row">
@@ -91,8 +94,21 @@
           </label>
         </p>
         <label class="check"><input id="extras" type="checkbox" /> This chat may use my skills, plugins and agents</label>
-        <p class="sub">They load from your Claude Code settings. Hooks and shell commands in skills stay off, and file, shell and web tools are not offered. It makes each message larger.</p>
+        <p class="sub">They load from your Claude Code settings. Hooks and shell commands in skills stay off. It makes each message larger.</p>
+        <label class="check"><input id="tools" type="checkbox" /> This chat may ask for file, shell and web tools on this computer</label>
+        <p class="sub">Off at first. Each use shows its whole input on a card and runs only after your Allow, in the folder of the helper unless the command names another. What you allow there is not limited to attached tabs. Pause and Stop end such a run. Claude Code 2.1.302 or later.</p>
         <div id="lists"></div>
+      </details>
+      <details id="d-prompts">
+        <summary>Saved prompts</summary>
+        <p class="sub">Start one with /name in the message. A blank like {{city}} is asked for each time. A saved prompt gives no right.</p>
+        <ul id="prompts"></ul>
+        <p class="fields">
+          <label>Name <input id="prompt-name" maxlength="40" placeholder="status" /></label>
+          <button id="prompt-save">Save the message as a prompt</button>
+          <button id="prompt-export" hidden>Export all</button>
+        </p>
+        <div id="prompt-file"></div>
       </details>
       <details>
         <summary>History</summary>
@@ -169,6 +185,24 @@
         <p class="row"><button id="folder-add">Add folder</button></p>
         <label>Name of this Firefox profile <input id="profile-label" maxlength="40" /></label>
         <p class="row"><button id="profile-save">Save name</button><button id="groups-ok">Allow names for tab groups</button></p>
+      </details>
+
+      <details id="d-rules">
+        <summary>Site rules</summary>
+        <p class="sub">A rule covers the site and everything below it, like example.com and mail.example.com. "Never" wins over the other kinds. With an entry of the kind "only these", every other site is refused.</p>
+        <ul id="rules"></ul>
+        <p class="fields">
+          <label>Site <input id="rule-host" placeholder="example.com" maxlength="253" /></label>
+          <label>
+            Claude
+            <select id="rule-kind">
+              <option value="block">never sees it</option>
+              <option value="ask">asks before each read</option>
+              <option value="allow">sees only these</option>
+            </select>
+          </label>
+          <button id="rule-add">Add rule</button>
+        </p>
       </details>
 
       <details id="d-screens">

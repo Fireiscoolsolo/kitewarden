@@ -2,7 +2,7 @@
 // The extension enforces it. The MCP server uses it to list tools and to refuse bad arguments early.
 
 export const PROTOCOL = 4;
-export const VERSION = '0.5.0';
+export const VERSION = '0.6.0';
 
 export const LIMITS = {
   toBrowser: 256 * 1024, // one client frame; Firefox accepts at most 1 MB from a native host
@@ -16,6 +16,8 @@ export const LIMITS = {
   cardHiddenMs: 120_000,
   cardGuardMs: 500,
   cards: 10,
+  callsPerMinute: 120,
+  chatToolInput: 20_000, // characters that a card shows; a longer input is refused, because the user could not see it whole
   selectionChars: 20_000,
   loadMs: 20_000,
   chats: 200,
@@ -69,6 +71,7 @@ export const GROUPS = {
   cookies: ['cookies'],
   storage: [],
   webmcp: [],
+  clipboard: ['clipboardWrite'],
   isolated: [],
   input: [],
   remote: [],
@@ -167,6 +170,42 @@ export const TOOLS = {
     input: { properties: { tabIds, title: str('Title of the group', 50), color: str('A Firefox group color', 20) }, required: ['tabIds'] },
   },
   tabs_ungroup: { title: 'Ungroup tabs', description: 'Takes tabs of this session out of their group.', level: 'none', input: { properties: { tabIds }, required: ['tabIds'] } },
+  tab_info: {
+    title: 'Details of a tab',
+    description: 'Address, title, load state, pinned, muted, audible, discarded, container and window of an attached tab. Asks the page nothing, so it works while the page is busy.',
+    level: 'read',
+    input: { properties: { tabId }, required: ['tabId'] },
+  },
+  tab_update: {
+    title: 'Pin or mute a tab',
+    description: 'Pins, unpins, mutes or unmutes an attached tab (level act) and returns what Firefox says afterwards.',
+    level: 'act',
+    input: { properties: { tabId, pinned: { type: 'boolean' }, muted: { type: 'boolean' } }, required: ['tabId'] },
+  },
+  tabs_move: {
+    title: 'Move tabs',
+    description: 'Moves tabs of this session to a place in their window, or to another window that holds only such tabs. Firefox declines some moves, so the reply counts.',
+    level: 'none',
+    input: { properties: { tabIds, index: { type: 'integer', minimum: -1, maximum: 10_000, description: '-1 is the end' }, windowId }, required: ['tabIds', 'index'] },
+  },
+  copy_to_clipboard: {
+    title: 'Copy to the clipboard',
+    description: 'Puts a text, or a picture of an attached tab, on the clipboard after an approval that shows it. Off until the user turns clipboard on. Nothing reads the clipboard; the key ctrl+v inserts the text that this session copied.',
+    actions: {
+      text: { level: 'none', approval: true, args: ['action', 'text', 'reason'], required: ['text'] },
+      picture: { level: 'read', approval: true, args: ['action', 'tabId', 'reason'], required: ['tabId'] },
+    },
+    group: 'clipboard',
+    input: { properties: { action: choice('text', 'picture'), tabId, text: { type: 'string', minLength: 1, maxLength: 10_000 }, reason }, required: ['action'] },
+  },
+  chat_permission: {
+    title: 'Approval of a file, shell or web tool',
+    description: 'For Claude Code itself: asks the user in the sidebar before such a tool of this chat runs. It runs nothing.',
+    level: 'none',
+    approval: true,
+    optional: 'chat',
+    input: { properties: { tool_name: str('Tool', 100), input: { type: 'object' }, tool_use_id: str('Call', 100) }, required: ['tool_name', 'input'] },
+  },
   closed_tabs: {
     title: 'Closed tabs',
     description: 'Lists tabs that closed while this session had them, or opens one again in the background after an approval. The history of the tab is not restored.',
@@ -300,7 +339,7 @@ export const TOOLS = {
   form_input: {
     title: 'Set a form field',
     description:
-      'Sets one field by a ref (level act): text, number, date, color, range, select (option value or label; several on lines of their own), checkbox and radio ("true" or "false"). ' +
+      'Sets one field by a ref (level act): text, number, date, color, range, select (option value or label; several on lines of their own), checkbox and radio ("true" or "false"), and a list that the page built itself (combobox or listbox): the whole text of one option. ' +
       'The user approves every entry and sees the value. Password, code and payment fields are refused.',
     level: 'act',
     approval: true,
@@ -692,7 +731,7 @@ function checkPoint(args) {
   return null;
 }
 
-const WRITES = ['isolated_browser', 'tabs_create', 'tabs_close', 'tabs_group', 'tabs_ungroup', 'windows_create', 'windows_close', 'resize_window', 'browser_batch', 'select_browser'];
+const WRITES = ['isolated_browser', 'tab_update', 'tabs_move', 'tabs_create', 'tabs_close', 'tabs_group', 'tabs_ungroup', 'windows_create', 'windows_close', 'resize_window', 'browser_batch', 'select_browser'];
 
 const LOCAL = ['connection_status', 'list_connected_browsers', 'select_browser'];
 

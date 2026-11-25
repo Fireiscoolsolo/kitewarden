@@ -40,6 +40,27 @@ after(async () => {
   await home.close();
 });
 
+test('the instructions of the server are short and name only tools that it has', async () => {
+  const c = client();
+  const { instructions } = await c.init();
+  const names = (await c.request('tools/list', {})).result.tools.map((t) => t.name);
+  const named = instructions.match(/\b[a-z]+(_[a-z]+)+\b/g).filter((n) => !['outcome_unknown', 'session_ended'].includes(n));
+  assert.ok(instructions.length < 2000 && named.length >= 3);
+  assert.deepEqual(named.filter((n) => !names.includes(n)), []);
+});
+
+test('a message with the line separators of Unicode is one message, in both directions', async () => {
+  const f = await running();
+  f.answer(async (call) => ({ result: { said: call.args.text, page: 'x\u2028y\u2029z' } }));
+  const c = client();
+  await c.init();
+  const text = 'one\u2028two\u2029three\r\nfour';
+  const r = await Promise.race([c.call('computer', { action: 'type', tabId: 1, text }), sleep(4000).then(() => ({ text: 'no answer' }))]);
+  assert.equal(r.data?.said, text, r.text);
+  assert.deepEqual(f.calls.map((x) => x.args.text), [text]);
+  assert.ok(c.lines.every((l) => !/[\u2028\u2029]/.test(l)), 'a client that splits there gets whole lines as well');
+});
+
 test('installer: dry run changes nothing, install prints each change, a second run adds nothing', () => {
   const dir = path.join(path.dirname(home.dir), 'dry');
   const dry = host('install', '--home', dir, '--dry-run');

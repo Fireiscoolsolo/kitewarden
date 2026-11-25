@@ -1,11 +1,18 @@
 // Tools for tabs, windows, groups, containers and browser data. A session sees and changes only its own tabs and those the
 // user gave it. Nothing here takes the focus, unless the call asks for it or Firefox does it and it is handed back.
+import { ruleFor } from '../grants/rules.mjs';
 import { LIMITS, ToolError, VIRTUAL, oneLine, originOf, plainUrl } from '../shared/protocol.mjs';
 import { address, loaded } from './pagetools.mjs';
 import { sleep } from './router.mjs';
 
 const b = (r) => r.api.browser;
 const mineOf = (r, s, id) => s.owned.has(id) || Boolean(r.grants.find(s.id, id));
+
+/** A tab that the user took over, or that a session handed to the user, is left alone. */
+function held(r, s, id) {
+  if (r.stoppedTabs.has(id)) throw new ToolError('stopped', r.stoppedTabs.get(id));
+  if (s.handover.has(id)) throw new ToolError('paused', 'The tab is with the user until request_user ends.');
+}
 
 /** A tab of this session, or the refusal that fits. */
 async function mine(r, call, id) {
@@ -16,7 +23,7 @@ async function mine(r, call, id) {
     throw new ToolError('no_grant', 'The user has not attached this tab to this session.');
   }
   if (!tab || (tab.incognito && !g?.private)) throw new ToolError('no_grant', 'The tab is closed.');
-  if (r.stoppedTabs.has(id)) throw new ToolError('stopped', r.stoppedTabs.get(id));
+  held(r, call.session, id);
   return tab;
 }
 
@@ -25,7 +32,7 @@ const covered = (r, s, origin) => r.grants.of(s.id).filter((g) => g.state === 'a
 
 /** Every tab or window that opens on a new origin asks first. Returns the grant that its tab gets. */
 async function grantFor(r, call, spec, url, extra, reason) {
-  const origin = originOf(url);
+  const origin = r.allowedSite(originOf(url));
   const has = covered(r, call.session, origin);
   if (has && !extra) return { origin, level: has.level };
   await r.ask(call, spec, origin, { tool: call.tool, target: url, value: [`The new tab gets level ${has?.level ?? 'read'} on ${origin}`, extra].filter(Boolean).join('. ') }, reason);
@@ -71,6 +78,7 @@ async function context(r, call, spec, origin, a) {
     const g = r.grants.find(s.id, t.id);
     const base = { ...(t.backend && { backend: t.backend }), tabId: t.id, windowId: t.windowId, active: t.active, owned: s.owned.has(t.id), level: g?.level ?? null, current: s.current === t.id, ...(t.groupId > 0 && { group: t.groupId }), ...(g?.private && { private: true }) };
     if (r.stoppedTabs.has(t.id)) return { ...base, state: 'stopped' };
+    if (originOf(t.url) && ruleFor(r.rules, originOf(t.url)) === 'block') return { ...base, state: 'site_blocked' };
     // Title and address only where the grant covers the page that the tab shows now.
     if (!g || g.state !== 'active' || !g.origins.includes(originOf(t.url))) return { ...base, state: g ? 'suspended' : 'no_grant' };
     return { ...base, state: 'active', title: oneLine(t.title), url: plainUrl(t.url), loading: t.status === 'loading', discarded: t.discarded === true };
@@ -85,7 +93,9 @@ async function create(r, call, spec, origin, a) {
   if (a.duplicateOf !== undefined) {
     const from = await mine(r, call, a.duplicateOf);
     const g = r.grants.find(s.id, from.id);
-    if (!g || g.state !== 'active' || g.private) throw new ToolError('no_grant', 'Only an attached tab can be copied.');
+    // The tab may show another page than the one that was granted, before Firefox has told so.
+    if (!g || g.state !== 'active' || g.private || !g.origins.includes(originOf(from.url))) throw new ToolError('no_grant', 'Only an attached tab can be copied.');
+    r.allowedSite(originOf(from.url));
     r.sent(call, 'copying a tab');
     const tab = await b(r).tabs.duplicate(from.id, { active: false });
     call.sent.outcome = 'done';
@@ -103,6 +113,7 @@ async function create(r, call, spec, origin, a) {
   }
   const grant = url ? await grantFor(r, call, spec, url, a.container !== undefined && `Container ${a.container}`, a.reason) : null;
   const front = await b(r).windows.getLastFocused({ windowTypes: ['normal'] });
+  for (const id of s.windows) if (!(await b(r).windows.get(id).catch(() => null))) s.windows.delete(id); // the user closed it
   const windowId = [...s.windows][0] ?? (front.incognito ? (await b(r).windows.getAll({ windowTypes: ['normal'] })).find((w) => !w.incognito)?.id : front.id);
   opening(r, call, grant, `opening a tab${url ? ` on ${plainUrl(url)}` : ''}`);
   const tab = await b(r).tabs.create({ active: false, url: url ?? 'about:blank', ...(windowId !== undefined && { windowId }), ...(cookieStoreId && { cookieStoreId }) });
@@ -120,6 +131,7 @@ async function create(r, call, spec, origin, a) {
 
 async function close(r, call, spec, origin, a) {
   const tab = await mine(r, call, a.tabId);
+  if (!call.session.owned.has(tab.id) && !originOf(tab.url) && tab.url !== 'about:blank') throw new ToolError('restricted_page', 'The tab shows a page of Firefox itself. The user closes it.');
   if (!call.session.owned.has(tab.id)) await r.ask(call, spec, originOf(tab.url), { tool: 'tabs_close', target: oneLine(tab.title), value: 'Text that was not sent in this tab is lost' }, a.reason);
   await mine(r, call, a.tabId);
   const { tabs } = await b(r).windows.get(tab.windowId, { populate: true });
@@ -171,6 +183,47 @@ async function ungroup(r, call, spec, origin, a) {
   return { ungrouped: a.tabIds };
 }
 
+/** From the record of the tab alone, so a page that is busy is no hindrance. */
+async function info(r, call) {
+  const t = await r.tab(call.tabId);
+  const w = await b(r).windows.get(t.windowId);
+  const container = storeOf(t.cookieStoreId).cookieStoreId && (await b(r).contextualIdentities.get(t.cookieStoreId).catch(() => null));
+  return {
+    tabId: t.id, windowId: t.windowId, index: t.index, url: plainUrl(t.url), title: oneLine(t.title), status: t.status, active: t.active,
+    pinned: t.pinned, muted: t.mutedInfo?.muted === true, audible: t.audible === true, discarded: t.discarded === true,
+    ...(container && { container: container.name }), window: { state: w.state, focused: w.focused }, owned: call.session.owned.has(t.id),
+  };
+}
+
+async function update(r, call, spec, origin, a) {
+  if (a.pinned === undefined && a.muted === undefined) throw new ToolError('invalid_argument', 'Give pinned or muted.');
+  const change = { ...(a.pinned !== undefined && { pinned: a.pinned }), ...(a.muted !== undefined && { muted: a.muted }) };
+  r.sent(call, Object.entries(change).map(([k, v]) => `${k} ${v}`).join(', '));
+  await b(r).tabs.update(call.tabId, change);
+  call.sent.outcome = 'done';
+  const t = await r.tab(call.tabId);
+  return { tabId: t.id, pinned: t.pinned, muted: t.mutedInfo?.muted === true };
+}
+
+/** Firefox declines some moves without an error, so the reply counts what is where it should be. */
+async function move(r, call, spec, origin, a) {
+  for (const id of a.tabIds) await mine(r, call, id);
+  if (a.windowId !== undefined) {
+    const w = await b(r).windows.get(a.windowId, { populate: true }).catch(() => null);
+    const others = w?.tabs.filter((t) => !mineOf(r, call.session, t.id)).length;
+    if (!w || others === w.tabs.length) throw new ToolError('no_grant', 'That window holds no tab of this session.');
+    const from = await Promise.all(a.tabIds.map((id) => r.tab(id)));
+    if (others && from.some((t) => t.windowId !== w.id)) throw new ToolError('not_allowed', `The window holds ${others} tabs that this session does not have.`);
+  }
+  const place = async () => Promise.all(a.tabIds.map(async (id) => (({ windowId, index }) => `${windowId}:${index}`)(await r.tab(id))));
+  const before = await place();
+  r.sent(call, 'moving tabs');
+  await b(r).tabs.move(a.tabIds, { index: a.index, ...(a.windowId !== undefined && { windowId: a.windowId }) });
+  call.sent.outcome = 'done';
+  const after = await place();
+  return { requested: a.tabIds.length, moved: after.filter((p, i) => p !== before[i]).length, tabs: await Promise.all(a.tabIds.map(async (id) => (({ windowId, index }) => ({ tabId: id, windowId, index }))(await r.tab(id)))) };
+}
+
 async function closedTabs(r, call, spec, origin, a) {
   const s = call.session;
   if (a.action === 'list') return { tabs: s.closed.map(({ id, title, url }) => ({ id, title, url: plainUrl(url) })) };
@@ -178,6 +231,7 @@ async function closedTabs(r, call, spec, origin, a) {
   if (!c) throw new ToolError('not_found', 'This session had no such tab.');
   if (storeOf(c.cookieStoreId).cookieStoreId && !(await containersAllowed(r))) throw new ToolError('permission_required', 'That tab was in a container. Ask the user to allow containers in the sidebar.');
   limit(r, s);
+  r.allowedSite(originOf(c.url));
   await r.ask(call, spec, originOf(c.url), { tool: 'closed_tabs', target: c.url, value: 'Opens again in the background, with level read' }, a.reason);
   r.sent(call, 'reopening a tab');
   const tab = await b(r).tabs.create({ active: false, url: c.url, ...storeOf(c.cookieStoreId) });
@@ -226,6 +280,7 @@ async function windowsClose(r, call, spec, origin, a) {
   if (!w || !w.tabs.some((t) => mineOf(r, s, t.id))) throw new ToolError('no_grant', 'That window holds no tab of this session.');
   const others = w.tabs.filter((t) => !s.owned.has(t.id)).length;
   if (others) throw Object.assign(new ToolError('not_allowed', `The window holds ${others} tabs that this session does not own.`), { data: { otherTabs: others } });
+  for (const t of w.tabs) held(r, s, t.id);
   r.sent(call, 'closing a window');
   await b(r).windows.remove(w.id);
   s.windows.delete(w.id);
@@ -310,9 +365,12 @@ async function requestResult(r, call, spec, origin, a) {
 
 // Bookmarks, history, downloads
 
+/** A web address that no site rule hides. */
+const shownSite = (r, url) => Boolean(originOf(url)) && ruleFor(r.rules, originOf(url)) !== 'block';
+
 async function searchBookmarks(r, call, spec, origin, a) {
   await r.ask(call, spec, null, { tool: 'search_bookmarks', target: `Bookmarks with: ${a.query}` }, a.reason);
-  const hits = (await b(r).bookmarks.search({ query: a.query })).filter((x) => x.url && originOf(x.url));
+  const hits = (await b(r).bookmarks.search({ query: a.query })).filter((x) => x.url && shownSite(r, x.url));
   return { total: hits.length, bookmarks: hits.slice(0, 200).map((x) => ({ id: x.id, title: oneLine(x.title), url: plainUrl(x.url) })) };
 }
 
@@ -330,7 +388,7 @@ async function addBookmark(r, call, spec, origin, a) {
 async function searchHistory(r, call, spec, origin, a) {
   const days = a.days ?? 30;
   await r.ask(call, spec, null, { tool: 'search_history', target: `History of ${days} days with: ${a.query}` }, a.reason);
-  const hits = (await b(r).history.search({ text: a.query, startTime: r.now() - days * 86_400_000, maxResults: 500 })).filter((x) => originOf(x.url));
+  const hits = (await b(r).history.search({ text: a.query, startTime: r.now() - days * 86_400_000, maxResults: 500 })).filter((x) => shownSite(r, x.url));
   return { entries: hits.slice(0, 100).map((x) => ({ title: oneLine(x.title), url: plainUrl(x.url), last_visit: new Date(x.lastVisitTime).toISOString() })), cut: hits.length > 100 };
 }
 
@@ -377,6 +435,9 @@ export const tabTools = {
   tabs_release: release,
   tabs_group: here(group),
   tabs_ungroup: here(ungroup),
+  tab_info: here(info),
+  tab_update: here(update),
+  tabs_move: here(move),
   closed_tabs: closedTabs,
   windows_list: windowsList,
   windows_create: windowsCreate,

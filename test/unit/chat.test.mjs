@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test } from 'node:test';
 import { Chats } from '../../dist/extension/chat/chats.mjs';
+import { Prompts, blanks, called, filled } from '../../dist/extension/chat/prompts.mjs';
 import { Router } from '../../dist/extension/background/router.mjs';
 import { Approvals } from '../../dist/extension/grants/approvals.mjs';
 import { Grants } from '../../dist/extension/grants/grants.mjs';
@@ -360,4 +361,96 @@ test('a model name is one plain word, and skills are listed only as a run with t
   init({ model: 'm', skills: ['a', 'p:b'], agents: ['one'], plugins: [{ name: 'p', path: 'C:\\secret' }] });
   assert.deepEqual([chats.view().lists.skills, chats.view().lists.agents, chats.view().lists.plugins], [['a', 'p:b'], ['one'], ['p']]);
   assert.ok(!JSON.stringify(data).includes('secret'));
+});
+
+const ask = (input = { command: 'dir' }, o = {}) => router.call(chats.session(chats.current), `p:${Math.random()}`, 'chat_permission', { tool_name: 'Bash', input, tool_use_id: 'toolu_1', ...o });
+const openCard = async () => {
+  for (let i = 0; i < 100 && !approvals.cards.length; i++) await tick();
+  return approvals.cards[0];
+};
+const answerCard = async (yes) => {
+  const c = await openCard();
+  approvals.shown(c.id);
+  await tick(510);
+  approvals.answer(c.id, yes);
+  return c;
+};
+
+test('file and shell tools: off at first, each use asks with its whole input, and only in the run of that chat', async () => {
+  router.handlers = { ...router.handlers, chat_permission: (...a) => chats.permission(...a) };
+  const c = chats.create();
+  chats.send(c.id, 'hello');
+  assert.equal(runs().at(-1).tools, false);
+  assert.equal((await ask()).error.code, 'tool_off');
+  exit();
+  chats.configure(c.id, { model: null, extras: false, tools: true });
+  chats.send(c.id, 'again');
+  assert.equal(runs().at(-1).tools, true);
+  let p = ask({ command: 'del /s C:\\x\u202e\u200b && echo "ok"', description: 'two\nlines' });
+  const card = await answerCard(false);
+  assert.equal(card.target, 'Bash');
+  assert.equal(card.value, 'command: del /s C:\\x\\u{202e}\\u{200b} && echo "ok"\ndescription: two\nlines', 'nothing is cut or hidden');
+  assert.equal((await p).error.code, 'approval_denied');
+  p = ask();
+  await answerCard(true);
+  assert.deepEqual((await p).result, { behavior: 'allow' });
+  const acted = router.sessions.get(chats.session(c.id)).acted;
+  assert.equal(acted.at(-1).outcome, 'unknown');
+  event({ type: 'assistant', message: { id: 'm', content: [{ type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'dir' } }] } });
+  event({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'files' }] } });
+  assert.equal(acted.at(-1).outcome, 'done');
+  p = ask({ command: 'a\n'.repeat(20) });
+  assert.equal((await answerCard(false)).target, 'Bash (21 lines, 49 characters: scroll to see all)');
+  await p;
+  assert.equal((await ask({ command: 'x'.repeat(21_000) })).error.code, 'too_large');
+  assert.equal((await ask({}, { tool_name: 'NotebookEdit' })).error.code, 'not_allowed');
+  router.openSession('mcp1', 'mcp', 'other');
+  assert.equal((await router.call('mcp1', 1, 'chat_permission', { tool_name: 'Bash', input: {} })).error.code, 'tool_off', 'no other client');
+
+  p = ask();
+  await openCard();
+  chats.configure(c.id, { model: null, extras: false, tools: false });
+  await answerCard(true);
+  assert.equal((await p).error.code, 'tool_off', 'the switch counts again after the approval');
+  chats.configure(c.id, { model: null, extras: false, tools: true });
+  p = ask();
+  await openCard();
+  router.setPaused(true);
+  chats.stopAll((run) => run.tools);
+  assert.equal((await p).error.code, 'paused');
+  assert.ok(posted.some((m) => m.type === 'chat_stop'), 'a pause ends the run, which may have a command under way');
+  assert.match(texts('note').at(-1), /Stopped/);
+});
+
+test('a waiting message can be taken back to the input with its attachments', async () => {
+  const c = chats.create();
+  chats.send(c.id, 'first');
+  chats.attachFile(c.id, { name: 'a.txt', base64: btoa('text') });
+  chats.send(c.id, 'second');
+  assert.deepEqual([chats.open().queue.length, chats.open().draft.length], [1, 0]);
+  assert.deepEqual(chats.editQueued(c.id, 0), { text: 'second' });
+  assert.deepEqual([chats.open().queue.length, chats.open().draft.map((d) => d.name)], [0, ['a.txt']]);
+  assert.throws(() => chats.editQueued(c.id, 0), { code: 'not_found' });
+});
+
+test('saved prompts: named, with blanks, replaced only when said so, kept in the store, and no right comes with one', async () => {
+  const s = store();
+  const prompts = new Prompts({ store: s });
+  await prompts.load();
+  await prompts.save({ name: 'status', text: 'Weather in {{city}} and {{ city }} on {{day}}' });
+  assert.throws(() => prompts.save({ name: 'status', text: 'other' }), { code: 'conflict' });
+  for (const name of ['A', 'a b', '../x', '', 'x'.repeat(41)]) assert.throws(() => prompts.save({ name, text: 'x' }), { code: 'invalid_argument' }, name);
+  assert.throws(() => prompts.save({ name: 'empty', text: ' ' }), { code: 'invalid_argument' });
+  const again = new Prompts({ store: s });
+  await again.load();
+  const hit = called(again.list, '/status more words');
+  assert.deepEqual([hit.prompt.name, hit.rest, blanks(hit.prompt.text)], ['status', 'more words', ['city', 'day']]);
+  assert.equal(filled(hit.prompt.text, { city: '$& {{day}}', day: 'Monday' }), 'Weather in $& {{day}} and $& {{day}} on Monday', 'a value is text, not a pattern and not a blank');
+  assert.equal(called(again.list, '/statusx'), null);
+  assert.equal(called(again.list, 'say /status'), null);
+  await again.save({ name: 'status', text: 'new', replace: true });
+  assert.equal(again.list[0].text, 'new');
+  await again.remove('status');
+  assert.deepEqual([again.list, data.prompts], [[], []]);
+  assert.equal(grants.all.length, 0);
 });

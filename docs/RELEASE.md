@@ -2,16 +2,16 @@
 
 Nothing is signed, submitted or published. This is the path, and what has to be decided before. Only the owner can take these steps: they need accounts, keys and agreements.
 
-## Requirements, read on 2026-11-24
+## Requirements, read on 2026-11-24 and again on 2026-11-25
 
 | Topic | What the official text says | What it means here |
 |---|---|---|
 | Signing | Extensions must be signed by Mozilla through AMO for release and beta Firefox, also when self-distributed. Unsigned ones need Developer Edition, Nightly or ESR with a preference ([Signing and distribution](https://extensionworkshop.com/documentation/publish/signing-and-distribution-overview/)) | `.xpi` is marked `-unsigned`. Firefox 160.0.1 refused it: `ERROR_SIGNEDSTATE_REQUIRED` (observed) |
 | Review | Automated validation first, up to 24 hours or longer; a manual review can come at any time, for self-distributed add-ons too (same page) | Plan for it; keep the reviewer notes below |
 | Name | "`<Add-on name> for Firefox`" is the expected form ([Add-on Policies, 2](https://extensionworkshop.com/documentation/publish/add-on-policies/)); name, icon and developer name must be free of Mozilla trademarks except to say that it works with Firefox ([Trademark guidelines](https://www.mozilla.org/en-US/foundation/trademarks/policy/), which call "Firefox [Product]" incorrect) | **"Firefox Companion" cannot be the public name.** Also not "Claude" in the name: the names Claude Code and Anthropic may not be part of it ([Legal and compliance](https://code.claude.com/docs/en/legal-and-compliance)) |
-| Policies of 2026-12-01 | Preview of 2026-10-20: the same rules for names, native messaging, consent, remote code ([preview](https://extensionworkshop.com/documentation/publish/add-on-policies-preview-2026-12/)) | Read it again at submission |
+| Policies of 2026-12-01 | They take effect in days. Preview, last update 2026-10-20, read again on 2026-11-25: the same rules for names, native messaging, consent, remote code; new is that a fork needs a clearly different name, which does not apply (D8) ([preview](https://extensionworkshop.com/documentation/publish/add-on-policies-preview-2026-12/)) | Read it again at submission |
 | Native messaging | The policies, with consent, apply to what goes to the native application (6) | Data declaration in the manifest |
-| Data declaration | Required from new add-ons, must be accurate; cookies and requests fall under `websiteContent`, bookmarks under `bookmarksInfo` ([consent](https://extensionworkshop.com/documentation/develop/firefox-builtin-data-consent/)) | Declared: browsingActivity, websiteContent, websiteActivity. **To decide: bookmarksInfo, searchTerms, personalCommunications** for the optional switches and the mail add-on |
+| Data declaration | Required from new add-ons, must be accurate; cookies and requests fall under `websiteContent`, bookmarks under `bookmarksInfo` ([consent](https://extensionworkshop.com/documentation/develop/firefox-builtin-data-consent/)) | Declared: browsingActivity, websiteContent, websiteActivity. **To decide: bookmarksInfo, searchTerms, personalCommunications** for the optional switches and the mail add-on. `clipboardWrite` (0.6.0) sends nothing anywhere and reads nothing. File, shell and web tools run in Claude Code, not in the add-on |
 | Source code | Needed only for minified, bundled or generated code ([Source code submission](https://extensionworkshop.com/documentation/publish/source-code-submission/)) | Files are copied as they are. If asked: the repository and `npm run release` |
 | Add-on ID | Fixed by the first submission ([Add-on ID](https://extensionworkshop.com/documentation/develop/extensions-and-the-add-on-id/)) | `bridge@firefox-companion.invalid` and `mail@...` are placeholders. **Choose the final IDs first**: a change later loses all settings, and it is also in `Host.cs` |
 | web-ext | 10.8.0. `web-ext sign --channel listed or unlisted`; key and secret from `WEB_EXT_API_KEY` and `WEB_EXT_API_SECRET` ([commands](https://extensionworkshop.com/documentation/develop/web-ext-command-reference/)) | Never as arguments. `sign` was not run; `lint` was (step 2) |
@@ -24,7 +24,7 @@ Nothing is signed, submitted or published. This is the path, and what has to be 
 1. Public name and icon, the two add-on IDs, the developer name.
 2. License. `NOTICE.txt` says that none is chosen; AMO asks for one when a listing is made. Copyright holder.
 3. Listed or self-distributed (open question 4). Privacy text; data declaration above.
-4. Public distribution around a subscription sign-in of Claude (open question 3). Until then do not promote the sidebar chat as a feature of a public release.
+4. Public distribution around a subscription sign-in of Claude (open question 3; [Legal and compliance](https://code.claude.com/docs/en/legal-and-compliance) read again on 2026-11-25: unchanged in this point). Until then do not promote the sidebar chat as a feature of a public release.
 5. Accounts: Mozilla account with AMO API key; a code-signing certificate for Windows (Authenticode); optional a certificate for `mcpb sign`.
 6. Mozilla's view on `incognito: spanning`, optional `<all_urls>`, webRequest, WebMCP by an add-on (open question 5).
 
@@ -44,5 +44,6 @@ Back out: AMO can disable a version; Firefox does not go back by itself, so a fi
 ## Notes for reviewers of the add-on
 
 - It sends pages only of tabs that the user attached, to a program of the same Windows user, over native messaging. No server of the developer exists, and no remote code is loaded.
-- `nativeMessaging`: the only host is `firefox_companion`. `cookies`: needed by Firefox for tabs in containers, and for a switch that is off at first; one file reads cookies ([sitedata.mjs](../ext/background/sitedata.mjs)). `<all_urls>`: only asked for pictures of attached tabs; sites are asked one by one. `webRequest` and `webRequestBlocking`: a switch that is off at first.
+- The content policy of the add-on is `default-src 'none'` with scripts and styles of its own only, and `connect-src data: blob:`: no server can be reached from its pages.
+- `nativeMessaging`: the only host is `firefox_companion`. `cookies`: needed by Firefox for tabs in containers, and for a switch that is off at first; one file reads cookies ([sitedata.mjs](../ext/background/sitedata.mjs)). `<all_urls>`: only asked for pictures of attached tabs; sites are asked one by one. `webRequest`, `webRequestBlocking` and `clipboardWrite`: switches that are off at first. Nothing reads the clipboard.
 - To test: install the helper, load the add-on, press Connect, attach a tab. No account is needed for the tab tools.

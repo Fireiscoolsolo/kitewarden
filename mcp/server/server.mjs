@@ -12,6 +12,9 @@ const [, given] = at < 0 ? [] : args.splice(at, 2);
 const [option, list, ...rest] = args;
 const parts = option === '--mail' ? ['mail'] : option === '--with' ? String(list).split(',') : [];
 const known = (at < 0 || given) && (option === undefined || (option === '--mail' && list === undefined) || (option === '--with' && rest.length === 0 && parts.every((p) => ['isolated', 'input'].includes(p))));
+// A chat run whose user turned file and shell tools on. Listing is no right here either: the add-on decides.
+if (process.env.FC_CHAT_TOOLS === '1') parts.push('chat');
+delete process.env.FC_CHAT_TOOLS;
 if (!known) {
   console.error('Options: [--home folder] and --with isolated,input   or   --mail');
   process.exit(2);

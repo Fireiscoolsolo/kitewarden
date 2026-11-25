@@ -44,7 +44,8 @@ img { display: block; max-width: 100%; border: 1px solid var(--line); margin-bot
 .card { margin: 8px 0; padding: 12px; border: 2px solid var(--warn); border-radius: 6px; background: Canvas; }
 dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
 dt { color: var(--soft); }
-dd { margin: 0; overflow-wrap: anywhere; }
+/* Line breaks count in what the user approves, and the buttons stay in reach of a long value. */
+dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; max-height: 40vh; overflow: auto; }
 #log li { font-size: 12px; }
 #chat-items { max-height: 55vh; overflow: auto; margin-bottom: 8px; }
 #chat-items:empty { display: none; }
