@@ -299,6 +299,7 @@ export class Router {
     if (!Object.hasOwn(TOOLS, tool) || (TOOLS[tool].user && !call.user) || TOOLS[tool].local) throw new ToolError('unknown_tool', 'No such tool.');
     const bad = checkArgs(tool, args);
     if (bad) throw new ToolError('invalid_argument', bad);
+    if (call.parent?.aborted) throw call.parent.aborted;
     if (tool === 'connection_status') return this.#status(call.session);
     this.#open();
     if (tool === 'browser_batch') return this.#batch(call, args);
@@ -414,14 +415,20 @@ export class Router {
     for (let c = call; c; c = c.parent) c.waited += this.now() - start;
     call.approved = allowed;
     if (!allowed) throw new ToolError('approval_denied', 'The user did not allow this.');
-    if (spec.level === 'none') return this.#open();
+    if (spec.level === 'none') {
+      if (TOOLS[call.tool].group) await this.#group(TOOLS[call.tool].group);
+      if (call.aborted) throw call.aborted;
+      return this.#open();
+    }
     if (card.tool !== 'gif_creator') await this.frame(call, spec, origin, null);
     if ((await this.authorize(call, spec)) !== origin) throw new ToolError('origin_changed', 'The page changed its origin.');
     if (frame) await this.authorizeFrame(call, origin, frame);
   }
 
-  /** From here on the page may have the action. The entry tells the user so if the call is stopped. */
+  /** The last gate of every action. From here on the page may have it, and the entry tells the user so if the call is stopped. */
   sent(call, what) {
+    if (call.aborted) throw call.aborted;
+    this.#open();
     call.sent = { what, outcome: 'unknown' };
     call.session.acted.push(call.sent);
     if (call.session.acted.length > 200) call.session.acted.shift();

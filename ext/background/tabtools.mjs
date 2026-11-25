@@ -33,6 +33,12 @@ async function grantFor(r, call, spec, url, extra, reason) {
   return { origin, level: has?.level ?? 'read' };
 }
 
+/** Right before the tab opens: without an approval an attached tab must still cover the origin. */
+function opening(r, call, grant, what) {
+  if (grant && !call.approved && !covered(r, call.session, grant.origin)) throw new ToolError('no_grant', 'No attached tab covers that origin any more.');
+  r.sent(call, what);
+}
+
 function limit(r, s) {
   if (s.owned.size >= LIMITS.tabsOwned) throw new ToolError('limit_reached', `This session has ${LIMITS.tabsOwned} tabs: ${[...s.owned].join(', ')}. Close one first.`);
 }
@@ -52,7 +58,9 @@ async function context(r, call, spec, origin, a) {
   let tabs = await r.api.queryTabs();
   const list = () => tabs.filter((t) => mineOf(r, s, t.id) && (!t.incognito || r.grants.find(s.id, t.id)?.private));
   if (a.createIfEmpty && list().length === 0) {
+    r.sent(call, 'opening a tab');
     r.own(s, await r.api.createTab());
+    call.sent.outcome = 'done';
     tabs = await r.api.queryTabs();
   }
   const out = list().map((t) => {
@@ -73,7 +81,9 @@ async function create(r, call, spec, origin, a) {
     const from = await mine(r, call, a.duplicateOf);
     const g = r.grants.find(s.id, from.id);
     if (!g || g.state !== 'active' || g.private) throw new ToolError('no_grant', 'Only an attached tab can be copied.');
+    r.sent(call, 'copying a tab');
     const tab = await b(r).tabs.duplicate(from.id, { active: false });
+    call.sent.outcome = 'done';
     r.own(s, tab, { origin: originOf(from.url), level: g.level });
     await putInGroup(r, s, tab);
     return { tabId: tab.id, windowId: tab.windowId, state: 'copied' };
@@ -86,10 +96,9 @@ async function create(r, call, spec, origin, a) {
     cookieStoreId = found[0].cookieStoreId;
   }
   const grant = url ? await grantFor(r, call, spec, url, a.container !== undefined && `Container ${a.container}`, a.reason) : null;
-  if (call.aborted) throw call.aborted;
   const front = await b(r).windows.getLastFocused({ windowTypes: ['normal'] });
   const windowId = [...s.windows][0] ?? (front.incognito ? (await b(r).windows.getAll({ windowTypes: ['normal'] })).find((w) => !w.incognito)?.id : front.id);
-  r.sent(call, `opening a tab${url ? ` on ${plainUrl(url)}` : ''}`);
+  opening(r, call, grant, `opening a tab${url ? ` on ${plainUrl(url)}` : ''}`);
   const tab = await b(r).tabs.create({ active: false, url: url ?? 'about:blank', ...(windowId !== undefined && { windowId }), ...(cookieStoreId && { cookieStoreId }) });
   r.own(s, tab, grant && { ...grant, state: 'pending' });
   s.current = tab.id;
@@ -133,7 +142,9 @@ async function release(r, call, spec, origin, a) {
 
 async function group(r, call, spec, origin, a) {
   for (const id of a.tabIds) await mine(r, call, id);
+  r.sent(call, 'grouping tabs');
   const groupId = await b(r).tabs.group({ tabIds: a.tabIds });
+  call.sent.outcome = 'done';
   let style = null;
   if (a.title !== undefined || a.color !== undefined) {
     try {
@@ -148,7 +159,9 @@ async function group(r, call, spec, origin, a) {
 
 async function ungroup(r, call, spec, origin, a) {
   for (const id of a.tabIds) await mine(r, call, id);
+  r.sent(call, 'ungrouping tabs');
   await b(r).tabs.ungroup(a.tabIds);
+  call.sent.outcome = 'done';
   return { ungrouped: a.tabIds };
 }
 
@@ -159,10 +172,12 @@ async function closedTabs(r, call, spec, origin, a) {
   if (!c) throw new ToolError('not_found', 'This session had no such tab.');
   limit(r, s);
   await r.ask(call, spec, originOf(c.url), { tool: 'closed_tabs', target: c.url, value: 'Opens again in the background, with level read' }, a.reason);
+  r.sent(call, 'reopening a tab');
   const tab = await b(r).tabs.create({ active: false, url: c.url, ...(c.cookieStoreId && { cookieStoreId: c.cookieStoreId }) });
   s.closed = s.closed.filter((x) => x !== c);
   r.own(s, tab, { origin: originOf(c.url), level: 'read', state: 'pending' });
   await putInGroup(r, s, tab);
+  call.sent.outcome = 'done';
   return { tabId: tab.id, history_restored: false };
 }
 
@@ -180,9 +195,8 @@ async function windowsCreate(r, call, spec, origin, a) {
   limit(r, s);
   const url = a.url === undefined ? null : address(a.url);
   const grant = url ? await grantFor(r, call, spec, url, null, a.reason) : null;
-  if (call.aborted) throw call.aborted;
   const front = await b(r).windows.getLastFocused().catch(() => null);
-  r.sent(call, 'opening a window');
+  opening(r, call, grant, 'opening a window');
   const w = await b(r).windows.create({ url: url ?? 'about:blank', incognito: false });
   s.windows.add(w.id);
   const [tab] = w.tabs ?? (await b(r).tabs.query({ windowId: w.id }));
@@ -221,7 +235,9 @@ async function resize(r, call, spec, origin, a) {
   const change = {};
   for (const k of ['state', 'width', 'height', 'left', 'top']) if (a[k] !== undefined) change[k] = a[k];
   if (change.state && change.state !== 'normal') for (const k of ['width', 'height', 'left', 'top']) delete change[k];
+  r.sent(call, 'changing a window');
   await b(r).windows.update(w.id, change);
+  call.sent.outcome = 'done';
   await Promise.race([sleep(300), call.gone]);
   const now = await b(r).windows.get(w.id);
   return { state: now.state, width: now.width, height: now.height, left: now.left, top: now.top };
@@ -306,7 +322,7 @@ async function download(r, call, spec, origin, a) {
   if ((await r.authorize(call, { level: 'read' })) !== at) throw new ToolError('origin_changed', 'The page changed its origin.');
   const tab = await r.tab(call.tabId);
   r.sent(call, `download of ${plainUrl(url)}`);
-  const id = await b(r).downloads.download({ url, conflictAction: 'uniquify', saveAs: false, ...(a.filename && { filename: a.filename }), ...(tab.cookieStoreId && { cookieStoreId: tab.cookieStoreId }) });
+  const id = await b(r).downloads.download({ url, conflictAction: 'uniquify', saveAs: false, incognito: tab.incognito === true, ...(a.filename && { filename: a.filename }), ...(tab.cookieStoreId && { cookieStoreId: tab.cookieStoreId }) });
   call.session.downloads.push(id);
   for (let n = 0; n < 300; n++) {
     const [d] = await b(r).downloads.search({ id });

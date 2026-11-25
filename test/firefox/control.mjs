@@ -36,7 +36,7 @@ async function check(row, name, fn) {
     await fn((n) => notes.push(n));
   } catch (e) {
     error = e;
-    notes.push(`sidebar: ${(await sb.text('body').catch((x) => x.message)).replace(/s+/g, ' ').slice(0, 900)}`);
+    notes.push(`sidebar: ${(await sb.text('body').catch((x) => x.message)).replace(/\s+/g, ' ').slice(0, 900)}`);
     for (let i = await sb.eval('return document.querySelectorAll("#cards .card").length').catch(() => 0); i > 0; i--) await sb.answerCard(false).catch(() => {});
   }
   results.push({ row, name, ok: !error, ms: Date.now() - t, notes, error: error?.message });

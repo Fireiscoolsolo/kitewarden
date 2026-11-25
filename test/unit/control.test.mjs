@@ -406,3 +406,64 @@ test('upload: only inside the folders of the user, approved with the full paths,
   assert.deepEqual((await p).result.files, [{ name: 'a.txt', size: 3 }]);
   assert.deepEqual(calls.filter((x) => x[0] === 'file_read').map((x) => x[1].folders), [['C:\\ok']]);
 });
+
+test('a stop, a cancel or a revocation during the last question to the browser still keeps the action from happening', async () => {
+  // The browser answers only when the test lets it.
+  const hold = (o, name) => {
+    const real = o[name];
+    let go, asked;
+    const began = new Promise((r) => (asked = r));
+    o[name] = (...a) => (asked(), new Promise((r) => (go = () => r(real(...a)))));
+    return { began, go: () => ((o[name] = real), go()) };
+  };
+  for (const tool of ['tabs_create', 'windows_create']) {
+    const h = hold(browser.windows, 'getLastFocused');
+    const p = call(tool, { url: `${A}/z` });
+    await h.began;
+    assert.equal(router.halt().calls[0].may_have_taken_effect, null);
+    h.go();
+    assert.equal(await code(p), 'stopped');
+    await tick(20);
+    assert.deepEqual(calls.filter((c) => c[0] === 'create'), [], tool);
+    assert.ok(!tabs.some((t) => t.id === 30), tool);
+    router.resume();
+    const h2 = hold(browser.windows, 'getLastFocused');
+    const q = call(tool, { url: `${A}/z` });
+    await h2.began;
+    router.revoke((g) => g.tabId === 1);
+    h2.go();
+    assert.equal(await code(q), 'no_grant', tool);
+    assert.deepEqual(calls.filter((c) => c[0] === 'create'), [], tool);
+    await router.grant({ sessionId: 's1', tabId: 1, origin: A, level: 'act' });
+  }
+  const api = router.api;
+  let where = 0;
+  const real = api.page;
+  let free;
+  api.page = (id, m, ...rest) => (m.cmd === 'where' && ++where === 1 ? new Promise((r) => (free = () => r(real(id, m, ...rest)))) : real(id, m, ...rest));
+  const b = router.call('s1', 'late', 'browser_batch', { steps: [step('tabs_select', { tabId: 1 }), step('tabs_create', {})] });
+  browser.tabs.update = async () => calls.push(['update']);
+  while (!free) await tick(1);
+  router.cancel('s1', 'late');
+  free();
+  assert.equal(await code(b), 'cancelled');
+  await tick(30);
+  assert.ok(!calls.some((c) => c[0] === 'update'), 'the step did not begin');
+});
+
+test('browser data: the switch counts again after the approval, and a download from a private tab stays private', async () => {
+  router.switches = { history: true, downloads: true };
+  let p = call('search_history', { query: 'x' });
+  await card();
+  router.switches.history = false;
+  await answer(true);
+  assert.equal(await code(p), 'tool_off');
+  await router.grant({ sessionId: 's1', tabId: 3, origin: A, level: 'read', private: true });
+  browser.downloads = { download: async (o) => (calls.push(['download', o.incognito]), 1), search: async () => [{ id: 1, filename: 'C:\d\f', url: `${A}/f`, state: 'complete' }] };
+  for (const tabId of [1, 3]) {
+    p = call('download_start', { tabId, url: `${A}/f` });
+    await answer(true);
+    assert.equal(await code(p), 'ok');
+  }
+  assert.deepEqual(calls.filter((c) => c[0] === 'download'), [['download', false], ['download', true]]);
+});
