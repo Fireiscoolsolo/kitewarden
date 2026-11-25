@@ -8,7 +8,7 @@ Handoff after Prompt 6 (2026-11-25). Requirements and evidence per capability: [
 - `main` = `4082ac1`, the audit baseline. `feat/windows-bridge-slice` = `bfb39b0`, the end of Prompt 2. `feat/sidebar-chat` = `d51c615`, the end of Prompt 3.
 - `feat/browser-control` = `70c9a70`, the end of Prompt 4 (code `6b0e049`).
 - `feat/optional-backends` starts there: two `wip:` commits, then **`0c95826`, the code and tests of the Prompt 5 results**, plus the commits that add this file and the last parity rows, up to `e46f5c5`.
-- Prompt 6 goes on from `e46f5c5` on the same branch: **`d3483b0` is the code, the tests and the user documents that the packaged results below belong to**, and the commit after it adds this file and the parity rows.
+- Prompt 6 goes on from `e46f5c5` on the same branch: **`d3483b0` is the code, the tests and the user documents that the packaged results below belong to**, and the commit after it adds this file and the parity rows. `c41fffa` shortens the name of the Thunderbird add-on after the lint, and the commit after it records that.
 - Nothing is signed, published or pushed, and no everyday Firefox profile was touched: every Firefox of the tests ran with `-no-remote` and a profile in the temp folder.
 - Prompt 1: the audit is complete and its checkers pass. The orchestrator's delivery was refused. Its record in `.claude/opus-orchestrator/` is unchanged and not in Git.
 
@@ -100,7 +100,7 @@ From Prompt 4, still valid:
 
 ## Packaged artifacts
 
-Version 0.5.0, protocol 4, from `d3483b0`, not signed. `npm run release` makes them; `release/` is not in Git. SHA-256:
+Version 0.5.0, protocol 4, from `c41fffa`, not signed. Since `d3483b0` only the mail add-on and CONTENTS.txt changed; the other hashes are the same. `npm run release` makes them; `release/` is not in Git. SHA-256:
 
 | Path | What | SHA-256 |
 |---|---|---|
@@ -108,8 +108,8 @@ Version 0.5.0, protocol 4, from `d3483b0`, not signed. `npm run release` makes t
 | `release/firefox-companion-0.5.0-unsigned.xpi` | everyday Firefox add-on | `7a8bf9422996115978f2c621620041362632f1e1c6cd2507bb8e3cddba2d4a52` |
 | `release/firefox-companion-0.5.0.mcpb` | Claude Desktop bundle | `0eab94711c5545ae8971fb99e742e755a96905168a654f3b22546b59f354d63a` |
 | `release/optional/firefox-companion-optional-0.5.0.zip` | isolated Firefox, Windows input, remote link; separate | `52ec5fa67d443a7356c7815c8f1a97aff643573c2941eca529afa3ae04e6b0cd` |
-| `release/optional/firefox-companion-mail-0.5.0-unsigned.xpi` | Thunderbird add-on; separate | `f2c5bc7f4c5dd6077c51de9fe4582f13711a96b0843c0065168f2c76d0c91ff4` |
-| `release/CONTENTS.txt` | hashes of every file inside | `622d5fbf31fbe15cf2abacc6cffdef1f8cdf42cc1dbf7341c11cdebb404716cd` |
+| `release/optional/firefox-companion-mail-0.5.0-unsigned.xpi` | Thunderbird add-on; separate | `6ab3b879144341f79071c7ad8e74944ae3e0e784be2fe58a3006d002c77a112d` |
+| `release/CONTENTS.txt` | hashes of every file inside | `f1867b18d6d4ea09932708dc720fdd68918c19d1043e9a09fc025665b040583c` |
 | `release/NOTICE.txt` | license state, third-party code (none), trademarks | `1c81f84631bbf54a6ca447956db848f91a00dcdca9efc08a482b6abab520e18f` |
 | `release/SETUP.md` | for users | `d0a73c365d59d9711c5c56f835b116168dc79ca72929f0983b2d1c894b6ff13b` |
 
@@ -124,10 +124,14 @@ Windows 11 build 26300, without elevation (medium integrity), Firefox 160.0.1 re
 | `npm run test:install` | **packaged artifact**: real setup program, files, registry, processes, pipes, unpacked by another zip reader; Firefox played by the test; installed Claude Code with its own configuration folder, no model called | 21 of 21 |
 | `npm run test:packaged` | **packaged artifact in real Firefox**, headless, disposable profiles, unsigned .xpi as a temporary add-on, real clicks; Claude Code is a test double | 15 of 15, `test-results/packaged.json` |
 | `npm test` | development build, simulated; plus package checks | 116 of 116 |
-| `npm run test:integration` | development build, Firefox played by the test | 51 of 51 in the clone; 13 of 14 runs. The second run failed in "run: the documented options in a folder of the helper"; its message was not kept, and it did not come back in 12 further runs. Cause unknown |
+| `npm run test:integration` | development build, Firefox played by the test | 51 of 51 in the clone; 14 of 15 runs. The second run failed in "run: the documented options in a folder of the helper"; its message was not kept, and it did not come back in 13 further runs. Cause unknown |
 | `npm run test:firefox`, `test:companion`, `test:control`, `test:advanced`, `test:developer` | development build in real Firefox, headless | 33 of 33, 27 of 27, 24 of 24, 20 of 20, 4 of 4 |
 | `npm run test:desktop` | not run again: input and focus did not change | Prompt 5 |
 | `test:claude`, `test:chat`, `test:milestone` (live, paid) | not run again: Claude Code starts the server as before (`node <home>\mcp\server.mjs`), and chats start Claude Code as before. The free part is in `test:install`: Claude Code itself started the installed server and reported Connected | Prompt 5 |
+| `web-ext lint --warnings-as-errors` 10.8.0 on the unpacked .xpi | **packaged artifact**, official linter | Firefox package: 0 errors, 0 warnings, 0 notices. Thunderbird package: one error at first (name of 49 characters, limit 45), fixed; 4 warnings left: accountsRead, messagesRead and accounts.list are not of Firefox, no data declaration |
+| `mcpb unpack`, `validate`, `info` 2.1.2 | **packaged artifact**, official tool | unpacks, manifest valid, "Not signed" |
+| 12 runs of both tools on copies, 10 with planted mistakes | control of the tools | all 10 seen, 2 unchanged copies clean |
+| after the fix: `npm test`, `test:integration`, `test:install` | as above, in the working folder at `c41fffa` | 116 of 116, 51 of 51, 21 of 21. `test:packaged` and the Firefox suites were not run again: their files have the same bytes |
 | Signed build | none exists | open |
 | `node .opus-inbox/audit_tools.mjs check-parity` | documents | OK |
 
@@ -278,7 +282,7 @@ Still true from Prompt 3: skills and agents are listed only after the first mess
 9. Remote link between two computers, and what a firewall does with it. Developer Edition with the developer build.
 10. Signing and public release: [RELEASE.md](RELEASE.md). Prerequisites, all of the owner: public name and the two add-on IDs (fixed by the first submission), license and copyright holder, listed or self-distributed, data declaration (bookmarksInfo, searchTerms, personalCommunications), Mozilla account with an API key, a code-signing certificate, and the subscription question (5).
 11. Claude Desktop itself: installing the .mcpb file changes the user's own Claude Desktop, so it was not done. With the user's yes, or a Claude Desktop with a test sign-in: Settings, Extensions, Advanced settings, Install Extension, `release\firefox-companion-0.5.0.mcpb`, then ask for the connection status with the helper installed. Claude Desktop 6.28899.6 starts Node bundles in its own Node 24.22.3 with the arguments of the manifest (read from its files). Unsigned bundles: not tried.
-12. Downloads that were not made: `npx web-ext@10 lint -s dist/extension` (10.8.0) and `npx @anthropic-ai/mcpb@2 validate` (2.1.2).
+12. Lint and validation ran on 2026-11-25 with the download the user allowed (npm, pinned, without install scripts, in a scratch folder). Open: the data declaration of the mail add-on, and the review of the Thunderbird add-ons site.
 13. Not tried: Windows SmartScreen and security software with the unsigned program, Windows before 11, Firefox older than 160 or absent, an account with special letters (only the folder had them), the Uninstall button in Settings by hand (its command was run), an installation while a chat runs, power loss (kills only), a full disk.
 14. Limits: a file that a later version drops is not deleted by an upgrade. Servers that a client started and optional programs run on after an uninstall until their owner ends them. The optional programs have no installer.
 
