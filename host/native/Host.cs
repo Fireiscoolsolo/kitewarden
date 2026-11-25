@@ -20,8 +20,8 @@ static class Program
 {
     public const string HostName = "firefox_companion";
     public const string ExtensionId = "bridge@firefox-companion.invalid";
-    public const string Version = "0.3.0";
-    public const int Protocol = 3;
+    public const string Version = "0.4.0";
+    public const int Protocol = 4;
 
     static int Main(string[] args)
     {

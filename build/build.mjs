@@ -15,14 +15,17 @@ const manifest = JSON.parse(readFileSync(path.join(root, 'ext/manifest.json'), '
 const want = { 'Host.cs Version': [/Version = "([^"]+)"/.exec(host)?.[1], VERSION], 'Host.cs Protocol': [Number(/Protocol = (\d+)/.exec(host)?.[1]), PROTOCOL], 'manifest version': [manifest.version, VERSION], 'manifest id': [manifest.browser_specific_settings.gecko.id, /ExtensionId = "([^"]+)"/.exec(host)?.[1]] };
 for (const [name, [got, expected]] of Object.entries(want)) if (got !== expected) throw new Error(`${name}: ${got}, expected ${expected}`);
 
-for (const part of ['extension', 'mcp', 'host']) {
+for (const part of ['extension', 'mcp', 'host', 'backends', 'remote']) {
   rmSync(path.join(dist, part), { recursive: true, force: true });
   mkdirSync(path.join(dist, part), { recursive: true });
 }
 cpSync(path.join(root, 'ext'), path.join(dist, 'extension'), { recursive: true });
-cpSync(path.join(root, 'shared/protocol.mjs'), path.join(dist, 'extension/shared/protocol.mjs'));
-for (const f of ['server.mjs', 'link.mjs']) cpSync(path.join(root, 'mcp/server', f), path.join(dist, 'mcp', f));
+for (const f of ['protocol.mjs', 'redact.mjs']) cpSync(path.join(root, 'shared', f), path.join(dist, 'extension/shared', f));
+for (const f of ['server.mjs', 'serve.mjs', 'link.mjs']) cpSync(path.join(root, 'mcp/server', f), path.join(dist, 'mcp', f));
 cpSync(path.join(root, 'shared/protocol.mjs'), path.join(dist, 'mcp/protocol.mjs'));
+// Optional parts, which nothing of the everyday product starts or contains.
+for (const f of ['link.mjs', 'isolated.mjs']) cpSync(path.join(root, 'backends', f), path.join(dist, 'backends', f));
+cpSync(path.join(root, 'ext/page/content.js'), path.join(dist, 'backends/content.js'));
 
 execFileSync(path.join(process.env.SystemRoot, 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'), [
   '/nologo', '/warnaserror+', '/optimize+', '/platform:x64', '/target:exe',
@@ -30,4 +33,4 @@ execFileSync(path.join(process.env.SystemRoot, 'Microsoft.NET/Framework64/v4.0.3
   '/r:System.Web.Extensions.dll', '/r:System.Core.dll',
   ...['Host.cs', 'Setup.cs', 'Chat.cs', 'Files.cs'].map((f) => path.join(root, 'host/native', f)),
 ], { stdio: 'inherit' });
-console.log('built dist/extension, dist/mcp, dist/host');
+console.log('built dist/extension, dist/mcp, dist/host, dist/backends, dist/remote');

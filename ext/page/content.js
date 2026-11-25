@@ -402,7 +402,8 @@
 
   function guardDialogs(answer, textAnswer) {
     const w = window.wrappedJSObject;
-    if (!w || dialogs) return;
+    if (!w || dialogs || typeof exportFunction !== 'function') return;
+    leaving = answer;
     const seen = [];
     const saved = {};
     const put = (name, fn) => {
@@ -415,7 +416,24 @@
     dialogs = { seen, saved };
   }
 
+  // A page may ask before it is left. Native dialogs cannot be answered, so the question is put to the page beforehand, and
+  // its own handlers do not see the real event when the user accepted.
+  let leaving = false;
+  addEventListener('beforeunload', (e) => leaving && e.stopImmediatePropagation(), true);
+
+  /** Whether the page would ask before it is left. With `accept` it will not. */
+  function leave({ accept }) {
+    leaving = false;
+    const e = document.createEvent('BeforeUnloadEvent');
+    e.initEvent('beforeunload', false, true);
+    window.dispatchEvent(e);
+    const asks = e.defaultPrevented || e.returnValue !== '';
+    leaving = asks && accept;
+    return { asks };
+  }
+
   function releaseDialogs() {
+    leaving = false;
     const seen = dialogs?.seen ?? [];
     if (dialogs) for (const [name, fn] of Object.entries(dialogs.saved)) window.wrappedJSObject[name] = fn;
     dialogs = null;
@@ -448,6 +466,31 @@
     if (button === 2) hit.dispatchEvent(new PointerEvent('contextmenu', mouse));
     if (m.count === 3 && button === 0) getSelection().selectAllChildren(hit.closest('p, li, td, pre, h1, h2, h3, div') ?? hit);
     return { at };
+  }
+
+  /** For input from outside the page: the checks of an action and the point of the element. Nothing is dispatched. */
+  function aim(m) {
+    const el = m.fingerprint === undefined ? target(m.ref) : approved(m);
+    if (!m.loose) checkTarget(el);
+    const { x, y, hit, at } = pointOf(el);
+    observe();
+    // Firefox itself moves the focus to this one, so that is no effect of the page.
+    watch.seen.expected = hit.closest('a, button, input, select, textarea, [tabindex], [contenteditable]') ?? document.body;
+    return { x, y, at, screen: { x: window.mozInnerScreenX, y: window.mozInnerScreenY, ratio: devicePixelRatio }, shown: document.visibilityState === 'visible', focused: document.hasFocus() };
+  }
+
+  let field = null;
+  const fieldSize = () => (field?.isContentEditable ? field.textContent.length : field?.value?.length ?? 0);
+
+  /** The field for keys from outside the page, with the checks of typing. */
+  function fieldFor(m) {
+    field = focusField(m) ?? document.body;
+    if (m.typing) {
+      if (!isText(field)) fail('not_actionable', 'No field has the focus.');
+      checkField(field);
+    } else if (isSecret(field) && !['Tab', 'Escape'].includes(m.key)) fail('secret_field', 'Keys go to no password, code or payment field.');
+    observe();
+    return { size: fieldSize() };
   }
 
   let hovered = null;
@@ -832,6 +875,116 @@
     return { text: s.slice(0, max), truncated: s.length > max };
   }
 
+  // Questions without code
+
+  const STYLES = ['display', 'visibility', 'opacity', 'position', 'z-index', 'color', 'background-color', 'font-family', 'font-size', 'font-weight', 'line-height', 'text-align', 'width', 'height', 'margin', 'padding', 'border', 'overflow', 'cursor', 'pointer-events'];
+
+  function query(m) {
+    if (m.action === 'box') {
+      const el = target(m.ref);
+      const r = el.getBoundingClientRect();
+      return { box: { left: r.left, top: r.top, width: r.width, height: r.height }, on_screen: onScreen(el), visible: el.checkVisibility({ visibilityProperty: true, opacityProperty: true }) };
+    }
+    if (m.action === 'style') {
+      const cs = getComputedStyle(target(m.ref));
+      return { style: Object.fromEntries(STYLES.map((k) => [k, cs.getPropertyValue(k)])) };
+    }
+    if (m.action === 'table') {
+      const el = target(m.ref).closest('table, [role=table], [role=grid]');
+      if (!el) fail('not_actionable', 'That is no table.');
+      const rows = [...(el.rows ?? el.querySelectorAll('[role=row]'))];
+      return { total: rows.length, rows: rows.slice(0, 200).map((r) => [...(r.cells ?? r.querySelectorAll('[role=cell], [role=gridcell], [role=columnheader], [role=rowheader]'))].slice(0, 50).map((c) => line(c.innerText, 200))) };
+    }
+    const names = m.attributes ?? [];
+    if (names.some((n) => !/^[a-z_:][\w:.-]*$/i.test(n))) fail('invalid_argument', 'That is no attribute name.');
+    const found = search({ query: m.query, selector: m.selector, limit: 50 });
+    if (m.action === 'count') return { total: found.total };
+    return {
+      total: found.total,
+      elements: found.hits.map(({ score, off_screen, ...h }) => {
+        const el = refs.get(h.ref).deref();
+        const value = (n) => (isSecret(el) && /^(value|data-)/i.test(n) ? '[secret]' : el.getAttribute(n)?.slice(0, 300) ?? null);
+        return { ...h, tag: el.tagName.toLowerCase(), text: isSecret(el) ? '' : line(el.innerText, 300), value: valueOf(el), visible: el.checkVisibility({ visibilityProperty: true, opacityProperty: true }), on_screen: !off_screen, ...(names.length && { attributes: Object.fromEntries(names.map((n) => [n, value(n)])) }) };
+      }),
+    };
+  }
+
+  function timing() {
+    const all = (t) => performance.getEntriesByType(t);
+    const known = PerformanceObserver.supportedEntryTypes;
+    const [nav] = all('navigation');
+    const ms = (n) => Math.round(n * 10) / 10;
+    return {
+      navigation: nav ? { type: nav.type, ...Object.fromEntries(['responseStart', 'responseEnd', 'domInteractive', 'domContentLoadedEventEnd', 'loadEventEnd'].map((k) => [k, ms(nav[k])])), transferred: nav.transferSize } : null,
+      paints: all('paint').map((p) => ({ name: p.name, at: ms(p.startTime) })),
+      slow_resources: all('resource').filter((r) => r.duration >= 500).sort((a, b) => b.duration - a.duration).slice(0, 50).map((r) => ({ url: r.name, type: r.initiatorType, start: ms(r.startTime), duration: ms(r.duration), bytes: r.transferSize })),
+      marks: all('mark').slice(0, 100).map((e) => ({ name: line(e.name, 100), at: ms(e.startTime) })),
+      measures: all('measure').slice(0, 100).map((e) => ({ name: line(e.name, 100), start: ms(e.startTime), duration: ms(e.duration) })),
+      missing: ['navigation', 'resource', 'mark', 'measure', 'paint', 'largest-contentful-paint', 'first-input', 'event', 'longtask', 'layout-shift', 'element'].filter((t) => !known.includes(t)),
+    };
+  }
+
+  function storage({ action, area, key, value, max }) {
+    let s;
+    try {
+      s = area === 'local' ? localStorage : sessionStorage;
+      s.length;
+    } catch {
+      fail('not_allowed', 'The page has no such storage.');
+    }
+    const entry = (k) => ({ key: k.slice(0, 500), length: s.getItem(k).length, value: s.getItem(k).slice(0, max) });
+    if (action === 'list') return { total: s.length, entries: [...Array(Math.min(s.length, 200)).keys()].map((i) => entry(s.key(i))) };
+    if (action === 'get') return { entry: s.getItem(key) === null ? null : entry(key) };
+    if (action === 'set') return s.setItem(key, value), { set: s.getItem(key) === value };
+    if (action === 'delete') return s.removeItem(key), { deleted: s.getItem(key) === null };
+    const n = s.length;
+    s.clear();
+    return { cleared: n - s.length };
+  }
+
+  // Watched elements
+
+  const watches = new Map();
+  let nextWatch = 1;
+
+  function watchElement(m) {
+    const el = target(m.ref);
+    if (watches.size >= 10) fail('limit_reached', 'Ten elements are watched already. Stop one first.');
+    const w = { changes: [], dropped: 0 };
+    const note = (c) => {
+      w.changes.push({ at: Date.now(), ...c });
+      if (w.changes.length > m.keep) w.changes.splice(0, w.changes.length - m.keep), w.dropped++;
+    };
+    const text = (n) => (n instanceof Element ? (isSecret(n) ? '[secret]' : line(n.innerText ?? n.textContent, 200)) : line(n.data, 200));
+    w.observer = new MutationObserver((list) => {
+      for (const r of list) {
+        const at = r.target instanceof Element ? r.target : r.target.parentElement;
+        const where = at ? `${roleOf(at) ?? at.tagName.toLowerCase()}` : 'text';
+        if (r.type === 'childList') for (const [kind, nodes] of [['added', r.addedNodes], ['removed', r.removedNodes]]) for (const n of nodes) if (!own(n) && !gone.has(n) && text(n)) note({ kind, where, text: text(n) });
+        if (r.type === 'characterData') note({ kind: 'text', where, text: at && isSecret(at) ? '[secret]' : text(r.target) });
+        if (r.type === 'attributes') note({ kind: 'attribute', where, name: r.attributeName, value: isSecret(r.target) ? '[secret]' : r.target.getAttribute(r.attributeName)?.slice(0, 200) ?? null });
+      }
+    });
+    w.observer.observe(el, { subtree: true, childList: true, characterData: true, attributes: true });
+    const name = `w_${id}_${nextWatch++}`;
+    watches.set(name, w);
+    return { watch: name };
+  }
+
+  function watchRead({ watch: name, stop }) {
+    const w = watches.get(name);
+    if (!w) fail('not_found', 'Nothing is watched under that name. The page may have loaded again.');
+    const { changes, dropped } = w;
+    Object.assign(w, { changes: [], dropped: 0 });
+    if (stop) w.observer.disconnect(), watches.delete(name);
+    return { changes, dropped };
+  }
+
+  function quiet() {
+    for (const w of watches.values()) w.observer.disconnect();
+    watches.clear();
+  }
+
   // The pill: a recording runs, or a session works here. It stops on a real click only.
 
   let pill = null;
@@ -1038,19 +1191,30 @@
       }
       return { set };
     },
+    aim,
+    field: fieldFor,
+    field_size: () => ({ size: fieldSize() }),
+    leave,
+    query,
+    timing,
+    storage,
+    watch: watchElement,
+    watch_read: watchRead,
     selection,
     record,
     work,
     pill: ({ kind }) => (kind || pillKind === 'GIF' ? recordPill(kind) : null, {}),
     after: () => {
       const s = watch?.seen;
-      return { changed: Boolean(s && (s.changed || s.url !== location.href || s.focus !== document.activeElement)), dialogs: releaseDialogs(), url: location.href !== s?.url };
+      return { changed: Boolean(s && (s.changed || s.url !== location.href || ![s.focus, s.expected].includes(document.activeElement))), dialogs: releaseDialogs(), url: location.href !== s?.url };
     },
     cover,
     uncover,
   };
 
   browser.runtime.onMessage.addListener((m) => {
+    if (m.cmd === 'hooks') return; // for hooks.js
+    if (m.cmd === 'quiet') return quiet(), Promise.resolve({ id });
     if (m.cmd === 'where') return Promise.resolve({ origin: self.origin, path: location.pathname, id });
     if (m.cmd === 'abort') {
       epoch++;
@@ -1058,6 +1222,7 @@
     }
     if (m.cmd === 'forget') {
       epoch++;
+      quiet();
       uncover();
       releaseDialogs();
       refs.clear();

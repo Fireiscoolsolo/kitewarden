@@ -4,7 +4,7 @@ import { beforeEach, test } from 'node:test';
 import { Approvals } from '../../dist/extension/grants/approvals.mjs';
 import { Grants } from '../../dist/extension/grants/grants.mjs';
 import { Router } from '../../dist/extension/background/router.mjs';
-import { TOOLS } from '../../dist/extension/shared/protocol.mjs';
+import { GROUPS, TOOLS } from '../../dist/extension/shared/protocol.mjs';
 
 const A = 'https://a.example';
 const B = 'https://b.example';
@@ -59,7 +59,7 @@ beforeEach(async () => {
 
 const call = (tool, args = {}, session = 's1') => router.call(session, ++n, tool, args);
 const code = async (p) => (await p).error?.code ?? 'ok';
-const sample = { read_page: {}, wait_for: { text: 'x', timeout_s: 0.1 }, computer: { action: 'screenshot' }, form_input: { ref: 'r', value: 'v' }, navigate: { url: `${A}/y` }, gif_creator: { action: 'start' }, list_frames: {}, get_page_text: {}, find: { query: 'x' }, find_text: { text: 'x' }, form_fill: { fields: [{ ref: 'r', value: 'v' }] }, file_upload: { ref: 'r', paths: ['C:\\x'] }, request_user: { message: 'x' }, resize_window: { width: 500 }, tabs_close: {}, tabs_select: {}, tabs_release: {}, download_start: { url: `${A}/f` } };
+const sample = { read_page: {}, wait_for: { text: 'x', timeout_s: 0.1 }, computer: { action: 'screenshot' }, form_input: { ref: 'r', value: 'v' }, navigate: { url: `${A}/y` }, gif_creator: { action: 'start' }, list_frames: {}, get_page_text: {}, find: { query: 'x' }, find_text: { text: 'x' }, form_fill: { fields: [{ ref: 'r', value: 'v' }] }, file_upload: { ref: 'r', paths: ['C:\\x'] }, request_user: { message: 'x' }, resize_window: { width: 500 }, tabs_close: {}, tabs_select: {}, tabs_release: {}, download_start: { url: `${A}/f` }, read_console_messages: {}, read_network_requests: {}, observe_element: { ref: 'r' }, observe_read: { watch: 'w_a_1' }, observe_stop: { watch: 'w_a_1' }, page_query: { action: 'count', selector: 'a' }, page_timing: {}, page_storage: { action: 'list', area: 'local' }, get_cookies: {}, set_cookie: { name: 'a', value: 'b' }, remove_cookie: { name: 'a' }, webmcp_list: {}, webmcp_call: { tool: '0.a.b', input: {} }, windows_input: { action: 'click', ref: 'r' }, isolated_browser: { action: 'dialog', answer: 'accept' }, isolated_debug: { action: 'scripts' } };
 const click = (session) => call('computer', { action: 'left_click', tabId: 1, ref: 'r' }, session);
 const card = async () => {
   for (let i = 0; i < 50 && !approvals.cards.length; i++) await tick();
@@ -77,8 +77,10 @@ const allow = async (yes = true) => {
 test('every tool that takes a tab is refused without a grant, and no page gets a message', async () => {
   const withTab = Object.keys(TOOLS).filter((t) => TOOLS[t].input.properties.tabId && !TOOLS[t].user);
   assert.deepEqual(withTab.sort(), Object.keys(sample).sort(), 'a new tool needs a sample here');
-  router.switches.downloads = true;
   router.api.browser = { permissions: { contains: async () => true } };
+  router.backends = { require() {}, status: () => [] };
+  for (const t of withTab.filter((x) => TOOLS[x].group)) assert.equal(await code(call(t, { tabId: 1, ...sample[t] })), 'tool_off', `${t} is off at first`);
+  for (const g of Object.keys(GROUPS)) router.switches[g] = true;
   for (const t of withTab) {
     assert.equal(await code(call(t, { tabId: 2, ...sample[t] })), 'no_grant', t);
     assert.equal(await code(call(t, { tabId: 1, ...sample[t] }, 's2')), 'conflict', `${t} on the tab of another session`);

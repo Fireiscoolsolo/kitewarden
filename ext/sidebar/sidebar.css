@@ -62,3 +62,10 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .note.rec { border-color: var(--bad); }
 .chip { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .step { padding: 8px 0; border-top: 1px solid var(--line); }
+
+.code,
+.fingerprint {
+  font-family: monospace;
+  overflow-wrap: anywhere;
+  user-select: all;
+}

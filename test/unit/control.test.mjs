@@ -155,12 +155,12 @@ test('pictures: marks, points down into a granted frame, refused over another, t
   assert.equal(await code(call('computer', { action: 'screenshot', tabId: 1 })), 'not_allowed');
 });
 
-test('the reply tells dispatch from effect, reports dialogs, and names the missing backend', async () => {
+test('the reply tells dispatch from effect, reports dialogs, and names the optional backends that it does not use', async () => {
   const p = click();
   await answer(true);
   const r = (await p).result;
   assert.deepEqual([r.dispatched, r.trusted_event, r.observed], [true, false, false]);
-  assert.match(r.hint, /optional input backend.*None is installed/);
+  assert.match(r.hint, /optional backends.*none is used by itself/);
   assert.deepEqual(r.dialogs, [{ kind: 'confirm', text: 'Sure?', answer: 'cancelled' }]);
   const t = call('computer', { action: 'type', tabId: 1, ref: 'ref_d_1', text: 'héllo' });
   await answer(true);

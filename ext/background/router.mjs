@@ -1,7 +1,9 @@
 // The one command path. The sidebar and every MCP server end up in `call`, with the same sessions, checks and log.
-// What the tools do is in pagetools.mjs and tabtools.mjs; every rule about who may do it is here.
-import { LIMITS, PROTOCOL, TOOLS, ToolError, VERSION, checkArgs, oneLine, originOf, plainUrl, toolSpec } from '../shared/protocol.mjs';
+// What the tools do is in the *tools.mjs files and sitedata.mjs; every rule about who may do it is here.
+import { GROUPS, LIMITS, PROTOCOL, TOOLS, ToolError, VERSION, VIRTUAL, checkArgs, oneLine, originOf, plainUrl, toolSpec } from '../shared/protocol.mjs';
+import { devTools } from './devtools.mjs';
 import { pageTools, screenshot } from './pagetools.mjs';
+import { siteTools } from './sitedata.mjs';
 import { tabTools } from './tabtools.mjs';
 
 const SUSPENDED = {
@@ -15,10 +17,11 @@ const WHY = {
   stopped: 'The user stopped this.',
   cancelled: 'The client cancelled the call.',
   timeout: 'The time of the batch is over.',
+  tool_off: 'The user turned this off in the sidebar.',
   grant_suspended: SUSPENDED.origin[1],
   permission_required: SUSPENDED.permission[1],
 };
-const HANDLERS = { ...pageTools, ...tabTools };
+export const HANDLERS = { ...pageTools, ...tabTools, ...devTools, ...siteTools };
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -30,9 +33,12 @@ export class Router {
    * `api` is the browser: getTab, queryTabs, createTab, openUrl, hasHost, hasAllUrls, page, forget, captureTab, captureVisible,
    * annotate, browser, host. `onGrantEnd` hears of each grant that ended or no longer holds, also by a pause. `gif` keeps
    * the frames of recordings. `switches` are the groups that the user turned on, `folders` those that uploads may come from.
+   * `observer` keeps console and network entries, `backends` the optional backends. Both are set after construction.
    */
-  constructor({ api, grants, approvals, log, gif = null, onGrantEnd = () => {}, onChange = () => {}, now = Date.now, linkStatus = () => ({}) }) {
-    Object.assign(this, { api, grants, approvals, log, gif, onGrantEnd, onChange, now, linkStatus });
+  constructor({ api, grants, approvals, log, gif = null, handlers = HANDLERS, onGrantEnd = () => {}, onChange = () => {}, now = Date.now, linkStatus = () => ({}) }) {
+    Object.assign(this, { api, grants, approvals, log, gif, handlers, onGrantEnd, onChange, now, linkStatus });
+    this.observer = null;
+    this.backends = null;
     this.sessions = new Map();
     this.calls = new Set();
     this.paused = false;
@@ -58,7 +64,7 @@ export class Router {
   label(id, name) {
     const s = this.sessions.get(id);
     s.name = oneLine(name, 80);
-    s.label = s.kind === 'mcp' ? `Client ${oneLine(name, 50)} (${id.slice(0, 4)})` : name;
+    s.label = s.kind === 'mcp' ? `Client ${oneLine(name, 50)} (${id.slice(0, 4)})` : s.kind === 'remote' ? `Remote ${oneLine(name, 70)} (${id.slice(0, 4)})` : name;
     this.onChange();
   }
 
@@ -118,6 +124,13 @@ export class Router {
     return report;
   }
 
+  /** The user turned a group or a backend off: its calls end, and those that wait never begin. */
+  stopGroup(name) {
+    this.#abort((c) => TOOLS[c.tool]?.group === name || TOOLS[c.tool]?.backend === name || (name === 'isolated' && c.tabId >= VIRTUAL), 'tool_off');
+    if (name === 'isolated') this.revoke((g) => g.tabId >= VIRTUAL);
+    this.onChange();
+  }
+
   resumeTab(tabId) {
     this.stoppedTabs.delete(tabId);
     this.onChange();
@@ -135,7 +148,7 @@ export class Router {
     if (!tab || !origin || originOf(tab.url) !== origin) throw new ToolError('origin_changed', 'The tab shows another page now.');
     if (tab.incognito && allowPrivate !== true) throw new ToolError('not_allowed', 'This is a private window. It needs a grant of its own.');
     if (tab.incognito && session.kind !== 'mcp') throw new ToolError('not_allowed', 'Chats and this sidebar keep a history, so a private tab can be given to an MCP client only.');
-    if (!(await this.api.hasHost(origin))) throw new ToolError('permission_required', 'Firefox did not allow this site.');
+    if (!(await this.api.hasHost(origin, tabId))) throw new ToolError('permission_required', 'Firefox did not allow this site.');
     const holder = this.#holder(sessionId, tabId);
     if (holder && !move) throw new ToolError('conflict', `The tab is attached to ${this.sessions.get(holder.sessionId)?.label}. Move it here or revoke it first.`);
     if (holder) this.revoke((g) => g === holder);
@@ -157,7 +170,7 @@ export class Router {
     const g = this.grants.get(grantId);
     const tab = g && (await this.tab(g.tabId));
     if (!tab || originOf(tab.url) !== origin) throw new ToolError('origin_changed', 'The tab shows another page now.');
-    if (!(await this.api.hasHost(origin))) throw new ToolError('permission_required', 'Firefox did not allow this site.');
+    if (!(await this.api.hasHost(origin, g.tabId))) throw new ToolError('permission_required', 'Firefox did not allow this site.');
     this.grants.approveOrigin(g, origin);
     this.#note(this.sessions.get(g.sessionId), 'grant', g.private ? null : origin, 'origin approved');
     this.onChange();
@@ -167,7 +180,7 @@ export class Router {
   async approveFrames(grantId, origin) {
     const g = this.grants.get(grantId);
     if (!g || originOf(origin) !== origin) throw new ToolError('invalid_argument', 'That grant is gone.');
-    if (!(await this.api.hasHost(origin))) throw new ToolError('permission_required', 'Firefox did not allow this site.');
+    if (!(await this.api.hasHost(origin, g.tabId))) throw new ToolError('permission_required', 'Firefox did not allow this site.');
     if (!g.frames.includes(origin)) g.frames.push(origin);
     this.#note(this.sessions.get(g.sessionId), 'grant', g.private ? null : origin, 'frames approved');
     this.onChange();
@@ -245,7 +258,7 @@ export class Router {
     const lost = [];
     for (const g of this.grants.all) {
       const tab = g.state === 'active' && (await this.tab(g.tabId));
-      if (tab && !(await this.api.hasHost(originOf(tab.url) ?? g.origins[0]))) lost.push(g);
+      if (tab && !(await this.api.hasHost(originOf(tab.url) ?? g.origins[0], g.tabId))) lost.push(g);
     }
     for (const g of lost) this.grants.suspend(g, 'permission');
     this.#suspended(lost, 'permission_required');
@@ -297,6 +310,7 @@ export class Router {
 
   async #run(call, tool, args) {
     if (!Object.hasOwn(TOOLS, tool) || (TOOLS[tool].user && !call.user) || TOOLS[tool].local) throw new ToolError('unknown_tool', 'No such tool.');
+    if (!Object.hasOwn(this.handlers, tool) && !['connection_status', 'browser_batch'].includes(tool)) throw new ToolError('unknown_tool', 'This add-on has no such tool.');
     const bad = checkArgs(tool, args);
     if (bad) throw new ToolError('invalid_argument', bad);
     if (call.parent?.aborted) throw call.parent.aborted;
@@ -304,14 +318,24 @@ export class Router {
     this.#open();
     if (tool === 'browser_batch') return this.#batch(call, args);
     const spec = toolSpec(tool, args);
-    if (TOOLS[tool].group) await this.#group(TOOLS[tool].group);
-    if (spec.level === 'none') return HANDLERS[tool](this, call, spec, null, args);
+    await this.#ready(tool);
+    if (spec.level === 'none') return this.handlers[tool](this, call, spec, null, args);
     let origin = await this.authorize(call, spec);
     if (spec.level === 'act') {
       await this.#turn(call);
       origin = await this.authorize(call, spec); // the one before may have moved the page
     }
-    return HANDLERS[tool](this, call, spec, origin, args);
+    return this.handlers[tool](this, call, spec, origin, args);
+  }
+
+  /** The switch of a tool, and the optional backend that it needs. Nothing falls back to another backend. */
+  async #ready(tool) {
+    const { group, backend } = TOOLS[tool];
+    if (group) await this.group(group);
+    if (backend) {
+      if (!this.backends) throw new ToolError('not_connected', `The optional backend ${backend} is not running.`);
+      this.backends.require(backend);
+    }
   }
 
   #open() {
@@ -319,9 +343,9 @@ export class Router {
     if (this.halted) throw new ToolError('stopped', 'The user stopped Firefox Companion. Ask the user to press Resume work in the sidebar.');
   }
 
-  async #group(name) {
+  async group(name) {
     if (!this.switches[name]) throw new ToolError('tool_off', `The user has not turned ${name} on in the sidebar.`);
-    if (!(await this.api.browser.permissions.contains({ permissions: [name] }))) throw new ToolError('permission_required', `Firefox no longer allows ${name}. Ask the user to turn it on again in the sidebar.`);
+    if (GROUPS[name].length && !(await this.api.browser.permissions.contains({ permissions: GROUPS[name] }))) throw new ToolError('permission_required', `Firefox no longer allows ${name}. Ask the user to turn it on again in the sidebar.`);
   }
 
   /** Actions in one tab run one after the other. A queued one that is stopped never begins. */
@@ -351,10 +375,14 @@ export class Router {
     if (g.state === 'suspended' && g.reason === 'origin') throw new ToolError(...SUSPENDED.origin);
     if (g.state === 'pending') throw new ToolError('grant_suspended', 'The new tab has not loaded yet. Try again.');
     if (this.stoppedTabs.has(tabId)) throw new ToolError('stopped', this.stoppedTabs.get(tabId));
+    if (tabId >= VIRTUAL) {
+      await this.group('isolated');
+      this.backends.require('isolated');
+    }
     if (spec.level === 'act' && g.level !== 'act') throw new ToolError('read_only_grant', 'The user allowed reading only.');
     if (spec.level === 'act' && call.session.handover.has(tabId)) throw new ToolError('paused', 'The tab is with the user until request_user ends.');
     if (g.state === 'suspended') throw new ToolError(...SUSPENDED[g.reason]);
-    if (!(await this.api.hasHost(origin))) {
+    if (!(await this.api.hasHost(origin, tabId))) {
       this.grants.suspend(g, 'permission');
       this.onChange();
       throw new ToolError(...SUSPENDED.permission);
@@ -372,7 +400,7 @@ export class Router {
     const w = await this.#ask1(call, { cmd: 'where' }, frame);
     const g = this.grants.find(call.session.id, call.tabId);
     if (!w || w.error) throw new ToolError('no_grant', 'That frame is gone, or Firefox does not let add-ons into it.');
-    if (!g || (w.origin !== origin && !(g.frames.includes(w.origin) && (await this.api.hasHost(w.origin))))) {
+    if (!g || (w.origin !== origin && !(g.frames.includes(w.origin) && (await this.api.hasHost(w.origin, call.tabId))))) {
       throw new ToolError('no_grant', `The frame belongs to ${w.origin}. Ask the user to allow its frames in the sidebar.`);
     }
     if (call.aborted) throw call.aborted;
@@ -380,14 +408,19 @@ export class Router {
   }
 
   async #ask1(call, message, frame) {
-    let timer;
+    const timers = [];
     const late = new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new ToolError('timeout', 'The page did not answer. A dialog may be open in the tab.')), message.slow ?? LIMITS.pageMs);
+      timers.push(setTimeout(() => reject(new ToolError('timeout', 'The page did not answer.')), message.slow ?? LIMITS.pageMs));
+      // A page that shows a native dialog answers nothing at all, and one that is only busy with this command answers.
+      timers.push(setTimeout(async () => {
+        const answers = await Promise.race([this.api.page(call.tabId, { cmd: 'where' }, () => call.aborted === null, frame), sleep(500)]).catch(() => null);
+        if (!answers && (await this.tab(call.tabId))?.status === 'complete') reject(new ToolError('dialog_open', 'The page answers nothing. A dialog may be open in the tab, or its script is busy. Ask the user to close the dialog.'));
+      }, LIMITS.dialogMs - 1000));
     });
     try {
       return await Promise.race([this.api.page(call.tabId, message, () => call.aborted === null, frame), late, call.gone]);
     } finally {
-      clearTimeout(timer);
+      timers.forEach(clearTimeout);
     }
   }
 
@@ -416,10 +449,11 @@ export class Router {
     call.approved = allowed;
     if (!allowed) throw new ToolError('approval_denied', 'The user did not allow this.');
     if (spec.level === 'none') {
-      if (TOOLS[call.tool].group) await this.#group(TOOLS[call.tool].group);
+      await this.#ready(call.tool);
       if (call.aborted) throw call.aborted;
       return this.#open();
     }
+    await this.#ready(call.tool);
     if (card.tool !== 'gif_creator') await this.frame(call, spec, origin, null);
     if ((await this.authorize(call, spec)) !== origin) throw new ToolError('origin_changed', 'The page changed its origin.');
     if (frame) await this.authorizeFrame(call, origin, frame);
@@ -471,7 +505,9 @@ export class Router {
       grants: mine.length,
       suspended_grants: mine.filter((g) => g.state !== 'active').length,
       missing_permissions: [...new Set(mine.filter((g) => g.reason === 'permission').flatMap((g) => g.origins))],
-      input: 'synthetic events; pages that check for trusted input ignore them, and no optional input backend is installed',
+      input: 'synthetic events; pages that check for trusted input ignore them. No other input is ever used by itself',
+      switches_on: Object.keys(GROUPS).filter((n) => this.switches[n]),
+      ...(this.backends && { optional_backends: this.backends.status() }),
       next_step: {
         stopped: 'The user stopped Firefox Companion. Ask the user to press Resume work in the sidebar.',
         paused: 'The user paused Firefox Companion. Ask the user to press Resume in the sidebar.',

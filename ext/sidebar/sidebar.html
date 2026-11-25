@@ -30,6 +30,7 @@
         <button data-show="tabs">Tabs</button>
         <button data-show="workflows">Workflows</button>
         <button data-show="activity">Activity</button>
+        <button data-show="advanced">Advanced</button>
       </nav>
     </header>
 
@@ -157,8 +158,10 @@
 
       <details id="d-data">
         <summary>Browser data, uploads, profile</summary>
-        <p class="sub">Off at first. Every use asks you again.</p>
+        <p class="sub">Off at first. Site data, bookmarks, history and downloads ask you again at every use. Console and network are kept in memory for attached tabs only.</p>
         <div id="switches"></div>
+        <p class="row"><button id="containers-ok">Allow tabs in containers</button></p>
+        <p class="sub">Firefox ties containers to its cookies permission. Tools for tabs read no cookie with it.</p>
         <h3>Folders for uploads</h3>
         <p class="sub">Only files in these folders can be uploaded, each time after your approval.</p>
         <ul id="folders"></ul>
@@ -198,6 +201,47 @@
           <button id="gif-start">Record pictures</button>
         </p>
         <div id="gifs"></div>
+      </section>
+    </main>
+
+    <main data-panel="advanced" hidden>
+      <section aria-labelledby="h-backends">
+        <h2 id="h-backends">Optional backends</h2>
+        <p class="sub">Programs that you start yourself. Each does nothing until you turn it on here, and is off again when it disconnects. None is ever used in place of something else.</p>
+        <ul id="backends"></ul>
+      </section>
+      <section aria-labelledby="h-sched">
+        <h2 id="h-sched">Scheduled workflows</h2>
+        <p class="sub">A saved workflow starts at its time while Firefox runs, in a tab that you attached to "This sidebar". Each step still asks you, and texts are asked for at each run.</p>
+        <ul id="schedules" aria-live="polite"></ul>
+        <p class="fields">
+          <label>Workflow <select id="sched-workflow"></select></label>
+          <label>
+            Runs
+            <select id="sched-kind">
+              <option value="once">once</option>
+              <option value="daily">every day</option>
+              <option value="weekly">on some days</option>
+              <option value="every">at an interval</option>
+            </select>
+          </label>
+        </p>
+        <p data-kind="once"><label>At <input id="sched-at" type="datetime-local" /></label></p>
+        <p data-kind="daily weekly" hidden><label>Time <input id="sched-time" type="time" value="08:30" /></label></p>
+        <div data-kind="weekly" hidden><div id="sched-days" class="row" role="group" aria-label="Days"></div></div>
+        <p data-kind="every" hidden><label>Minutes <input id="sched-minutes" type="number" min="15" max="10080" value="60" /></label></p>
+        <p class="row"><button id="sched-add">Schedule</button></p>
+      </section>
+      <section aria-labelledby="h-remote">
+        <h2 id="h-remote">Remote link</h2>
+        <p class="sub">A client on another computer, through the gateway that you start. Off until you turn it on above. Every grant and every approval still happens here.</p>
+        <div id="remote-code" aria-live="polite"></div>
+        <ul id="pairings" aria-live="polite"></ul>
+        <p class="fields">
+          <label>Name of the other computer <input id="remote-name" maxlength="40" /></label>
+          <label>Days <input id="remote-days" type="number" min="1" max="90" value="7" /></label>
+          <button id="remote-offer" disabled>Pair a client</button>
+        </p>
       </section>
     </main>
 

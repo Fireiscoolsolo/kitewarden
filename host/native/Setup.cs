@@ -14,7 +14,7 @@ static class Setup
 {
     const string RegistryPath = @"Software\Mozilla\NativeMessagingHosts\" + Program.HostName;
     const string Exe = "firefox-companion-host.exe";
-    static readonly string[] McpFiles = { "server.mjs", "link.mjs", "protocol.mjs" };
+    static readonly string[] McpFiles = { "server.mjs", "serve.mjs", "link.mjs", "protocol.mjs" };
 
     public static int Run(string mode, string[] args)
     {

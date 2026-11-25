@@ -3,10 +3,14 @@ import { Gif } from '../capture/gif.mjs';
 import { Chats } from '../chat/chats.mjs';
 import { Approvals } from '../grants/approvals.mjs';
 import { Grants } from '../grants/grants.mjs';
-import { LIMITS, ToolError, hostPattern, oneLine, originOf } from '../shared/protocol.mjs';
+import { Remote } from '../remote/remote.mjs';
+import { Schedules } from '../schedule/schedule.mjs';
+import { GROUPS, LIMITS, ToolError, hostPattern, oneLine, originOf } from '../shared/protocol.mjs';
 import { Replay } from '../workflow/replay.mjs';
 import { Workflows, skillText } from '../workflow/workflows.mjs';
+import { Backends, KNOWN } from './backends.mjs';
 import { NativeLink } from './native.mjs';
+import { Observer } from './observe.mjs';
 import { Router } from './router.mjs';
 
 const HOST = 'firefox_companion';
@@ -16,7 +20,7 @@ const ASK_MS = 70_000;
 const INFO_MS = 10 * 60_000;
 const CHAT_MS = 80; // streamed text reaches the sidebar in steps of this length
 
-const api = {
+const firefox = {
   getTab: (id) => browser.tabs.get(id),
   queryTabs: () => browser.tabs.query({}),
   createTab: () => browser.tabs.create({ active: false, url: 'about:blank' }),
@@ -34,6 +38,7 @@ const api = {
   },
   forget: (tabId) => browser.tabs.sendMessage(tabId, { cmd: 'forget' }).catch(() => {}), // every frame
   abort: (tabId, frameId) => browser.tabs.sendMessage(tabId, { cmd: 'abort' }, { frameId }).catch(() => {}),
+  quiet: (tabId) => browser.tabs.sendMessage(tabId, { cmd: 'quiet' }).catch(() => {}),
   browser,
   host: (type, data) => ask(type, data),
   windowState: async (id) => (await browser.windows.get(id)).state,
@@ -83,6 +88,10 @@ async function annotate(dataUrl, marks, css) {
   return { dataUrl: out, width: img.width, height: img.height };
 }
 
+// The optional backends put their tabs into what the router takes for the browser. Nothing is there until one is turned on.
+const backends = new Backends({ post: (pipe, body) => sendTo(pipe, body), router: null, onEvent: (name, m) => backendEvent(name, m), onChange: changed });
+const api = backends.extend(firefox);
+
 const grants = new Grants();
 const approvals = new Approvals({ onChange: changed });
 let log = [];
@@ -116,6 +125,7 @@ const router = new Router({
   onGrantEnd(g) {
     gif.grantEnded(g);
     workflows.grantEnded(g);
+    observer.grantEnded(g);
   },
   onChange: changed,
   linkStatus: () => ({ state: native.status.state, version: native.status.host }),
@@ -130,7 +140,61 @@ const router = new Router({
   },
 });
 
+backends.router = router;
+router.backends = backends;
+const observer = (router.observer = new Observer({
+  api,
+  grants,
+  router,
+  webRequest: () => browser.webRequest ?? null,
+  walk: eachFrame,
+  async send(tabId, frameId, message) {
+    if (frameId === null) return browser.tabs.sendMessage(tabId, message).catch(() => null);
+    try {
+      await browser.tabs.executeScript(tabId, { file: '/page/hooks.js', runAt: 'document_start', frameId, matchAboutBlank: true });
+    } catch {
+      return null;
+    }
+    return browser.tabs.sendMessage(tabId, message, { frameId }).catch(() => null);
+  },
+}));
+
+/** The tab itself, and every frame that the grant covers, as each frame reports its origin. */
+async function eachFrame(g, fn, url = null) {
+  const origin = originOf(url ?? (await api.getTab(g.tabId)).url);
+  if (!g.origins.includes(origin)) return;
+  await fn(0, origin);
+  const enter = async (parent, parentOrigin, depth) => {
+    const r = await api.page(g.tabId, { cmd: 'children', origin: parentOrigin }, () => true, parent);
+    for (const c of r?.children ?? []) {
+      const w = await api.page(g.tabId, { cmd: 'where' }, () => true, c.frame);
+      if (!w?.origin || (w.origin !== origin && !g.frames.includes(w.origin))) continue;
+      await fn(c.frame, w.origin);
+      if (depth < LIMITS.frameDepth) await enter(c.frame, w.origin, depth + 1);
+    }
+  };
+  await enter(0, origin, 1);
+}
+
 const replay = new Replay({ router, onChange: changed });
+const schedules = new Schedules({ store: browser.storage.local, workflows, replay, router, onChange: changed });
+const remote = new Remote({
+  store: browser.storage.local,
+  backends,
+  router,
+  onChange: changed,
+  close(pipe, code, message) {
+    sendTo(pipe, { type: 'bye', code, message });
+    router.endSession(pipe, 'stopped');
+    setTimeout(() => native.post({ type: 'close_session', session: pipe }));
+  },
+});
+
+/** News of a backend itself. A backend that went is off, and the next one starts off. */
+function backendEvent(name, m) {
+  if (m.type === 'gone') router.switches[name] = false;
+  if (name === 'remote') remote.onEvent(m);
+}
 const chats = new Chats({ store: browser.storage.local, post: (m) => native.post(m), connected: () => native.connected, router, onChange: chatChanged });
 
 /** The mark of a GIF recording in the page. A workflow recording puts its own there. */
@@ -159,12 +223,15 @@ const native = new NativeLink({
     router.rememberLost();
     chats.linkLost(); // says what had happened, and ends its sessions
     for (const done of [...asks.values()]) done(new ToolError('outcome_unknown', 'The helper stopped before it answered.'));
-    for (const s of [...router.sessions.values()]) if (s.kind === 'mcp') router.endSession(s.id);
+    backends.detachAll();
+    for (const s of [...router.sessions.values()]) if (s.kind === 'mcp' || s.kind === 'remote') router.endSession(s.id);
   },
   onMessage(m) {
     if (m.type === 'session_open') router.openSession(m.session, 'mcp', 'without a name');
     else if (m.type === 'session_close') {
       chats.unlink(m.session);
+      remote.gone(m.session);
+      backends.detach(m.session);
       router.endSession(m.session);
     } else if (m.type === 'from_client') fromClient(m.session, m.body);
     else if (m.type === 'chat_event' || m.type === 'chat_exit') chats.onHost(m);
@@ -204,6 +271,7 @@ async function fromClient(pipe, body) {
   } catch {
     m = null;
   }
+  if (backends.nameOf(pipe)) return m && backends.onMessage(pipe, m);
   const chat = chats.sessionOf(pipe);
   if (chat === undefined) {
     if (m?.type === 'call') sendTo(pipe, { type: 'result', id: m.id, error: { code: 'stopped', message: 'The user stopped this chat. The call was not carried out.' } });
@@ -211,9 +279,26 @@ async function fromClient(pipe, body) {
   }
   const sessionId = chat ?? pipe;
   const session = router.sessions.get(sessionId);
-  if (session?.kind !== (chat ? 'chat' : 'mcp')) return;
+  if (!session || (chat ? session.kind !== 'chat' : !['mcp', 'remote'].includes(session.kind))) return;
+  if (session.kind === 'remote' && m?.type === 'call' && !remote.valid(pipe)) return sendTo(pipe, { type: 'result', id: m.id, error: { code: 'pairing_ended', message: 'That pairing is not valid any more.' } });
   if (m?.type === 'hello') {
-    if (chat) return;
+    if (chat || session.kind === 'remote') return;
+    try {
+      if (m.backend) {
+        backends.attach(pipe, m.backend);
+        return router.endSession(pipe);
+      }
+      if (m.remote) {
+        const p = remote.admit(pipe, m.remote);
+        router.endSession(pipe);
+        router.openSession(pipe, 'remote', `${p.name}: ${oneLine(m.client?.name, 30)}`);
+        return;
+      }
+    } catch (e) {
+      sendTo(pipe, { type: 'bye', code: e.code, message: e.message });
+      router.endSession(pipe);
+      return void setTimeout(() => native.post({ type: 'close_session', session: pipe }));
+    }
     if (chats.redeem(pipe, m.ticket)) router.endSession(pipe);
     else router.label(pipe, `${m.client?.name ?? 'without a name'} ${m.client?.version ?? ''}`);
   } else if (m?.type === 'call' && Number.isSafeInteger(m.id)) {
@@ -244,6 +329,7 @@ const fromSidebar = {
     browser.storage.local.set({ paused: true });
     const report = router.halt();
     chats.stopAll();
+    schedules.cancelAll();
     replay.cancel();
     return report;
   },
@@ -261,11 +347,25 @@ const fromSidebar = {
   regrant: (m) => router.regrant(m.lost, m.session),
   request_answer: (m) => router.answerRequest(m.request, m.deny ? {} : { tabId: m.tabId, origin: m.origin, level: m.level, private: m.private === true, move: m.move === true }),
   set_switch(m) {
-    if (!['bookmarks', 'history', 'downloads'].includes(m.name)) throw new ToolError('invalid_argument', 'Unknown switch.');
-    router.switches[m.name] = m.on === true;
-    browser.storage.local.set({ switches: router.switches });
+    if (!Object.hasOwn(GROUPS, m.name)) throw new ToolError('invalid_argument', 'Unknown switch.');
+    const on = m.on === true;
+    if (Object.hasOwn(KNOWN, m.name)) backends.set(m.name, on); // for this connection of the backend only
+    router.switches[m.name] = on;
+    if (!on) router.stopGroup(m.name);
+    browser.storage.local.set({ switches: Object.fromEntries(Object.entries(router.switches).filter(([n]) => !Object.hasOwn(KNOWN, n))) });
+    if (m.name === 'remote' && on) remote.onEvent({ type: 'on' });
     changed();
   },
+  backend_info: () => ({ backends: backends.status() }),
+  sched_add: (m) => schedules.add(m),
+  sched_set: (m) => schedules.set(m.schedule, m.on === true),
+  sched_remove: (m) => schedules.remove(m.schedule),
+  sched_cancel: (m) => schedules.cancel(m.schedule),
+  sched_answer: (m) => schedules.answer(m.schedule, m.values),
+  remote_offer: (m) => remote.offer({ name: m.name, days: m.days }),
+  remote_allow: (m) => remote.allow(m.pairing, m.fingerprint),
+  remote_revoke: (m) => remote.revoke(m.pairing),
+  remote_forget: (m) => remote.forget(m.pairing),
   async add_folder(m) {
     const r = await ask('folder_check', { path: String(m.path) });
     if (r.code) throw new ToolError(r.code, r.message);
@@ -293,7 +393,7 @@ const fromSidebar = {
   revoke: (m) => router.revoke((g) => g.id === m.grant),
   revoke_all: () => router.revoke(() => true),
   end_session: (m) => {
-    if (router.sessions.get(m.session)?.kind !== 'mcp') return;
+    if (!['mcp', 'remote'].includes(router.sessions.get(m.session)?.kind)) return;
     sendTo(m.session, { type: 'bye', message: 'The user disconnected this session.' });
     router.endSession(m.session, 'stopped');
     // The replies of the ended calls go out first.
@@ -377,6 +477,7 @@ browser.runtime.onConnect.addListener((port) => {
 // Content scripts report the user's own gestures, and only while the user records.
 browser.runtime.onMessage.addListener((m, sender) => {
   if (sender.id !== browser.runtime.id || !sender.tab) return;
+  if (m?.type === 'console') return void observer.onConsole(m.entries, sender);
   if (m?.type === 'step') return void workflows.onStep(m.step, sender.tab.id, sender.url, sender.frameId, sender.origin);
   if (sender.frameId !== 0) return;
   if (m?.type === 'take_over') router.stopTab(sender.tab.id);
@@ -405,6 +506,10 @@ function view() {
     switches: router.switches,
     folders: router.folders,
     profile,
+    backends: backends.status(),
+    backendTabs: [...backends.tabs.keys()].map((id) => backends.tab(id)),
+    schedules: schedules.view(),
+    remote: remote.view(),
   };
 }
 
@@ -414,10 +519,14 @@ function changed() {
   queued = true;
   queueMicrotask(() => {
     queued = false;
+    observer.sync();
+    schedules.changed();
     for (const p of ports) p.postMessage({ type: 'state', state: view() });
     const [text, title] = approvals.cards.length || [...router.requests.values()].some((x) => x.state === 'pending')
       ? ['?', 'An approval is waiting']
-      : router.paused || router.halted
+      : schedules.run
+        ? ['!', 'A scheduled workflow is due']
+        : router.paused || router.halted
         ? ['II', router.halted ? 'Stopped' : 'Paused']
         : native.connected
           ? ['', 'Connected']
@@ -440,11 +549,12 @@ function chatChanged() {
 // Browser events
 
 browser.browserAction.onClicked.addListener(() => browser.sidebarAction.open());
-browser.tabs.onUpdated.addListener((tabId, change) => {
+browser.tabs.onUpdated.addListener((tabId, change, tab) => {
   if (change.url) {
     router.tabMoved(tabId, change.url);
     workflows.tabMoved(tabId, change.url);
   }
+  observer.tabLoading(tabId, tab.url);
   if (change.status !== 'complete') return;
   workflows.tabLoaded(tabId);
   if (workflows.rec?.tabId !== tabId && gif.view().some((g) => g.on && g.tabId === tabId)) pill(tabId, 'GIF');
@@ -454,6 +564,7 @@ browser.tabs.onRemoved.addListener((tabId) => router.tabClosed(tabId));
 browser.tabs.onCreated.addListener((tab) => router.tabOpened(tab));
 browser.permissions.onRemoved.addListener(() => router.permissionsRemoved());
 
+// developer build: more tools
 router.openSession('sidebar', 'sidebar', 'This sidebar');
 browser.storage.local.get({ connect: false, paused: false, log: [], switches: {}, folders: [], profile: null }).then(async (s) => {
   log = [...s.log, ...log].slice(-LOG_LINES);
@@ -463,6 +574,7 @@ browser.storage.local.get({ connect: false, paused: false, log: [], switches: {}
   // A random ID of this profile and nothing else. The helper keeps one pipe for each.
   Object.assign(profile, s.profile ?? { id: crypto.randomUUID(), label: 'Firefox' });
   if (!s.profile) browser.storage.local.set({ profile });
-  await Promise.all([chats.load(), workflows.load()]);
+  await Promise.all([chats.load(), workflows.load(), remote.load()]);
+  await schedules.load();
   if (s.connect) native.start();
 });

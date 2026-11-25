@@ -1,6 +1,6 @@
 // Tools for tabs, windows, groups, containers and browser data. A session sees and changes only its own tabs and those the
 // user gave it. Nothing here takes the focus, unless the call asks for it or Firefox does it and it is handed back.
-import { LIMITS, ToolError, oneLine, originOf, plainUrl } from '../shared/protocol.mjs';
+import { LIMITS, ToolError, VIRTUAL, oneLine, originOf, plainUrl } from '../shared/protocol.mjs';
 import { address, loaded } from './pagetools.mjs';
 import { sleep } from './router.mjs';
 
@@ -43,6 +43,10 @@ function limit(r, s) {
   if (s.owned.size >= LIMITS.tabsOwned) throw new ToolError('limit_reached', `This session has ${LIMITS.tabsOwned} tabs: ${[...s.owned].join(', ')}. Close one first.`);
 }
 
+/** Firefox refuses a container without this permission. It is optional, and no tool for tabs reads a cookie. */
+const containersAllowed = (r) => b(r).permissions.contains({ permissions: ['cookies'] });
+const storeOf = (id) => (id && id !== 'firefox-default' && id !== 'firefox-private' ? { cookieStoreId: id } : {});
+
 /** The group of the session. A group that Firefox refuses never fails the tab. */
 async function putInGroup(r, s, tab) {
   try {
@@ -65,13 +69,14 @@ async function context(r, call, spec, origin, a) {
   }
   const out = list().map((t) => {
     const g = r.grants.find(s.id, t.id);
-    const base = { tabId: t.id, windowId: t.windowId, active: t.active, owned: s.owned.has(t.id), level: g?.level ?? null, current: s.current === t.id, ...(t.groupId > 0 && { group: t.groupId }), ...(g?.private && { private: true }) };
+    const base = { ...(t.backend && { backend: t.backend }), tabId: t.id, windowId: t.windowId, active: t.active, owned: s.owned.has(t.id), level: g?.level ?? null, current: s.current === t.id, ...(t.groupId > 0 && { group: t.groupId }), ...(g?.private && { private: true }) };
     if (r.stoppedTabs.has(t.id)) return { ...base, state: 'stopped' };
     // Title and address only where the grant covers the page that the tab shows now.
     if (!g || g.state !== 'active' || !g.origins.includes(originOf(t.url))) return { ...base, state: g ? 'suspended' : 'no_grant' };
     return { ...base, state: 'active', title: oneLine(t.title), url: plainUrl(t.url), loading: t.status === 'loading', discarded: t.discarded === true };
   });
-  return { session: s.id, tabs: out, otherTabs: tabs.filter((t) => !t.incognito).length - list().filter((t) => !t.incognito).length };
+  const others = (l) => l.filter((t) => !t.incognito && !t.backend).length;
+  return { session: s.id, tabs: out, otherTabs: others(tabs) - others(list()) };
 }
 
 async function create(r, call, spec, origin, a) {
@@ -91,6 +96,7 @@ async function create(r, call, spec, origin, a) {
   const url = a.url === undefined ? null : address(a.url);
   let cookieStoreId;
   if (a.container !== undefined) {
+    if (!(await containersAllowed(r))) throw new ToolError('permission_required', 'Firefox opens a tab in a container only for add-ons with the cookies permission. Ask the user to allow containers in the sidebar.');
     const found = await b(r).contextualIdentities.query({ name: a.container });
     if (found.length !== 1) throw new ToolError('not_found', `There is no container named ${JSON.stringify(a.container)}.`);
     cookieStoreId = found[0].cookieStoreId;
@@ -170,10 +176,11 @@ async function closedTabs(r, call, spec, origin, a) {
   if (a.action === 'list') return { tabs: s.closed.map(({ id, title, url }) => ({ id, title, url: plainUrl(url) })) };
   const c = s.closed.find((x) => x.id === a.id);
   if (!c) throw new ToolError('not_found', 'This session had no such tab.');
+  if (storeOf(c.cookieStoreId).cookieStoreId && !(await containersAllowed(r))) throw new ToolError('permission_required', 'That tab was in a container. Ask the user to allow containers in the sidebar.');
   limit(r, s);
   await r.ask(call, spec, originOf(c.url), { tool: 'closed_tabs', target: c.url, value: 'Opens again in the background, with level read' }, a.reason);
   r.sent(call, 'reopening a tab');
-  const tab = await b(r).tabs.create({ active: false, url: c.url, ...(c.cookieStoreId && { cookieStoreId: c.cookieStoreId }) });
+  const tab = await b(r).tabs.create({ active: false, url: c.url, ...storeOf(c.cookieStoreId) });
   s.closed = s.closed.filter((x) => x !== c);
   r.own(s, tab, { origin: originOf(c.url), level: 'read', state: 'pending' });
   await putInGroup(r, s, tab);
@@ -234,6 +241,7 @@ async function resize(r, call, spec, origin, a) {
   }
   const change = {};
   for (const k of ['state', 'width', 'height', 'left', 'top']) if (a[k] !== undefined) change[k] = a[k];
+  if (a.viewport) return viewport(r, call, origin, a, w);
   if (change.state && change.state !== 'normal') for (const k of ['width', 'height', 'left', 'top']) delete change[k];
   r.sent(call, 'changing a window');
   await b(r).windows.update(w.id, change);
@@ -241,6 +249,25 @@ async function resize(r, call, spec, origin, a) {
   await Promise.race([sleep(300), call.gone]);
   const now = await b(r).windows.get(w.id);
   return { state: now.state, width: now.width, height: now.height, left: now.left, top: now.top };
+}
+
+/** Sizes the window so that the page gets the viewport. Firefox has a smallest window width, so the reply tells what was reached. */
+async function viewport(r, call, origin, a, w) {
+  if (a.width === undefined || a.height === undefined || (w.state !== 'normal' && a.state !== 'normal')) throw new ToolError('invalid_argument', 'A viewport needs width and height, and a window of state normal.');
+  r.sent(call, 'changing a window');
+  if (w.state !== 'normal') await b(r).windows.update(w.id, { state: 'normal' });
+  let now;
+  for (let n = 0; n < 3; n++) {
+    now = await r.page(call, origin, { cmd: 'place' });
+    if (now.width === a.width && now.height === a.height) break;
+    const size = await b(r).windows.get(w.id);
+    const tab = await r.tab(call.tabId);
+    await b(r).windows.update(w.id, { width: Math.max(100, size.width + Math.round((a.width - now.width) * (tab.width ? tab.width / now.width : 1))), height: Math.max(100, size.height + Math.round((a.height - now.height) * (tab.height ? tab.height / now.height : 1))) });
+    await Promise.race([sleep(400), call.gone]);
+  }
+  now = await r.page(call, origin, { cmd: 'place' });
+  call.sent.outcome = 'done';
+  return { viewport: { width: now.width, height: now.height }, reached: now.width === a.width && now.height === a.height, emulated: false, ...(now.width > a.width && { note: 'Firefox does not make a window narrower than this.' }) };
 }
 
 async function containers(r, call) {
@@ -322,7 +349,7 @@ async function download(r, call, spec, origin, a) {
   if ((await r.authorize(call, { level: 'read' })) !== at) throw new ToolError('origin_changed', 'The page changed its origin.');
   const tab = await r.tab(call.tabId);
   r.sent(call, `download of ${plainUrl(url)}`);
-  const id = await b(r).downloads.download({ url, conflictAction: 'uniquify', saveAs: false, incognito: tab.incognito === true, ...(a.filename && { filename: a.filename }), ...(tab.cookieStoreId && { cookieStoreId: tab.cookieStoreId }) });
+  const id = await b(r).downloads.download({ url, conflictAction: 'uniquify', saveAs: false, incognito: tab.incognito === true, ...(a.filename && { filename: a.filename }), ...storeOf(tab.cookieStoreId) });
   call.session.downloads.push(id);
   for (let n = 0; n < 300; n++) {
     const [d] = await b(r).downloads.search({ id });
@@ -333,25 +360,31 @@ async function download(r, call, spec, origin, a) {
   return (await downloadsOf(r, call.session)).find((d) => d.id === id);
 }
 
+/** Windows, groups and downloads are those of this Firefox. A tab of a backend has none of them. */
+const here = (fn) => (r, call, spec, origin, a) => {
+  if ([a.tabId, a.duplicateOf, ...(a.tabIds ?? [])].some((id) => id >= VIRTUAL)) throw new ToolError('not_supported', 'That works for tabs of this Firefox only. See isolated_browser.');
+  return fn(r, call, spec, origin, a);
+};
+
 export const tabTools = {
   tabs_context: context,
   tab_request: request,
   tab_request_result: requestResult,
-  tabs_create: create,
-  tabs_close: close,
-  tabs_select: select,
+  tabs_create: here(create),
+  tabs_close: here(close),
+  tabs_select: here(select),
   tabs_release: release,
-  tabs_group: group,
-  tabs_ungroup: ungroup,
+  tabs_group: here(group),
+  tabs_ungroup: here(ungroup),
   closed_tabs: closedTabs,
   windows_list: windowsList,
   windows_create: windowsCreate,
   windows_close: windowsClose,
-  resize_window: resize,
+  resize_window: here(resize),
   containers_list: containers,
   search_bookmarks: searchBookmarks,
   add_bookmark: addBookmark,
   search_history: searchHistory,
   list_downloads: async (r, call) => ({ downloads: await downloadsOf(r, call.session) }),
-  download_start: download,
+  download_start: here(download),
 };

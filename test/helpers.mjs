@@ -115,13 +115,13 @@ export class FakeFirefox {
 
 /** A scripted MCP client over stdio. */
 export class McpClient {
-  constructor(home, { name = 'test-client' } = {}) {
+  constructor(home, { name = 'test-client', args = [] } = {}) {
     this.name = name;
     this.lines = [];
     this.stderr = '';
     this.next = 1;
     this.waiting = new Map();
-    this.child = spawn(process.execPath, [home.server], { stdio: 'pipe' });
+    this.child = spawn(process.execPath, [home.server, ...args], { stdio: 'pipe' });
     this.exit = new Promise((r) => this.child.on('exit', (code) => r(code)));
     this.child.stderr.on('data', (d) => (this.stderr += d));
     createInterface({ input: this.child.stdout }).on('line', (l) => {
@@ -151,7 +151,7 @@ export class McpClient {
     const text = result.content.find((c) => c.type === 'text')?.text ?? '';
     let data = null;
     try {
-      data = JSON.parse(text.slice(text.indexOf('{')));
+      data = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
     } catch {
       // not JSON
     }

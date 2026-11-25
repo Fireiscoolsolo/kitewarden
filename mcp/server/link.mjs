@@ -14,6 +14,7 @@ const PINNED = process.env.FC_PROFILE || null; // a chat run belongs to the prof
 
 const NEXT = {
   not_installed: 'Run the installer: firefox-companion-host.exe install',
+  mail_not_running: 'Start Thunderbird, open Firefox Companion there and press Connect.',
   never_connected: 'Open Firefox, open the Firefox Companion sidebar and press Connect.',
   firefox_closed: 'Start Firefox, open the Firefox Companion sidebar and press Connect.',
   disconnected_by_user: 'The user disconnected. Press Connect in the Firefox Companion sidebar.',
@@ -60,7 +61,9 @@ export function frameReader(limit, onMessage) {
 }
 
 export class Link {
-  constructor(home, protocol = PROTOCOL) {
+  /** `kind` is the program on the other side, 'firefox' or 'mail'. `hello` is added to the first message, for a backend. */
+  constructor(home, protocol = PROTOCOL, { kind = 'firefox', hello = {}, onMessage = null, onLost = null } = {}) {
+    Object.assign(this, { kind, hello, onMessage, onLost });
     this.home = home;
     this.protocol = protocol;
     this.profile = PINNED;
@@ -157,13 +160,14 @@ export class Link {
     socket.on('error', (e) => (this.lastLoss = e.code ?? e.message));
     socket.on('close', () => this.#lost(socket));
     // The ticket of a chat run works once, so only the first link of this process carries it.
-    socket.write(frame({ type: 'hello', client: this.client, ticket: TICKET }));
+    socket.write(frame({ ...this.hello, type: 'hello', client: this.client, ticket: TICKET }));
     TICKET = undefined;
   }
 
   #onMessage(m) {
     const call = m.type === 'result' && this.pending.get(m.id);
     if (!call) {
+      if (this.onMessage?.(m)) return;
       if (m.type === 'bye') this.lastLoss = String(m.message);
       else console.error(`link: refused message of type ${m.type}`);
       return;
@@ -183,6 +187,7 @@ export class Link {
     for (const c of calls) {
       c.reject(new ToolError('outcome_unknown', 'The link to Firefox broke after the call was sent. It is not repeated. Read the page again.'));
     }
+    this.onLost?.();
   }
 
   /** Firefox profiles that this installation knows, the running ones first. */
@@ -197,7 +202,7 @@ export class Link {
     for (const f of names) {
       try {
         const p = JSON.parse(readFileSync(path.join(this.home, 'profiles', f), 'utf8'));
-        list.push({ ...p, running: p.state === 'running' && alive(p.pid) });
+        if ((p.kind ?? 'firefox') === this.kind) list.push({ ...p, running: p.state === 'running' && alive(p.pid) });
       } catch {
         // written at this moment
       }
@@ -234,6 +239,7 @@ export class Link {
   }
 
   #whyNoPipe() {
+    if (this.kind === 'mail') return 'mail_not_running';
     try {
       const s = (this.profiles().find((p) => !this.profile || p.id === this.profile) ?? JSON.parse(readFileSync(path.join(this.home, 'state.json'), 'utf8'))).state;
       return s === 'running' ? 'helper_stopped' : s in NEXT ? s : 'never_connected';
@@ -255,6 +261,11 @@ export class Link {
       last_loss: this.lastLoss,
       next_step: NEXT[this.state] ?? null,
     };
+  }
+
+  /** One message outside of a call, for a backend. */
+  post(m) {
+    this.socket?.write(frame(m));
   }
 
   async call(tool, args, signal) {

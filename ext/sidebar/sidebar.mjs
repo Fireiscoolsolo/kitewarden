@@ -1,5 +1,6 @@
 // Shows the state of the background page and sends the user's gestures to it. It holds no rules of its own.
-import { hostPattern, oneLine, originOf } from '../shared/protocol.mjs';
+import { GROUPS, VIRTUAL, hostPattern, oneLine, originOf } from '../shared/protocol.mjs';
+import { drawAdvanced, startAdvanced } from './advanced.mjs';
 import { drawChat, startChat } from './chat.mjs';
 import { $, answered, current, el, onPress, options, part, port, run, send, ui, withSite } from './ui.mjs';
 import { drawWorkflows, startWorkflows } from './workflows.mjs';
@@ -39,8 +40,10 @@ const WANTS = {
   left_click: 'click', right_click: 'click with the right button', middle_click: 'click with the middle button', double_click: 'double-click', triple_click: 'click three times', left_click_drag: 'drag',
   type: 'type', key: 'press keys', form_input: 'fill in a field', form_fill: 'fill in fields', file_upload: 'upload files', navigate: 'open an address', gif_creator: 'record pictures', request_user: 'hand this tab to you',
   tabs_create: 'open a tab', tabs_close: 'close your tab', closed_tabs: 'reopen a tab', windows_create: 'open a window', resize_window: 'change a window', search_bookmarks: 'search your bookmarks',
-  add_bookmark: 'add a bookmark', search_history: 'search your history', download_start: 'download a file',
+  add_bookmark: 'add a bookmark', search_history: 'search your history', download_start: 'download a file', read_network_requests: 'keep what this tab sends and receives', page_storage: 'use the storage of this site',
+  get_cookies: 'see the cookies of this site', set_cookie: 'set a cookie', remove_cookie: 'remove a cookie', webmcp_call: 'use a tool of this page', windows_input: 'send real Windows input', isolated_browser: 'use the isolated Firefox', isolated_debug: 'debug in the isolated Firefox', javascript_tool: 'run script in this page',
 };
+const LABEL = { console: 'console messages and errors of attached tabs', network: 'requests of attached tabs', bodies: 'bodies of requests', cookies: 'cookies of attached sites, without HttpOnly values and tokens', storage: 'the storage of attached sites', webmcp: 'tools that attached pages offer (WebMCP)' };
 const cards = new Map();
 
 function drawCards() {
@@ -101,12 +104,15 @@ async function showFrames(grant) {
   const sites = [...new Set(list.filter((f) => !f.granted && /^https?:/.test(f.origin)).map((f) => f.origin))];
   $('frames').replaceChildren(
     el('p', { className: 'sub', textContent: r.error ? `${r.error.code}: ${r.error.message}` : sites.length ? 'Frames of other sites in this tab:' : 'There are no frames of other sites that could be allowed.' }),
-    ...sites.map((origin) => el('p', { className: 'row' }, onPress(el('button', { textContent: `Allow frames of ${origin}`, className: 'allow-frame' }), () => browser.permissions.request({ origins: [hostPattern(origin)] }).then((ok) => ok && run('approve_frames', { grant, origin }, 'Frames allowed.').then(() => $('frames').replaceChildren()))))),
+    ...sites.map((origin) => el('p', { className: 'row' }, onPress(el('button', { textContent: `Allow frames of ${origin}`, className: 'allow-frame' }), () => siteFor(ui.state.grants.find((g) => g.id === grant)?.tabId, origin).then((ok) => ok && run('approve_frames', { grant, origin }, 'Frames allowed.').then(() => $('frames').replaceChildren()))))),
   );
 }
 
-function approveOrigin(grant, origin) {
-  browser.permissions.request({ origins: [hostPattern(origin)] }).then((ok) => (ok ? run('approve_origin', { grant, origin }, 'Approved.') : ($('message').textContent = 'Firefox did not allow this site.')));
+/** Firefox's own question, which a tab of the isolated Firefox does not need. */
+const siteFor = (tabId, origin) => (tabId >= VIRTUAL ? Promise.resolve(true) : browser.permissions.request({ origins: [hostPattern(origin)] }));
+
+function approveOrigin(grant, origin, tabId) {
+  siteFor(tabId, origin).then((ok) => (ok ? run('approve_origin', { grant, origin }, 'Approved.') : ($('message').textContent = 'Firefox did not allow this site.')));
 }
 
 function drawGrants() {
@@ -119,7 +125,7 @@ function drawGrants() {
       ? list.map((g) => {
           const li = el('li', {}, el('strong', { textContent: g.title || `Tab ${g.tabId}` }), el('span', { className: 'sub', textContent: `${g.origins.join(', ')} · ${g.frames.length ? `frames of ${g.frames.join(', ')} · ` : ''}${g.private ? 'private · ' : ''}${g.stopped ? 'with you · ' : ''}${g.level === 'act' ? 'read and act' : 'read'} · ${g.label} · ${g.state === 'active' ? 'active' : g.reason === 'permission' ? 'suspended: Firefox took the permission away' : g.state === 'pending' ? 'loading' : 'suspended: other site'}` }));
           const row = el('p', { className: 'row' });
-          if (g.state === 'suspended' && g.now) row.append(onPress(el('button', { textContent: `Approve ${g.now}`, className: 'approve' }), () => approveOrigin(g.id, g.now)));
+          if (g.state === 'suspended' && g.now) row.append(onPress(el('button', { textContent: `Approve ${g.now}`, className: 'approve' }), () => approveOrigin(g.id, g.now, g.tabId)));
           if (g.state === 'active') row.append(onPress(el('button', { textContent: 'Frames…', className: 'frames' }), () => showFrames(g.id)));
           row.append(g.stopped ? onPress(el('button', { textContent: 'Give back', className: 'give-back' }), () => run('resume_tab', { tabId: g.tabId }, 'Given back.')) : onPress(el('button', { textContent: 'Take over', className: 'take-over' }), () => run('stop_tab', { tabId: g.tabId }, 'You have this tab.').then(report)));
           row.append(onPress(el('button', { textContent: 'Revoke', className: 'revoke' }), () => run('revoke', { grant: g.id }, 'Revoked.')));
@@ -132,7 +138,7 @@ function drawGrants() {
 }
 
 function drawSessions() {
-  part('sessions', ui.state.sessions.filter((s) => s.kind === 'mcp'), (list) =>
+  part('sessions', ui.state.sessions.filter((s) => s.kind === 'mcp' || s.kind === 'remote'), (list) =>
     list.length
       ? list.map((s) => el('li', {}, `${s.label} `, el('span', { className: 'sub', textContent: s.id }), onPress(el('button', { textContent: 'Disconnect', className: 'end' }), () => run('end_session', { session: s.id }, 'Session disconnected.'))))
       : [el('li', { className: 'sub', textContent: 'No client is connected.' })],
@@ -197,10 +203,10 @@ function drawControl() {
   part('lost', { lost: s.lost, sessions: s.sessions.map((x) => [x.id, x.label, x.kind]) }, ({ lost, sessions }) => lost.flatMap((l) => sessions.filter(([, label, kind]) => kind === l.kind && label.includes(l.name)).map(([id, label]) => el('p', { className: 'row' }, onPress(el('button', { textContent: `Attach the same ${l.tabs} tabs again to ${label}`, className: 'regrant' }), () => run('regrant', { lost: l.id, session: id }).then((r) => !r.error && ($('message').textContent = `Attached ${r.given.length}, left out ${r.left_out}.`)))))));
   part('now', s.activity, (list) => list.map((c) => el('li', { textContent: `${c.session}: ${c.tool}${c.tabId === null ? '' : ` in tab ${c.tabId}`}, ${c.state}` })));
   part('folders', s.folders, (list) => (list.length ? list.map((f) => el('li', {}, f, ' ', onPress(el('button', { textContent: 'Remove' }), () => run('remove_folder', { path: f }, 'Removed.')))) : [el('li', { className: 'sub', textContent: 'None: every upload is refused.' })]));
-  part('switches', s.switches, (on) => ['bookmarks', 'history', 'downloads'].map((name) => {
+  part('switches', s.switches, (on) => Object.keys(GROUPS).filter((n) => !s.backends.some((b) => b.id === n)).map((name) => {
     const box = el('input', { type: 'checkbox', checked: on[name] === true, id: `switch-${name}` });
-    onPress(box, () => (box.checked ? browser.permissions.request({ permissions: [name] }).then((ok) => run('set_switch', { name, on: ok }, ok ? 'On.' : 'Firefox did not allow it.')) : run('set_switch', { name, on: false }, 'Off.')));
-    return el('label', { className: 'check' }, box, `Clients may ask for ${name}`);
+    onPress(box, () => (box.checked ? (GROUPS[name].length ? browser.permissions.request({ permissions: GROUPS[name] }) : Promise.resolve(true)).then((ok) => run('set_switch', { name, on: ok }, ok ? 'On.' : 'Firefox did not allow it.')) : run('set_switch', { name, on: false }, 'Off.')));
+    return el('label', { className: 'check' }, box, `Clients may ask for ${LABEL[name] ?? name}`);
   }));
   if (document.activeElement !== $('profile-label')) $('profile-label').value = s.profile.label ?? '';
 }
@@ -211,7 +217,7 @@ function drawLog() {
 
 async function draw() {
   if (!ui.state) return;
-  ui.tabs = await browser.tabs.query({});
+  ui.tabs = [...(await browser.tabs.query({})), ...ui.state.backendTabs];
   ui.windowId ??= (await browser.windows.getCurrent()).id;
   drawLink();
   drawCards();
@@ -223,6 +229,7 @@ async function draw() {
   drawLog();
   drawChat();
   drawWorkflows();
+  drawAdvanced();
 }
 
 port.onMessage.addListener((m) => {
@@ -261,5 +268,6 @@ onPress($('try-shot'), tryShot);
 onPress($('try-click'), tryClick);
 startChat();
 startWorkflows();
+startAdvanced();
 for (const e of ['onActivated', 'onUpdated', 'onRemoved', 'onAttached']) browser.tabs[e].addListener(draw);
 setInterval(() => ui.state?.link.retryAt && drawLink(), 1000);

@@ -1,16 +1,16 @@
 // Tools that read or act in a granted tab. Each gets the router, the call, its spec and the origin that was authorized.
 // An action is described, approved, checked again and dispatched; what the page did with it is looked up afterwards.
-import { LIMITS, ToolError, oneLine, originOf, plainUrl } from '../shared/protocol.mjs';
+import { LIMITS, ToolError, VIRTUAL, oneLine, originOf, plainUrl } from '../shared/protocol.mjs';
 import { elements } from '../workflow/elements.mjs';
 import { frameOfRef, sleep } from './router.mjs';
 
 const NO_EFFECT = 'no visible change; the page may ignore events of add-ons';
-const BACKEND = 'If the page needs trusted input, an optional input backend would be needed (FC-ACT-35, FC-ACT-36). None is installed; ask the user to do this step.';
+const BACKEND = 'If the page needs trusted input, ask the user to do this step. Two optional backends exist, windows_input and a tab of the isolated Firefox; none is used by itself.';
 
 // Frames
 
 /** The frame of a ref, authorized. */
-async function frameFor(r, call, origin, ref) {
+export async function frameFor(r, call, origin, ref) {
   const frame = (call.frame = frameOfRef(ref));
   return { frame, origin: await r.authorizeFrame(call, origin, frame) };
 }
@@ -36,10 +36,10 @@ async function listFrames(r, call, origin) {
   return list;
 }
 
-const granted = async (r, call, origin) => (await listFrames(r, call, origin)).filter((f) => f.granted);
+export const granted = async (r, call, origin) => (await listFrames(r, call, origin)).filter((f) => f.granted);
 
 /** Remembers what refs stood for, so that a stale one can be found again. */
-function remember(call, list) {
+export function remember(call, list) {
   const seen = call.session.seen.get(call.tabId) ?? new Map();
   for (const e of list) seen.set(e.ref, { role: e.role, name: e.name });
   while (seen.size > 5000) seen.delete(seen.keys().next().value);
@@ -47,7 +47,7 @@ function remember(call, list) {
 }
 
 /** Runs `fn`, and names up to three elements of the same role and name when its ref is stale. */
-async function withRef(r, call, origin, ref, fn) {
+export async function withRef(r, call, origin, ref, fn) {
   try {
     return await fn(await frameFor(r, call, origin, ref));
   } catch (e) {
@@ -209,7 +209,7 @@ export async function screenshot(r, call, spec, origin) {
 }
 
 async function capture(r, call) {
-  if (await r.api.hasAllUrls()) return { dataUrl: await r.api.captureTab(call.tabId), via: 'captureTab' };
+  if (call.tabId >= VIRTUAL || (await r.api.hasAllUrls())) return { dataUrl: await r.api.captureTab(call.tabId), via: 'captureTab' };
   const need = new ToolError('permission_required', 'A picture needs the user: ask them to press the Firefox Companion toolbar button on this tab, or to allow screenshots of any granted tab in the sidebar.');
   const tab = await r.tab(call.tabId);
   if (!tab?.active) throw need;
@@ -267,14 +267,18 @@ const refFor = async (r, call, origin, a) => a.ref ?? (await atPoint(r, call, or
 async function effect(r, call, f, id, extra = {}) {
   const after = await r.page(call, f.origin, { cmd: 'after' }, f.frame).catch(() => null);
   // The question may reach the next document, which knows nothing of the action.
-  const page = after?.id !== id ? 'navigated' : extra.opened != null ? 'opened a tab' : after.changed ? 'changed' : NO_EFFECT;
-  return { dispatched: true, trusted_event: false, observed: page !== NO_EFFECT, page, ...(page === NO_EFFECT && { hint: BACKEND }), ...(after?.dialogs?.length && { dialogs: after.dialogs }) };
+  const none = call.trusted ? 'no visible change' : NO_EFFECT;
+  const page = after?.id !== id ? 'navigated' : extra.opened != null ? 'opened a tab' : after.changed ? 'changed' : none;
+  const errors = r.observer?.takeErrors(call.session.id, call.tabId);
+  return { dispatched: true, trusted_event: call.trusted === true, observed: page !== none, page, ...(page === NO_EFFECT && { hint: BACKEND }), ...(after?.dialogs?.length && { dialogs: after.dialogs }), ...(errors && { page_errors: errors }) };
 }
 
 async function send(r, call, f, what, message) {
   r.sent(call, what);
   try {
-    return await r.page(call, f.origin, message, f.frame);
+    const sent = await r.page(call, f.origin, message, f.frame);
+    call.trusted = sent.trusted === true; // an isolated tab takes real input; everything else is synthetic
+    return sent;
   } catch (e) {
     if (e.fromPage && e.code !== 'not_taken') r.notSent(call); // the page refused before it did anything
     throw e;
@@ -323,7 +327,7 @@ async function type(r, call, spec, origin, a) {
     call.sent.outcome = 'done';
     await r.frame(call, spec, origin, { label: `Type in ${t.description}`, at: null });
     const want = [...a.text].length;
-    return { field: t.description, dispatched: true, trusted_event: false, observed: sent.arrived > 0, characters_sent: want, characters_arrived: sent.arrived };
+    return { field: t.description, dispatched: true, trusted_event: call.trusted, observed: sent.arrived > 0, characters_sent: want, characters_arrived: sent.arrived };
   });
 }
 
@@ -472,17 +476,27 @@ async function navigate(r, call, spec, origin, a) {
   const { tabs } = r.api.browser ?? {};
   let what;
   let go;
+  // A page that asks before it is left would open a native dialog, which nothing here can answer.
+  const leave = async () => {
+    const x = await r.page(call, origin, { cmd: 'leave', accept: a.dialog === 'accept' });
+    if (x.asks && a.dialog !== 'accept') throw new ToolError('not_allowed', 'The page asks before it is left, so it stays. Say dialog: accept to leave it anyway; the user sees that on the card.');
+    return x;
+  };
+  if (a.url !== undefined) address(a.url); // a bad address is told first
+  await leave();
   if (a.url !== undefined) {
     const url = address(a.url);
     const to = originOf(url);
     what = `opening ${plainUrl(url)}`;
-    await r.ask(call, spec, origin, { tool: 'navigate', target: url, value: to === origin ? null : `Leaves ${origin} for ${to}` }, a.reason);
+    await r.ask(call, spec, origin, { tool: 'navigate', target: url, value: [to !== origin && `Leaves ${origin} for ${to}`, a.dialog === 'accept' && 'Leaves even if the page asks'].filter(Boolean).join('. ') || null }, a.reason);
     go = () => r.api.openUrl(call.tabId, url);
   } else {
     what = { back: 'going back', forward: 'going forward', reload: 'reload', hard_reload: 'reload without cache' }[a.history];
-    await r.ask(call, spec, origin, { tool: 'navigate', target: `This tab: ${what}`, value: null }, a.reason);
-    go = { back: () => tabs.goBack(call.tabId), forward: () => tabs.goForward(call.tabId), reload: () => tabs.reload(call.tabId), hard_reload: () => tabs.reload(call.tabId, { bypassCache: true }) }[a.history];
+    await r.ask(call, spec, origin, { tool: 'navigate', target: `This tab: ${what}`, value: a.dialog === 'accept' ? 'Leaves even if the page asks' : null }, a.reason);
+    go = call.tabId >= VIRTUAL ? () => r.api.history(call.tabId, a.history) : { back: () => tabs.goBack(call.tabId), forward: () => tabs.goForward(call.tabId), reload: () => tabs.reload(call.tabId), hard_reload: () => tabs.reload(call.tabId, { bypassCache: true }) }[a.history];
   }
+  // The page may have changed its mind while the card was open.
+  const { asks } = await leave();
   const before = { url: (await r.tab(call.tabId)).url, doc: (await r.page(call, origin, { cmd: 'place' })).id };
   r.sent(call, what);
   await Promise.race([go(), call.gone]).catch((e) => {
@@ -503,7 +517,7 @@ async function navigate(r, call, spec, origin, a) {
   if (['back', 'forward'].includes(a.history) && place.id === before.doc && tab.url === before.url) throw new ToolError('no_history', `There is no page to go ${a.history} to.`);
   await r.frame(call, spec, now, { label: a.url !== undefined ? `Open ${now}` : what, at: null });
   tab = await r.tab(call.tabId);
-  return { state: 'loaded', dispatched: true, observed: place.id !== before.doc || tab.url !== before.url, url: plainUrl(tab.url), title: oneLine(tab.title) };
+  return { state: 'loaded', dispatched: true, ...(asks && { dialogs: [{ kind: 'beforeunload', answer: 'accepted' }] }), observed: place.id !== before.doc || tab.url !== before.url, url: plainUrl(tab.url), title: oneLine(tab.title) };
 }
 
 /** The tab is with the user until they press Done or Cancel. The answer gives no right. */
