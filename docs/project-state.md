@@ -6,8 +6,8 @@ Handoff after Prompt 7, the release audit (2026-11-25). Requirements, evidence a
 
 | Use | Verdict | What the evidence supports | Still blocked |
 |---|---|---|---|
-| Local testing by the owner, on this kind of computer | **Ready**, with the limits on the right | Every suite passed on the candidate `fa765c4`: units, integration, packaged artifacts with Firefox played by the test and in real Firefox, all Firefox suites headless, the visible desktop without a user, short live runs. Install, upgrade from 0.5.0 and 0.4.0, interruption, doctor and uninstall work with the packaged files | The add-on is temporary and gone after each restart of Firefox. Cross-account denial (AC-03, AC-04) is not shown, so use it on a computer whose other accounts you trust. Claude Desktop, Thunderbird, two computers and real sites were not tried. File and shell tools of a chat are as strong as the user's own account: leave them off unless needed |
-| Public distribution | **Not ready** | Lint and validation of the packages are clean (the mail add-on has four warnings), builds are reproducible, the rules of Mozilla and Anthropic were read again | Public name, add-on IDs, license, data declaration, listed or self-distributed, and the subscription question are decisions of the owner. No signed build, so AC-06 is open. AC-03 and AC-04 are open. Mozilla has reviewed nothing. The policies of 2026-12-01 come into effect in days |
+| Local testing by the owner, on this kind of computer | **Ready**, with the limits on the right | Every suite passed on the candidate `49b42d6`: units, integration, packaged artifacts with Firefox played by the test and in real Firefox, all Firefox suites headless. The visible desktop without a user and short live runs passed on earlier commits, before the new look and the artwork (rows below). Install, upgrade from 0.5.0 and 0.4.0, interruption, doctor and uninstall work with the packaged files | The add-on is temporary and gone after each restart of Firefox. Cross-account denial (AC-03, AC-04) is not shown, so use it on a computer whose other accounts you trust. Claude Desktop, Thunderbird, two computers and real sites were not tried. File and shell tools of a chat are as strong as the user's own account: leave them off unless needed |
+| Public distribution | **Not ready** | Lint and validation of the packages are clean (the mail add-on has four warnings), builds are reproducible, the rules of Mozilla and Anthropic were read again | Public name, add-on IDs, license, terms of the artwork, data declaration, listed or self-distributed, and the subscription question are decisions of the owner. No signed build, so AC-06 is open. AC-03 and AC-04 are open. Mozilla has reviewed nothing. The policies of 2026-12-01 come into effect in days |
 
 ## Checkpoint
 
@@ -16,7 +16,7 @@ Handoff after Prompt 7, the release audit (2026-11-25). Requirements, evidence a
 - `feat/browser-control` = `70c9a70`, the end of Prompt 4 (code `6b0e049`).
 - `feat/optional-backends` starts there: two `wip:` commits, then **`0c95826`, the code and tests of the Prompt 5 results**, plus the commits that add this file and the last parity rows, up to `e46f5c5`.
 - Prompt 6 went on to `67b4e72` on the same branch: code `d3483b0`, lint fix `c41fffa`, version 0.5.0.
-- **Prompt 7 starts there. The final candidate is `fa765c4`, version 0.6.0, protocol 4**: code, tests and user documents that the results below belong to. The commit after it holds this file and the parity document.
+- **Prompt 7 starts there. The final candidate is `49b42d6`, version 0.6.0, protocol 4**: code, tests and user documents that the results below belong to. The commit after it holds this file and the parity document.
 - Nothing is signed, published or pushed, and no everyday Firefox profile was touched: every Firefox of the tests ran with `-no-remote` and a profile in the temp folder.
 - Prompt 1: the audit is complete and its checkers pass. The orchestrator's delivery was refused. Its record in `.claude/opus-orchestrator/` is unchanged and not in Git.
 
@@ -78,7 +78,7 @@ New in Prompt 7:
 - **Lists of a page** (role combobox or listbox, aria-haspopup listbox): `choose` in content.js, through `form_input`.
 - **MCP over stdio:** a line ends at \n only, and U+2028 and U+2029 are escaped on the way out, also in the message to Claude Code.
 - **Content policy** of the add-on: `default-src 'none'`; no server can be reached from its pages.
-- **Look:** one stylesheet with named colors (pine product, blue read, amber act or question, brick stop), light and dark. Icons are files in `ext/sidebar/icons/`, used as masks, so a replacement keeps its name and is one color on transparent. `ext/sidebar/empty-chat.svg` and `ext/icon.svg` are pictures with their own colors.
+- **Look:** one stylesheet with named colors (pine product, blue read, amber act or question, brick stop), light and dark. Icons are files in `ext/sidebar/icons/`, used as masks, so a replacement keeps its name and is one color on transparent. `ext/sidebar/art/` and `ext/icon.svg` are pictures with their own colors, drawn for light paper; the stylesheet inverts those of the sidebar in dark. The owner supplied them all, made with another AI tool (`NOTICE.txt`). The picture of the empty chat also shows a link that is down and a stop.
 - **Limit:** 120 calls of one session in a minute. Test clients pace themselves (`McpClient.pace`).
 
 From Prompt 6, still valid:
@@ -122,26 +122,26 @@ From Prompt 4, still valid:
 
 ## Packaged artifacts
 
-Version 0.6.0, protocol 4, from `fa765c4`, not signed. `npm run release` makes them; `release/` is not in Git. SHA-256:
+Version 0.6.0, protocol 4, from `49b42d6`, not signed. `npm run release` makes them; `release/` is not in Git. SHA-256:
 
 | Path | What | SHA-256 |
 |---|---|---|
-| `release/FirefoxCompanionSetup-0.6.0.exe` | per-user installer, upgrade, doctor, uninstall | `e11f0f4212e411f57a3821fc9ebdefed265e589c6485b036f0bded726b764650` |
-| `release/firefox-companion-0.6.0-unsigned.xpi` | everyday Firefox add-on | `e7914e4d855efdf71031a4bb449c5b8d7027e7f141199d635c4387ae7bdc9ec3` |
-| `release/firefox-companion-0.6.0.mcpb` | Claude Desktop bundle | `bef5208b11acfffe2e15696f2a8a85a0071242bc2720c529dc4ec504d376534b` |
-| `release/optional/firefox-companion-optional-0.6.0.zip` | isolated Firefox, Windows input, remote link; separate | `a887c5318431fe120d1b2fb5f482d5e153be6f445653f6c76e545ad04894fe2e` |
-| `release/optional/firefox-companion-mail-0.6.0-unsigned.xpi` | Thunderbird add-on; separate | `5e8284a24e8e584af5251b43d2267915d72856ea1c77880608dfae04b51ed240` |
-| `release/CONTENTS.txt` | hashes of every file inside | `049fb7598d2a98f5bf52bede1ec59fda241efb5417ac27d661e5ea524fb00c1c` |
-| `release/NOTICE.txt` | license state, third-party code (none), trademarks; unchanged since 0.5.0 | `1c81f84631bbf54a6ca447956db848f91a00dcdca9efc08a482b6abab520e18f` |
+| `release/FirefoxCompanionSetup-0.6.0.exe` | per-user installer, upgrade, doctor, uninstall | `339ebe5bd723f2890dbe2454be5bb3e40a471101f4afc034cdb2d9ac41e4cbf7` |
+| `release/firefox-companion-0.6.0-unsigned.xpi` | everyday Firefox add-on | `eab3169e914dac2729a5e7b86516bd20db297cb390b5d8a30c1967ade1197969` |
+| `release/firefox-companion-0.6.0.mcpb` | Claude Desktop bundle | `030eea459124885472a6d32ef18112e626a1ed3fb589facbd436116e950f70b0` |
+| `release/optional/firefox-companion-optional-0.6.0.zip` | isolated Firefox, Windows input, remote link; separate | `3f11c3118d424e3e1855b98b54237a8ddf4d2575f74a4a9c29748b9f4113f315` |
+| `release/optional/firefox-companion-mail-0.6.0-unsigned.xpi` | Thunderbird add-on; separate | `99b073338aad2d4e23b774c6cf6fadf85d749515ca76dc7289c53e4b9adfa765` |
+| `release/CONTENTS.txt` | hashes of every file inside | `209711640e2af2616218d775a167b15682d19599f841855d067de23fca9c41b0` |
+| `release/NOTICE.txt` | license state, third-party code (none), origin of the artwork, trademarks | `4aca9daeeff1c97360e0774eea8640ea74e109ed253e3671f6220e322faa42c9` |
 | `release/SETUP.md` | for users | `4997a7c7b3517cb987c9bc20277094193b9eb6079ed39843f88f50b4117de312` |
 
-`SHA256SUMS.txt` lists the same. The working folder, a clone with autocrlf on in a path with a space, and a plain clone gave the same bytes for `9fc5319`, programs included (csc 4.8 of this Windows); since then only files of the sidebar, the icon, the page script and the Thunderbird page changed. The developer build is not in `release/`; packing stops at a trace of it. The everyday package, the mail add-on, the optional programs and the developer build are four separate things, and none contains another.
+`SHA256SUMS.txt` lists the same. The working folder, a clone with autocrlf on in a path with a space, and a plain clone gave the same bytes for `49b42d6`, programs included (csc 4.8 of this Windows). The developer build is not in `release/`; packing stops at a trace of it. The everyday package, the mail add-on, the optional programs and the developer build are four separate things, and none contains another.
 
 ### Results of Prompt 7
 
 Windows 11 build 26300, without elevation, Firefox 160.0.1 release, Node 26.12.1, Claude Code 2.1.302 (haiku for the live runs), Claude Desktop not run (6.28899.6 when Prompt 6 read its files), on 2026-11-25. The user's own Firefox ran all the time and was not touched: every test Firefox ran with `-no-remote` and a profile in the temp folder. Complete output of each run: `test-results/final/` (not in Git).
 
-| Command | Kind of evidence | Result on `fa765c4` |
+| Command | Kind of evidence | Result on `49b42d6` |
 |---|---|---|
 | `npm test` | simulated, and package checks | 130 of 130 |
 | `npm run test:integration` | real helper, pipes, server; Firefox played by the test; Claude Code a test double | 54 of 54, and 54 of 54 in each of 10 more runs of the commit before. On the untouched `67b4e72`: 51 of 51 in each of 20 runs |
@@ -385,7 +385,7 @@ Still true from Prompt 3: skills and agents are listed only after the first mess
 7. Not tried: screen reader, two windows with the sidebar, real sites with editors and drag targets (open question 16), an add-on update with stored data of a real user. From 0.3.0 and 0.4.0 in a test profile: PF; Firefox leaves cookies given when it turns from required to optional.
 8. Thunderbird (FC-DATA-20): not installed, and nothing was downloaded. With it: `release\FirefoxCompanionSetup-0.6.0.exe install --thunderbird`, load `release\optional\firefox-companion-mail-0.6.0-unsigned.xpi` as a temporary add-on, Connect, share one account with a client of `server.mjs --mail`, use a dummy account.
 9. Remote link between two computers, and what a firewall does with it. Developer Edition with the developer build.
-10. Signing and public release: [RELEASE.md](RELEASE.md). Prerequisites, all of the owner: public name and the two add-on IDs (fixed by the first submission), license and copyright holder, listed or self-distributed, data declaration (bookmarksInfo, searchTerms, personalCommunications), Mozilla account with an API key, a code-signing certificate, and the subscription question (5).
+10. Signing and public release: [RELEASE.md](RELEASE.md). Prerequisites, all of the owner: public name and the two add-on IDs (fixed by the first submission), license and copyright holder, terms of the artwork (made with another AI tool), listed or self-distributed, data declaration (bookmarksInfo, searchTerms, personalCommunications), Mozilla account with an API key, a code-signing certificate, and the subscription question (5).
 11. Claude Desktop itself: installing the .mcpb file changes the user's own Claude Desktop, so it was not done. With the user's yes, or a Claude Desktop with a test sign-in: Settings, Extensions, Advanced settings, Install Extension, `release\firefox-companion-0.6.0.mcpb`, then ask for the connection status with the helper installed. Claude Desktop 6.28899.6 starts Node bundles in its own Node 24.22.3 with the arguments of the manifest (read from its files). Unsigned bundles: not tried.
 12. Lint and validation ran again on the 0.6.0 files, with the pinned tools from the local npm cache. Open: the data declaration of the mail add-on, and the review of the Thunderbird add-ons site.
 13. Not tried: more than one Firefox window with several chats at work, real sites, Windows SmartScreen and security software with the unsigned program, Windows before 11, Firefox older than 160 or absent, an account with special letters (only the folder had them), the Uninstall button in Settings by hand (its command was run), an installation while a chat runs, power loss (kills only), a full disk.
