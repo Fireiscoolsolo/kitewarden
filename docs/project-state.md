@@ -6,7 +6,7 @@ Handoff after Prompt 7, the release audit (2026-11-25). Requirements, evidence a
 
 | Use | Verdict | What the evidence supports | Still blocked |
 |---|---|---|---|
-| Local testing by the owner, on this kind of computer | **Ready**, with the limits on the right | Every suite passed on the candidate `9fc5319`: units, integration, packaged artifacts with Firefox played by the test and in real Firefox, all Firefox suites headless, the visible desktop without a user, short live runs. Install, upgrade from 0.5.0 and 0.4.0, interruption, doctor and uninstall work with the packaged files | The add-on is temporary and gone after each restart of Firefox. Cross-account denial (AC-03, AC-04) is not shown, so use it on a computer whose other accounts you trust. Claude Desktop, Thunderbird, two computers and real sites were not tried. File and shell tools of a chat are as strong as the user's own account: leave them off unless needed |
+| Local testing by the owner, on this kind of computer | **Ready**, with the limits on the right | Every suite passed on the candidate `fa765c4`: units, integration, packaged artifacts with Firefox played by the test and in real Firefox, all Firefox suites headless, the visible desktop without a user, short live runs. Install, upgrade from 0.5.0 and 0.4.0, interruption, doctor and uninstall work with the packaged files | The add-on is temporary and gone after each restart of Firefox. Cross-account denial (AC-03, AC-04) is not shown, so use it on a computer whose other accounts you trust. Claude Desktop, Thunderbird, two computers and real sites were not tried. File and shell tools of a chat are as strong as the user's own account: leave them off unless needed |
 | Public distribution | **Not ready** | Lint and validation of the packages are clean (the mail add-on has four warnings), builds are reproducible, the rules of Mozilla and Anthropic were read again | Public name, add-on IDs, license, data declaration, listed or self-distributed, and the subscription question are decisions of the owner. No signed build, so AC-06 is open. AC-03 and AC-04 are open. Mozilla has reviewed nothing. The policies of 2026-12-01 come into effect in days |
 
 ## Checkpoint
@@ -16,7 +16,7 @@ Handoff after Prompt 7, the release audit (2026-11-25). Requirements, evidence a
 - `feat/browser-control` = `70c9a70`, the end of Prompt 4 (code `6b0e049`).
 - `feat/optional-backends` starts there: two `wip:` commits, then **`0c95826`, the code and tests of the Prompt 5 results**, plus the commits that add this file and the last parity rows, up to `e46f5c5`.
 - Prompt 6 went on to `67b4e72` on the same branch: code `d3483b0`, lint fix `c41fffa`, version 0.5.0.
-- **Prompt 7 starts there. The final candidate is `9fc5319`, version 0.6.0, protocol 4**: code, tests and user documents that the results below belong to. The commit after it holds this file and the parity document.
+- **Prompt 7 starts there. The final candidate is `fa765c4`, version 0.6.0, protocol 4**: code, tests and user documents that the results below belong to. The commit after it holds this file and the parity document.
 - Nothing is signed, published or pushed, and no everyday Firefox profile was touched: every Firefox of the tests ran with `-no-remote` and a profile in the temp folder.
 - Prompt 1: the audit is complete and its checkers pass. The orchestrator's delivery was refused. Its record in `.claude/opus-orchestrator/` is unchanged and not in Git.
 
@@ -78,6 +78,7 @@ New in Prompt 7:
 - **Lists of a page** (role combobox or listbox, aria-haspopup listbox): `choose` in content.js, through `form_input`.
 - **MCP over stdio:** a line ends at \n only, and U+2028 and U+2029 are escaped on the way out, also in the message to Claude Code.
 - **Content policy** of the add-on: `default-src 'none'`; no server can be reached from its pages.
+- **Look:** one stylesheet with named colors (pine product, blue read, amber act or question, brick stop), light and dark. Icons are files in `ext/sidebar/icons/`, used as masks, so a replacement keeps its name and is one color on transparent. `ext/sidebar/empty-chat.svg` and `ext/icon.svg` are pictures with their own colors.
 - **Limit:** 120 calls of one session in a minute. Test clients pace themselves (`McpClient.pace`).
 
 From Prompt 6, still valid:
@@ -121,34 +122,34 @@ From Prompt 4, still valid:
 
 ## Packaged artifacts
 
-Version 0.6.0, protocol 4, from `9fc5319`, not signed. `npm run release` makes them; `release/` is not in Git. SHA-256:
+Version 0.6.0, protocol 4, from `fa765c4`, not signed. `npm run release` makes them; `release/` is not in Git. SHA-256:
 
 | Path | What | SHA-256 |
 |---|---|---|
 | `release/FirefoxCompanionSetup-0.6.0.exe` | per-user installer, upgrade, doctor, uninstall | `e11f0f4212e411f57a3821fc9ebdefed265e589c6485b036f0bded726b764650` |
-| `release/firefox-companion-0.6.0-unsigned.xpi` | everyday Firefox add-on | `f3d99376d0c9d8667e136abc859736c60679ca6a4544d5f791ea0ceb123459e0` |
+| `release/firefox-companion-0.6.0-unsigned.xpi` | everyday Firefox add-on | `e7914e4d855efdf71031a4bb449c5b8d7027e7f141199d635c4387ae7bdc9ec3` |
 | `release/firefox-companion-0.6.0.mcpb` | Claude Desktop bundle | `bef5208b11acfffe2e15696f2a8a85a0071242bc2720c529dc4ec504d376534b` |
-| `release/optional/firefox-companion-optional-0.6.0.zip` | isolated Firefox, Windows input, remote link; separate | `9fc10d6e88440df0170463da5401d84ad27ba3fb6fc7c3a43188a7afb813783d` |
-| `release/optional/firefox-companion-mail-0.6.0-unsigned.xpi` | Thunderbird add-on; separate | `5557abeeb901e8dbd630ec0a1fd40b21c9ecd529028f1677c8a6becf6402e166` |
-| `release/CONTENTS.txt` | hashes of every file inside | `5d39fefe1926182a02fcaeb8a893285b503689cd4b3b28db53a14e7130cb6632` |
+| `release/optional/firefox-companion-optional-0.6.0.zip` | isolated Firefox, Windows input, remote link; separate | `a887c5318431fe120d1b2fb5f482d5e153be6f445653f6c76e545ad04894fe2e` |
+| `release/optional/firefox-companion-mail-0.6.0-unsigned.xpi` | Thunderbird add-on; separate | `5e8284a24e8e584af5251b43d2267915d72856ea1c77880608dfae04b51ed240` |
+| `release/CONTENTS.txt` | hashes of every file inside | `049fb7598d2a98f5bf52bede1ec59fda241efb5417ac27d661e5ea524fb00c1c` |
 | `release/NOTICE.txt` | license state, third-party code (none), trademarks; unchanged since 0.5.0 | `1c81f84631bbf54a6ca447956db848f91a00dcdca9efc08a482b6abab520e18f` |
 | `release/SETUP.md` | for users | `4997a7c7b3517cb987c9bc20277094193b9eb6079ed39843f88f50b4117de312` |
 
-`SHA256SUMS.txt` lists the same. The working folder, a clone with autocrlf on in a path with a space, and a plain clone gave the same bytes, programs included (csc 4.8 of this Windows). The developer build is not in `release/`; packing stops at a trace of it. The everyday package, the mail add-on, the optional programs and the developer build are four separate things, and none contains another.
+`SHA256SUMS.txt` lists the same. The working folder, a clone with autocrlf on in a path with a space, and a plain clone gave the same bytes for `9fc5319`, programs included (csc 4.8 of this Windows); since then only files of the sidebar, the icon, the page script and the Thunderbird page changed. The developer build is not in `release/`; packing stops at a trace of it. The everyday package, the mail add-on, the optional programs and the developer build are four separate things, and none contains another.
 
 ### Results of Prompt 7
 
 Windows 11 build 26300, without elevation, Firefox 160.0.1 release, Node 26.12.1, Claude Code 2.1.302 (haiku for the live runs), Claude Desktop not run (6.28899.6 when Prompt 6 read its files), on 2026-11-25. The user's own Firefox ran all the time and was not touched: every test Firefox ran with `-no-remote` and a profile in the temp folder. Complete output of each run: `test-results/final/` (not in Git).
 
-| Command | Kind of evidence | Result on `9fc5319` |
+| Command | Kind of evidence | Result on `fa765c4` |
 |---|---|---|
 | `npm test` | simulated, and package checks | 130 of 130 |
 | `npm run test:integration` | real helper, pipes, server; Firefox played by the test; Claude Code a test double | 54 of 54, and 54 of 54 in each of 10 more runs of the commit before. On the untouched `67b4e72`: 51 of 51 in each of 20 runs |
 | `npm run test:install` | **packaged**: setup program, files, registry, pipes; Firefox played | 21 of 21 |
 | `npm run test:packaged` | **packaged** in real Firefox, headless | 16 of 16, with the upgrade from 0.5.0 new |
 | `npm run test:firefox`, `:companion`, `:control`, `:audit`, `:advanced`, `:developer` | development build in real Firefox, headless | 33 of 33, 27 of 27 (before that three times, and twice with half of the processors busy), 24 of 24, 26 of 26, 20 of 20, 4 of 4 |
-| `npm run test:desktop` | **visible Firefox** on the desktop, nobody at the computer | two runs. Nobody at the computer, on the commit before: 6 passed, 2 not run (`test-results/desktop-idle.json`). In use, with another program in front: 5 passed, 3 not run (`desktop-in-use.json`): the focus stayed with the other program also after a new window; the refusal of Windows input while somebody types was again not observed, because the user rested at that moment |
-| `npm run test:live-audit` | **live and paid**, haiku, real Firefox headless | exported skill; file and shell tools off, denied, allowed; PDF and picture: all passed on `b750ec3`. Since then only the random part of refs changed. A skill run cost 0.006 USD. Chats leave transcripts in the folder of Claude Code of this user; nothing else of the user was written |
+| `npm run test:desktop` | **visible Firefox** on the desktop, nobody at the computer | two runs, both before the new look of the sidebar (`9fc5319` and `b750ec3`). Nobody at the computer: 6 passed, 2 not run (`test-results/desktop-idle.json`). In use, with another program in front: 5 passed, 3 not run (`desktop-in-use.json`): the focus stayed with the other program also after a new window; the refusal of Windows input while somebody types was again not observed, because the user rested at that moment |
+| `npm run test:live-audit` | **live and paid**, haiku, real Firefox headless | exported skill; file and shell tools off, denied, allowed; PDF and picture: all passed on `b750ec3`. Since then the random part of refs and the look of the sidebar changed, not the paths of Claude Code. A skill run cost 0.006 USD. Chats leave transcripts in the folder of Claude Code of this user; nothing else of the user was written |
 | `test:claude`, `test:chat`, `test:milestone` (live) | not run again: their paths (standalone server, chat, resume) ran in `test:live-audit` on the candidate | Prompt 5 |
 | `web-ext lint --warnings-as-errors` 10.8.0 on the unpacked .xpi | **packaged**, official linter, from the local npm cache | Firefox package: 0 errors, 0 warnings, 0 notices. Thunderbird package: 0 errors and the same 4 warnings |
 | `mcpb unpack`, `validate`, `info` 2.1.2 | **packaged**, official tool | unpacks, manifest valid, "Not signed". Claude Desktop itself was not used |
