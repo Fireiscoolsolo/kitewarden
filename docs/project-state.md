@@ -207,7 +207,7 @@ Still true from Prompt 3: skills and agents are listed only after the first mess
 7. Not tried: screen reader, two windows with the sidebar, real sites with editors and drag targets (open question 16), an add-on update from protocol 2 or 3 with stored data of a real user (old recordings were seeded in a test profile), in particular one that takes the cookies permission away from containers.
 8. Thunderbird (FC-DATA-20): not installed, and nothing was downloaded. With it: `npm run build`, `dist\host\firefox-companion-host.exe install --thunderbird`, load `dist\thunderbird\manifest.json` as a temporary add-on, Connect, share one account with a client of `server.mjs --mail`, use a dummy account.
 9. Remote link between two computers, and what a firewall does with it. Developer Edition with the developer build.
-10. Packaging: everyday add-on and helper as before. Optional programs need Node 22 and their folders (`dist/backends` and `dist/remote` with `dist/mcp` beside them; the other computer needs `dist/remote` alone). The developer build must not be signed or published (P2). The Thunderbird add-on needs its own review. None of it has an installer.
+10. Packaging: everyday add-on and helper as before. Optional programs need Node 22 and their folders (`dist/backends` and `dist/remote` with `dist/mcp` beside them; the other computer needs `dist/remote` alone). The developer build must not be signed or published (P2). The Thunderbird add-on needs its own review. None of it has an installer. A clean clone builds the same files except for line endings (autocrlf), so equal hashes of two builds (FC-INST-09) need a .gitattributes; unit and integration suites pass there too.
 
 ## Try it by hand
 
