@@ -120,7 +120,7 @@ test('Claude Desktop bundle: fields of MCPB 0.3, the tools that the server has, 
   const m = JSON.parse(readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
   assert.deepEqual(m, bundleManifest());
   // The schema of 0.3 is strict: an unknown field is an error.
-  const allowed = ['manifest_version', 'name', 'display_name', 'version', 'description', 'long_description', 'author', 'server', 'tools', 'compatibility', 'user_config'];
+  const allowed = ['manifest_version', 'name', 'display_name', 'version', 'description', 'long_description', 'author', 'license', 'server', 'tools', 'compatibility', 'user_config'];
   assert.deepEqual(Object.keys(m).filter((k) => !allowed.includes(k)), []);
   assert.ok(existsSync(path.join(dir, m.server.entry_point)));
   const h = fresh();
