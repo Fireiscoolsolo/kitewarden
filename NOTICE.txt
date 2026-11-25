@@ -6,6 +6,9 @@ License
   This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL was not
   distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+Source
+  https://github.com/Fireiscoolsolo/firefox-companion
+
 Third-party code
   None. The add-ons, the helper, the MCP server and the optional programs are original code. They contain no library, font
   or artwork of others. The projects named in docs/feature-parity.md ("Pinned sources and licenses") were read as references
