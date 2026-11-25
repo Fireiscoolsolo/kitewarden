@@ -1,18 +1,20 @@
 # Project state
 
-Handoff after Prompt 5 (2026-11-24). Requirements and evidence per capability: [feature-parity.md](feature-parity.md). Decisions D1 to D9 hold. Prompt 5 widened four rows in the user's words (FC-CONN-25, FC-AGT-11, FC-AGT-15, FC-DBG-06) and narrowed one (FC-DATA-01: no HttpOnly value and no token ever).
+Handoff after Prompt 6 (2026-11-25). Requirements and evidence per capability: [feature-parity.md](feature-parity.md). For users: [SETUP.md](SETUP.md). Building and testing: [DEVELOPMENT.md](DEVELOPMENT.md). Signing and distribution: [RELEASE.md](RELEASE.md). Decisions D1 to D9 hold. Prompt 6 widened FC-INST-14 (a bundle for Claude Desktop). Prompt 5 widened four rows in the user's words (FC-CONN-25, FC-AGT-11, FC-AGT-15, FC-DBG-06) and narrowed one (FC-DATA-01: no HttpOnly value and no token ever).
 
 ## Checkpoint
 
 - Local Git repository, nothing pushed. Author is a placeholder identity of this repository.
 - `main` = `4082ac1`, the audit baseline. `feat/windows-bridge-slice` = `bfb39b0`, the end of Prompt 2. `feat/sidebar-chat` = `d51c615`, the end of Prompt 3.
 - `feat/browser-control` = `70c9a70`, the end of Prompt 4 (code `6b0e049`).
-- `feat/optional-backends` starts there: two `wip:` commits, then **`0c95826`, the code and tests that every result below belongs to**, plus the commit that adds this file and the last parity rows. Nothing is signed, published or pushed, and no everyday Firefox profile was touched: every Firefox of the tests ran with `-no-remote` and a profile in the temp folder.
+- `feat/optional-backends` starts there: two `wip:` commits, then **`0c95826`, the code and tests of the Prompt 5 results**, plus the commits that add this file and the last parity rows, up to `e46f5c5`.
+- Prompt 6 goes on from `e46f5c5` on the same branch: **`d3483b0` is the code, the tests and the user documents that the packaged results below belong to**, and the commit after it adds this file and the parity rows.
+- Nothing is signed, published or pushed, and no everyday Firefox profile was touched: every Firefox of the tests ran with `-no-remote` and a profile in the temp folder.
 - Prompt 1: the audit is complete and its checkers pass. The orchestrator's delivery was refused. Its record in `.claude/opus-orchestrator/` is unchanged and not in Git.
 
 ## What exists
 
-A Firefox add-on (Manifest V2, persistent background, native sidebar), a native messaging host with a named pipe per profile that also runs the user's own Claude Code and reads files for uploads, and an MCP server over stdio. That everyday product has no TCP port, no CDP, no debugger permission and no dependency to install. Node 22 or later runs the MCP server, the optional programs, the build and the tests. Protocol 4, version 0.4.0: add-on, helper and MCP server must be updated together.
+A Firefox add-on (Manifest V2, persistent background, native sidebar), a native messaging host with a named pipe per profile that also runs the user's own Claude Code and reads files for uploads, and an MCP server over stdio. That everyday product has no TCP port, no CDP, no debugger permission and no dependency to install. Node 22 or later runs the MCP server, the optional programs, the build and the tests. Protocol 4, version 0.5.0. A 0.4.0 add-on or server works with a 0.5.0 helper (PF); another protocol is refused and the older part is named.
 
 Beside it, separate and off: optional programs that the user starts, an add-on for Thunderbird, and a developer build.
 
@@ -32,7 +34,7 @@ Beside it, separate and off: optional programs that the user starts, an add-on f
 | Host, pipe, login | [host/native/Host.cs](../host/native/Host.cs) |
 | Files for uploads | [host/native/Files.cs](../host/native/Files.cs) |
 | Claude Code runs, skill file | [host/native/Chat.cs](../host/native/Chat.cs) |
-| Install, uninstall, doctor | [host/native/Setup.cs](../host/native/Setup.cs) |
+| Install, upgrade, recovery, uninstall, doctor; FirefoxCompanionSetup | [host/native/Setup.cs](../host/native/Setup.cs) |
 | MCP server, pipe client, choice of profile | [mcp/server/server.mjs](../mcp/server/server.mjs) (entry), [serve.mjs](../mcp/server/serve.mjs), [link.mjs](../mcp/server/link.mjs) |
 | Console, requests, bodies of granted tabs; hooks in the page | [ext/background/observe.mjs](../ext/background/observe.mjs), [ext/page/hooks.js](../ext/page/hooks.js) |
 | Diagnostics, page tools (WebMCP), calls of the backends | [ext/background/devtools.mjs](../ext/background/devtools.mjs) |
@@ -44,7 +46,8 @@ Beside it, separate and off: optional programs that the user starts, an add-on f
 | Remote gateway and client | [remote/gateway.mjs](../remote/gateway.mjs), [client.mjs](../remote/client.mjs), [wire.mjs](../remote/wire.mjs) |
 | Thunderbird add-on | [thunderbird/](../thunderbird/mail.mjs) |
 | Developer build | [developer/](../developer/pagescript.mjs) |
-| Build to `dist/` | [build/build.mjs](../build/build.mjs) |
+| Build to `dist/`, same bytes from the compiler, packages in `release/` | [build/build.mjs](../build/build.mjs), [compile.mjs](../build/compile.mjs), [release.mjs](../build/release.mjs) |
+| Checks of the packages | [test/install/](../test/install/setup.test.mjs), [test/firefox/packaged.mjs](../test/firefox/packaged.mjs) |
 | Test double of Claude Code | [test/doubles/](../test/doubles/claude.mjs) |
 
 ## Contracts
@@ -55,6 +58,15 @@ From Prompts 2 and 3, still valid:
 - Pipe login: host nonce, client nonce and HMAC, host HMAC, then versions. After a lost link calls in flight end with `outcome_unknown`, nothing is repeated, the next call returns `session_ended`, grants are gone.
 - A chat is a session of kind `chat`. A run is one `claude -p` process per message in a job object, with Companion tools only, joined to its chat by a ticket that works once. Skill files are written only after a preview. The list of options is in [Chat.cs](../host/native/Chat.cs).
 - `router.call(..., { user: true })` opens the tools that are for the user only (`get_selection`) and waives no other check.
+
+New in Prompt 6:
+
+- **Files of an installation:** `install.json` (pipe, made once), `key.bin` (made once), `installed.json` `{version, protocol, files: {name: sha256}}`, program files named in `Names` of Setup.cs, `native-manifest*.json`, `claude-code.txt` (only if the installer registered the server; holds CLAUDE_CONFIG_DIR of that moment or nothing), `setup\` while an installation runs.
+- **Exchange of files:** new files complete in `setup\new-*`, then `setup\journal.txt` (folder of the old files, then `=name` for a file that was there and `+name` for a new one), then each old file to `setup\old-*` and the new one into its place. The journal exists: the old version counts. Deleting it commits.
+- **An installer** starts and turns on nothing, keeps key, pipe, pairings, profiles, chat folder and the Thunderbird registration, refuses a newer installed version, and stops only helpers started from its own folder.
+- **Setup program** = the helper's sources with `payload.txt` and the files as resources. Without arguments it asks; with them it is the same command line as the helper. Only it makes an entry in Settings, Apps.
+- **`doctor`** logs in to the pipe with protocol 0: the helper proves the key and names its protocol, and no session begins.
+- **Claude Desktop bundle:** the files of `mcp/` under `server/`, started with `--home ${user_config.home}`. Its tool list comes from `mcpTools([])`.
 
 New in Prompt 5:
 
@@ -86,7 +98,64 @@ From Prompt 4, still valid:
 - **Workflow:** `{id, title, origin, tabs, created, steps, rest}`. A step may have `tab` (0 to 4) and `frame {origin, path}`. A text step is `ask: true`; `literal: true` with a value only by a choice in the editor, never for personal or credential-like fields. A text that an earlier version stored becomes `old: true`: kept, hidden, unused and in no preview, log, skill or export until the user keeps or deletes it. Steps that this version does not know stay in `rest`. Replay takes the grants of that moment for each tab and frame.
 - **Private windows:** `incognito: spanning`. Firefox hides them from the add-on unless the user allows it there. Then a private tab is in no list, count, log or lost-grant list without a grant of its own (second tick, MCP client only).
 
-## Commands and results
+## Packaged artifacts
+
+Version 0.5.0, protocol 4, from `d3483b0`, not signed. `npm run release` makes them; `release/` is not in Git. SHA-256:
+
+| Path | What | SHA-256 |
+|---|---|---|
+| `release/FirefoxCompanionSetup-0.5.0.exe` | per-user installer, upgrade, doctor, uninstall | `28e976f332da96bf8f13ad66e53d060e59fa68ac31d2f23057f0777e000a7deb` |
+| `release/firefox-companion-0.5.0-unsigned.xpi` | everyday Firefox add-on | `7a8bf9422996115978f2c621620041362632f1e1c6cd2507bb8e3cddba2d4a52` |
+| `release/firefox-companion-0.5.0.mcpb` | Claude Desktop bundle | `0eab94711c5545ae8971fb99e742e755a96905168a654f3b22546b59f354d63a` |
+| `release/optional/firefox-companion-optional-0.5.0.zip` | isolated Firefox, Windows input, remote link; separate | `52ec5fa67d443a7356c7815c8f1a97aff643573c2941eca529afa3ae04e6b0cd` |
+| `release/optional/firefox-companion-mail-0.5.0-unsigned.xpi` | Thunderbird add-on; separate | `f2c5bc7f4c5dd6077c51de9fe4582f13711a96b0843c0065168f2c76d0c91ff4` |
+| `release/CONTENTS.txt` | hashes of every file inside | `622d5fbf31fbe15cf2abacc6cffdef1f8cdf42cc1dbf7341c11cdebb404716cd` |
+| `release/NOTICE.txt` | license state, third-party code (none), trademarks | `1c81f84631bbf54a6ca447956db848f91a00dcdca9efc08a482b6abab520e18f` |
+| `release/SETUP.md` | for users | `d0a73c365d59d9711c5c56f835b116168dc79ca72929f0983b2d1c894b6ff13b` |
+
+`SHA256SUMS.txt` lists the same. Builds in this folder and in fresh clones with autocrlf on, one in a path with spaces, gave the same bytes, programs included (csc 4.8 of this Windows). The developer build is not in `release/`; packing stops at a trace of it.
+
+### Results of Prompt 6
+
+Windows 11 build 26300, without elevation (medium integrity), Firefox 160.0.1 release, Node 26.12.1, Claude Code 2.1.302, Claude Desktop 6.28899.6 (files read, not run), on 2026-11-24 and 25. The results are of 2026-11-25, in a fresh clone of `d3483b0` with autocrlf on.
+
+| Command | Kind of evidence | Result |
+|---|---|---|
+| `npm run test:install` | **packaged artifact**: real setup program, files, registry, processes, pipes, unpacked by another zip reader; Firefox played by the test; installed Claude Code with its own configuration folder, no model called | 21 of 21 |
+| `npm run test:packaged` | **packaged artifact in real Firefox**, headless, disposable profiles, unsigned .xpi as a temporary add-on, real clicks; Claude Code is a test double | 15 of 15, `test-results/packaged.json` |
+| `npm test` | development build, simulated; plus package checks | 116 of 116 |
+| `npm run test:integration` | development build, Firefox played by the test | 51 of 51 in the clone; 13 of 14 runs. The second run failed in "run: the documented options in a folder of the helper"; its message was not kept, and it did not come back in 12 further runs. Cause unknown |
+| `npm run test:firefox`, `test:companion`, `test:control`, `test:advanced`, `test:developer` | development build in real Firefox, headless | 33 of 33, 27 of 27, 24 of 24, 20 of 20, 4 of 4 |
+| `npm run test:desktop` | not run again: input and focus did not change | Prompt 5 |
+| `test:claude`, `test:chat`, `test:milestone` (live, paid) | not run again: Claude Code starts the server as before (`node <home>\mcp\server.mjs`), and chats start Claude Code as before. The free part is in `test:install`: Claude Code itself started the installed server and reported Connected | Prompt 5 |
+| Signed build | none exists | open |
+| `node .opus-inbox/audit_tools.mjs check-parity` | documents | OK |
+
+30 guards of the installer, the packing and the manifest were taken out of a scratch copy one at a time and `test:install` ran: all 30 are noticed. At first two were not: the doctor did not see a damaged `install.json` (fixed in the product), and a helper that keeps running on uninstall was noticed only as a test that hung (now limited to 60 s).
+
+What `test:install` and `test:packaged` show, by what Prompt 6 named:
+
+| Named | Packaged, Firefox played (PI) | Packaged, real Firefox (PF) |
+|---|---|---|
+| Fresh install | only its own files, one registration, one entry in Settings, again: no change; standard folder through the questions | add-on first, then the installer |
+| Helper discovery | registration and manifest, path `Jörg Müller & Söhne` | found by itself 1 s after the installer ended |
+| Pairing | key proved both ways, doctor without a session, wrong key named | every hop reports 0.5.0 |
+| Permission setup | | declined: no grant; accepted: grant, and one approved click arrives once |
+| cookies | optional in the manifest | not given at install; container refused, after the button it opens; reading stays off |
+| Missing helper | client says not_installed and names the installer | sidebar too, and both go on after an install |
+| Helper restart | | killed: another one after 1.6 s, session_ended, no grant, regrant |
+| Firefox restart | | helper ends with Firefox; the temporary add-on is gone, loaded again: stored data there, no grant, connects |
+| Upgrade | from 0.4.0 with a running helper and a running client: key, pipe, pairings, profile, Thunderbird | helper under the old add-on, then the add-on: stored data and permissions equal, no optional part on; from 0.3.0 |
+| Interrupted | 24 kills (12 during the exchange, 12 at the start of the next run), every point of the exchange by hand, registration not writable, file held open, key or identity cut off | |
+| Uninstall | by the installed program while connected, another installation and files of others stay, after interruptions | sidebar names the missing helper |
+| Claude Code | asked, not asked, twice, other entry, changed entry, removal | |
+| Claude Desktop | fields of manifest 0.3, tools equal, server starts as its manifest says | its server reaches the same helper |
+
+Fixed on the way: the module ID was taken from an embedded program, so the installer differed at each build; the sidebar named developer folders for the optional programs. The stored data of the upgrade check was partly seeded (workflow, schedule, pairing, chat); switches, folder and label were set by clicks.
+
+After the runs: registration and entries in Settings absent, no folder `%LOCALAPPDATA%\FirefoxCompanion`, no process and no temporary folder of these tests, no entry in the user's Claude Code. The user's everyday Firefox profile, Claude Code configuration and Claude Desktop were not changed.
+
+## Commands and results of Prompt 5
 
 Windows 11 build 26300, Firefox 160.0.1 (release), Node 26.12.1, Claude Code 2.1.302, on 2026-11-24, for `0c95826`.
 
@@ -162,7 +231,7 @@ AC-01, AC-02, AC-05, AC-07, AC-08 and AC-09 are met (AC-02 with the temporary ad
 |---|---|---|---|
 | AC-03 | open | access list, network path denied while a control pipe is reached, existing pipe stops the host | second Windows user |
 | AC-04 | open | access lists of key and folder, Everyone stops the host, doctor names the file | second Windows user |
-| AC-06 | open | revoke, refs and covers gone, no grant after the add-on restarts | restart of Firefox, needs a signed build |
+| AC-06 | open | revoke, refs and covers gone, no grant after the add-on restarts; Firefox restarted with the temporary add-on loaded again: no grant (PF) | restart of Firefox with the add-on staying installed, needs a signed build |
 
 ### AC-08 record (documentation read on 2026-11-24, in Prompt 3)
 
@@ -195,24 +264,28 @@ Still true from Prompt 3: skills and agents are listed only after the first mess
 ## Blockers and open checks
 
 1. Second Windows account (AC-03, AC-04). Use an existing second account; none was created:
-   1. First user: `npm run build`, then `dist\host\firefox-companion-host.exe install --home C:\Users\Public\fc-acl-test`, load the add-on, press Connect, note the pipe name in `C:\Users\Public\fc-acl-test\profiles\<id>.json`.
+   1. First user: `release\FirefoxCompanionSetup-0.5.0.exe install --home C:\Users\Public\fc-acl-test`, load the add-on, press Connect, note the pipe name in `C:\Users\Public\fc-acl-test\profiles\<id>.json`.
    2. Second user: `Get-Content C:\Users\Public\fc-acl-test\key.bin` must be denied.
    3. Second user: `$c = New-Object IO.Pipes.NamedPipeClientStream('.', '<name>', 'InOut'); $c.Connect(2000)` must fail with "Access to the path is denied".
-   4. First user: press Disconnect, then `dist\host\firefox-companion-host.exe uninstall --home C:\Users\Public\fc-acl-test`.
+   4. First user: press Disconnect, then `release\FirefoxCompanionSetup-0.5.0.exe uninstall --home C:\Users\Public\fc-acl-test`.
 2. Restart of Firefox (AC-06, FC-GRANT-16, FC-UI-03): after the user signs a build, attach a tab, start a chat, press Stop everything, restart Firefox with session restore. Expected: no grant, paused, the helper reconnects, the chat is listed and goes on.
 3. Visible desktop: focus and minimized windows are observed now (FC-TAB-11, FC-SHOT-01). Open there: clicks and typing while another program is in front, the isolated Firefox with a window, and one JSON record of the idle mode: leave the computer alone for a minute and run `npm run test:desktop`.
 4. Open from Prompt 3, not worked on: saved prompts (FC-AGT-10), the switch for file and shell tools in a chat (FC-AGT-02), the run of an exported skill by a model (FC-AGT-08).
 5. Public distribution with a subscription sign-in: a decision for the user. Event page wake (D1): an inference, not tested.
 6. Mozilla review of `incognito: spanning`, of the optional cookies, webRequest and webRequestBlocking, of WebMCP offered by an add-on, and the data declaration (cookies and storage of sites; mail in the Thunderbird add-on): not asked.
-7. Not tried: screen reader, two windows with the sidebar, real sites with editors and drag targets (open question 16), an add-on update from protocol 2 or 3 with stored data of a real user (old recordings were seeded in a test profile), in particular one that takes the cookies permission away from containers.
-8. Thunderbird (FC-DATA-20): not installed, and nothing was downloaded. With it: `npm run build`, `dist\host\firefox-companion-host.exe install --thunderbird`, load `dist\thunderbird\manifest.json` as a temporary add-on, Connect, share one account with a client of `server.mjs --mail`, use a dummy account.
+7. Not tried: screen reader, two windows with the sidebar, real sites with editors and drag targets (open question 16), an add-on update with stored data of a real user. From 0.3.0 and 0.4.0 in a test profile: PF; Firefox leaves cookies given when it turns from required to optional.
+8. Thunderbird (FC-DATA-20): not installed, and nothing was downloaded. With it: `release\FirefoxCompanionSetup-0.5.0.exe install --thunderbird`, load `release\optional\firefox-companion-mail-0.5.0-unsigned.xpi` as a temporary add-on, Connect, share one account with a client of `server.mjs --mail`, use a dummy account.
 9. Remote link between two computers, and what a firewall does with it. Developer Edition with the developer build.
-10. Packaging: everyday add-on and helper as before. Optional programs need Node 22 and their folders (`dist/backends` and `dist/remote` with `dist/mcp` beside them; the other computer needs `dist/remote` alone). The developer build must not be signed or published (P2). The Thunderbird add-on needs its own review. None of it has an installer. A clean clone builds the same files except for line endings (autocrlf), so equal hashes of two builds (FC-INST-09) need a .gitattributes; unit and integration suites pass there too.
+10. Signing and public release: [RELEASE.md](RELEASE.md). Prerequisites, all of the owner: public name and the two add-on IDs (fixed by the first submission), license and copyright holder, listed or self-distributed, data declaration (bookmarksInfo, searchTerms, personalCommunications), Mozilla account with an API key, a code-signing certificate, and the subscription question (5).
+11. Claude Desktop itself: installing the .mcpb file changes the user's own Claude Desktop, so it was not done. With the user's yes, or a Claude Desktop with a test sign-in: Settings, Extensions, Advanced settings, Install Extension, `release\firefox-companion-0.5.0.mcpb`, then ask for the connection status with the helper installed. Claude Desktop 6.28899.6 starts Node bundles in its own Node 24.22.3 with the arguments of the manifest (read from its files). Unsigned bundles: not tried.
+12. Downloads that were not made: `npx web-ext@10 lint -s dist/extension` (10.8.0) and `npx @anthropic-ai/mcpb@2 validate` (2.1.2).
+13. Not tried: Windows SmartScreen and security software with the unsigned program, Windows before 11, Firefox older than 160 or absent, an account with special letters (only the folder had them), the Uninstall button in Settings by hand (its command was run), an installation while a chat runs, power loss (kills only), a full disk.
+14. Limits: a file that a later version drops is not deleted by an upgrade. Servers that a client started and optional programs run on after an uninstall until their owner ends them. The optional programs have no installer.
 
 ## Try it by hand
 
-1. `npm run build`, then `dist\host\firefox-companion-host.exe install`. `doctor` checks it, `uninstall` removes it.
-2. In Firefox open `about:debugging#/runtime/this-firefox`, choose Load Temporary Add-on, and pick `dist\extension\manifest.json`. It is gone after a restart of Firefox.
+1. `npm run release`, then start `release\FirefoxCompanionSetup-0.5.0.exe` and choose `i`. `d` checks, `u` removes.
+2. In Firefox open `about:debugging#/runtime/this-firefox`, choose Load Temporary Add-on, and pick `release\firefox-companion-0.5.0-unsigned.xpi`. It is gone after a restart of Firefox.
 3. Open the sidebar with the toolbar button and press Connect. Tabs: attach this tab; Frames shows frames of other sites; Take over and Give back hold one tab; Stop everything holds all of it. Browser data has the switches, the upload folders and the name of this profile.
 4. In PowerShell, `claude mcp add -s user firefox-companion -- node "$env:LOCALAPPDATA\FirefoxCompanion\mcp\server.mjs"` registers the MCP server. It needs no chat.
 
