@@ -1,6 +1,13 @@
 # Project state
 
-Handoff after Prompt 6 (2026-11-25). Requirements and evidence per capability: [feature-parity.md](feature-parity.md). For users: [SETUP.md](SETUP.md). Building and testing: [DEVELOPMENT.md](DEVELOPMENT.md). Signing and distribution: [RELEASE.md](RELEASE.md). Decisions D1 to D9 hold. Prompt 6 widened FC-INST-14 (a bundle for Claude Desktop). Prompt 5 widened four rows in the user's words (FC-CONN-25, FC-AGT-11, FC-AGT-15, FC-DBG-06) and narrowed one (FC-DATA-01: no HttpOnly value and no token ever).
+Handoff after Prompt 7, the release audit (2026-11-25). Requirements, evidence and class per capability: [feature-parity.md](feature-parity.md), "Release audit". For users: [SETUP.md](SETUP.md). Building and testing: [DEVELOPMENT.md](DEVELOPMENT.md). Signing and distribution: [RELEASE.md](RELEASE.md). Decisions D1 to D9 hold. Prompt 6 widened FC-INST-14 (a bundle for Claude Desktop). Prompt 5 widened four rows in the user's words (FC-CONN-25, FC-AGT-11, FC-AGT-15, FC-DBG-06) and narrowed one (FC-DATA-01: no HttpOnly value and no token ever).
+
+## Verdicts
+
+| Use | Verdict | What the evidence supports | Still blocked |
+|---|---|---|---|
+| Local testing by the owner, on this kind of computer | **Ready**, with the limits on the right | Every suite passed on the candidate `b750ec3`: units, integration, packaged artifacts with Firefox played by the test and in real Firefox, all Firefox suites headless, the visible desktop without a user, short live runs. Install, upgrade from 0.5.0 and 0.4.0, interruption, doctor and uninstall work with the packaged files | The add-on is temporary and gone after each restart of Firefox. Cross-account denial (AC-03, AC-04) is not shown, so use it on a computer whose other accounts you trust. One replay failure under load is unexplained. Claude Desktop, Thunderbird, two computers and real sites were not tried. File and shell tools of a chat are as strong as the user's own account: leave them off unless needed |
+| Public distribution | **Not ready** | Lint and validation of the packages are clean (the mail add-on has four warnings), builds are reproducible, the rules of Mozilla and Anthropic were read again | Public name, add-on IDs, license, data declaration, listed or self-distributed, and the subscription question are decisions of the owner. No signed build, so AC-06 is open. AC-03 and AC-04 are open. Mozilla has reviewed nothing. The policies of 2026-12-01 come into effect in days |
 
 ## Checkpoint
 
@@ -8,13 +15,14 @@ Handoff after Prompt 6 (2026-11-25). Requirements and evidence per capability: [
 - `main` = `4082ac1`, the audit baseline. `feat/windows-bridge-slice` = `bfb39b0`, the end of Prompt 2. `feat/sidebar-chat` = `d51c615`, the end of Prompt 3.
 - `feat/browser-control` = `70c9a70`, the end of Prompt 4 (code `6b0e049`).
 - `feat/optional-backends` starts there: two `wip:` commits, then **`0c95826`, the code and tests of the Prompt 5 results**, plus the commits that add this file and the last parity rows, up to `e46f5c5`.
-- Prompt 6 goes on from `e46f5c5` on the same branch: **`d3483b0` is the code, the tests and the user documents that the packaged results below belong to**, and the commit after it adds this file and the parity rows. `c41fffa` shortens the name of the Thunderbird add-on after the lint, and the commit after it records that.
+- Prompt 6 went on to `67b4e72` on the same branch: code `d3483b0`, lint fix `c41fffa`, version 0.5.0.
+- **Prompt 7 starts there. The final candidate is `b750ec3`, version 0.6.0, protocol 4**: code, tests and user documents that the results below belong to. The commit after it holds this file and the parity document.
 - Nothing is signed, published or pushed, and no everyday Firefox profile was touched: every Firefox of the tests ran with `-no-remote` and a profile in the temp folder.
 - Prompt 1: the audit is complete and its checkers pass. The orchestrator's delivery was refused. Its record in `.claude/opus-orchestrator/` is unchanged and not in Git.
 
 ## What exists
 
-A Firefox add-on (Manifest V2, persistent background, native sidebar), a native messaging host with a named pipe per profile that also runs the user's own Claude Code and reads files for uploads, and an MCP server over stdio. That everyday product has no TCP port, no CDP, no debugger permission and no dependency to install. Node 22 or later runs the MCP server, the optional programs, the build and the tests. Protocol 4, version 0.5.0. A 0.4.0 add-on or server works with a 0.5.0 helper (PF); another protocol is refused and the older part is named.
+A Firefox add-on (Manifest V2, persistent background, native sidebar), a native messaging host with a named pipe per profile that also runs the user's own Claude Code and reads files for uploads, and an MCP server over stdio. That everyday product has no TCP port, no CDP, no debugger permission and no dependency to install. Node 22 or later runs the MCP server, the optional programs, the build and the tests. Protocol 4, version 0.6.0. A 0.5.0 or 0.4.0 add-on works with a 0.6.0 helper (PF); another protocol is refused and the older part is named.
 
 Beside it, separate and off: optional programs that the user starts, an add-on for Thunderbird, and a developer build.
 
@@ -25,7 +33,8 @@ Beside it, separate and off: optional programs that the user starts, an add-on f
 | Tools that read or act in a page | [ext/background/pagetools.mjs](../ext/background/pagetools.mjs) |
 | Tools for tabs, windows, containers, browser data | [ext/background/tabtools.mjs](../ext/background/tabtools.mjs) |
 | Wiring, native port | [ext/background/main.mjs](../ext/background/main.mjs), [native.mjs](../ext/background/native.mjs) |
-| Grants, approval cards | [ext/grants/grants.mjs](../ext/grants/grants.mjs), [approvals.mjs](../ext/grants/approvals.mjs) |
+| Grants, approval cards, site rules | [ext/grants/grants.mjs](../ext/grants/grants.mjs), [approvals.mjs](../ext/grants/approvals.mjs), [rules.mjs](../ext/grants/rules.mjs) |
+| Saved prompts | [ext/chat/prompts.mjs](../ext/chat/prompts.mjs) |
 | Chats: history, attachments, runs | [ext/chat/chats.mjs](../ext/chat/chats.mjs) |
 | Workflows: recording, redaction, skill text; replay; outline parser | [ext/workflow/workflows.mjs](../ext/workflow/workflows.mjs), [replay.mjs](../ext/workflow/replay.mjs), [elements.mjs](../ext/workflow/elements.mjs) |
 | GIF recording and encoder | [ext/capture/gif.mjs](../ext/capture/gif.mjs), [encoder.mjs](../ext/capture/encoder.mjs) |
@@ -59,7 +68,19 @@ From Prompts 2 and 3, still valid:
 - A chat is a session of kind `chat`. A run is one `claude -p` process per message in a job object, with Companion tools only, joined to its chat by a ticket that works once. Skill files are written only after a preview. The list of options is in [Chat.cs](../host/native/Chat.cs).
 - `router.call(..., { user: true })` opens the tools that are for the user only (`get_selection`) and waives no other check.
 
-New in Prompt 6:
+New in Prompt 7:
+
+- **Site rules** (`storage.local.siteRules` `{block, ask, allow}`, hosts): `ruleFor` in rules.mjs is the only judge. `authorize`, `authorizeFrame`, `allowedSite` (opening, navigating, granting, approving), the tab list, history and bookmarks ask it. `setRules` takes blocked origins and frames out of every grant and suspends what is there. Rules that cannot be read are no rules: `router.unreadable` refuses everything until they are, or the user resets them.
+- **Order of codes** in `authorize`: `site_blocked` and `restricted_page` come before `grant_suspended`, as the matrix says.
+- **File, shell and web tools of a chat** (`chat.tools`, off at first, never copied to a new chat): the helper adds `--tools`, an `ask` rule for each of them, `--permission-mode manual` and `--permission-prompt-tool mcp__firefox-companion__chat_permission`, and `FC_CHAT_TOOLS` for the MCP server of that run, which then lists that tool. `Chats.permission` asks on the ordinary card: only in a run of that chat that began with the switch on, only the tools of `CHAT_TOOLS` (the same list as `Offered` in Chat.cs), the whole input, hidden characters written out, at most 20,000 characters, and the switch again after the card. Anything but an allow is answered as a deny. The outcome becomes done with the tool's result. A pause ends such a run.
+- **Levels:** `router.setLevel` ends acting calls of that tab when it goes down. `call.level` holds the level of a call.
+- **Clipboard:** group `clipboard`, `api.clipboard`. `session.copied` is what ctrl+v inserts; nothing reads the clipboard.
+- **Lists of a page** (role combobox or listbox, aria-haspopup listbox): `choose` in content.js, through `form_input`.
+- **MCP over stdio:** a line ends at \n only, and U+2028 and U+2029 are escaped on the way out, also in the message to Claude Code.
+- **Content policy** of the add-on: `default-src 'none'`; no server can be reached from its pages.
+- **Limit:** 120 calls of one session in a minute. Test clients pace themselves (`McpClient.pace`).
+
+From Prompt 6, still valid:
 
 - **Files of an installation:** `install.json` (pipe, made once), `key.bin` (made once), `installed.json` `{version, protocol, files: {name: sha256}}`, program files named in `Names` of Setup.cs, `native-manifest*.json`, `claude-code.txt` (only if the installer registered the server; holds CLAUDE_CONFIG_DIR of that moment or nothing), `setup\` while an installation runs.
 - **Exchange of files:** new files complete in `setup\new-*`, then `setup\journal.txt` (folder of the old files, then `=name` for a file that was there and `+name` for a new one), then each old file to `setup\old-*` and the new one into its place. The journal exists: the old version counts. Deleting it commits.
@@ -100,20 +121,102 @@ From Prompt 4, still valid:
 
 ## Packaged artifacts
 
-Version 0.5.0, protocol 4, from `c41fffa`, not signed. Since `d3483b0` only the mail add-on and CONTENTS.txt changed; the other hashes are the same. `npm run release` makes them; `release/` is not in Git. SHA-256:
+Version 0.6.0, protocol 4, from `b750ec3`, not signed. `npm run release` makes them; `release/` is not in Git. SHA-256:
 
 | Path | What | SHA-256 |
 |---|---|---|
-| `release/FirefoxCompanionSetup-0.5.0.exe` | per-user installer, upgrade, doctor, uninstall | `28e976f332da96bf8f13ad66e53d060e59fa68ac31d2f23057f0777e000a7deb` |
-| `release/firefox-companion-0.5.0-unsigned.xpi` | everyday Firefox add-on | `7a8bf9422996115978f2c621620041362632f1e1c6cd2507bb8e3cddba2d4a52` |
-| `release/firefox-companion-0.5.0.mcpb` | Claude Desktop bundle | `0eab94711c5545ae8971fb99e742e755a96905168a654f3b22546b59f354d63a` |
-| `release/optional/firefox-companion-optional-0.5.0.zip` | isolated Firefox, Windows input, remote link; separate | `52ec5fa67d443a7356c7815c8f1a97aff643573c2941eca529afa3ae04e6b0cd` |
-| `release/optional/firefox-companion-mail-0.5.0-unsigned.xpi` | Thunderbird add-on; separate | `6ab3b879144341f79071c7ad8e74944ae3e0e784be2fe58a3006d002c77a112d` |
-| `release/CONTENTS.txt` | hashes of every file inside | `f1867b18d6d4ea09932708dc720fdd68918c19d1043e9a09fc025665b040583c` |
-| `release/NOTICE.txt` | license state, third-party code (none), trademarks | `1c81f84631bbf54a6ca447956db848f91a00dcdca9efc08a482b6abab520e18f` |
-| `release/SETUP.md` | for users | `d0a73c365d59d9711c5c56f835b116168dc79ca72929f0983b2d1c894b6ff13b` |
+| `release/FirefoxCompanionSetup-0.6.0.exe` | per-user installer, upgrade, doctor, uninstall | `e11f0f4212e411f57a3821fc9ebdefed265e589c6485b036f0bded726b764650` |
+| `release/firefox-companion-0.6.0-unsigned.xpi` | everyday Firefox add-on | `6390fef9d4ec8e076e4a38f760222e88a3e3f8011a3c4c2fa8acb81ee9478f1e` |
+| `release/firefox-companion-0.6.0.mcpb` | Claude Desktop bundle | `bef5208b11acfffe2e15696f2a8a85a0071242bc2720c529dc4ec504d376534b` |
+| `release/optional/firefox-companion-optional-0.6.0.zip` | isolated Firefox, Windows input, remote link; separate | `1e2b0bd4766eeabd9b485a38393e142fb85bcc32f10adc42ab8413cbc7d3be6f` |
+| `release/optional/firefox-companion-mail-0.6.0-unsigned.xpi` | Thunderbird add-on; separate | `5557abeeb901e8dbd630ec0a1fd40b21c9ecd529028f1677c8a6becf6402e166` |
+| `release/CONTENTS.txt` | hashes of every file inside | `a6aa494bbe31fa0e12ff14a7d7a4e1098a30084ae794a56dd2b659f25b87e8cd` |
+| `release/NOTICE.txt` | license state, third-party code (none), trademarks; unchanged since 0.5.0 | `1c81f84631bbf54a6ca447956db848f91a00dcdca9efc08a482b6abab520e18f` |
+| `release/SETUP.md` | for users | `4997a7c7b3517cb987c9bc20277094193b9eb6079ed39843f88f50b4117de312` |
 
-`SHA256SUMS.txt` lists the same. Builds in this folder and in fresh clones with autocrlf on, one in a path with spaces, gave the same bytes, programs included (csc 4.8 of this Windows). The developer build is not in `release/`; packing stops at a trace of it.
+`SHA256SUMS.txt` lists the same. The working folder, a clone with autocrlf on in a path with a space, and a plain clone gave the same bytes, programs included (csc 4.8 of this Windows). The developer build is not in `release/`; packing stops at a trace of it. The everyday package, the mail add-on, the optional programs and the developer build are four separate things, and none contains another.
+
+### Results of Prompt 7
+
+Windows 11 build 26300, without elevation, Firefox 160.0.1 release, Node 26.12.1, Claude Code 2.1.302 (haiku for the live runs), Claude Desktop not run (6.28899.6 when Prompt 6 read its files), on 2026-11-25. The user's own Firefox ran all the time and was not touched: every test Firefox ran with `-no-remote` and a profile in the temp folder. Complete output of each run: `test-results/final/` (not in Git).
+
+| Command | Kind of evidence | Result on `b750ec3` |
+|---|---|---|
+| `npm test` | simulated, and package checks | 129 of 129 |
+| `npm run test:integration` | real helper, pipes, server; Firefox played by the test; Claude Code a test double | 54 of 54, and 54 of 54 in each of 10 more runs. On the untouched `67b4e72`: 51 of 51 in each of 20 runs |
+| `npm run test:install` | **packaged**: setup program, files, registry, pipes; Firefox played | 21 of 21 |
+| `npm run test:packaged` | **packaged** in real Firefox, headless | 16 of 16, with the upgrade from 0.5.0 new |
+| `npm run test:firefox`, `:companion`, `:control`, `:audit`, `:advanced`, `:developer` | development build in real Firefox, headless | 33 of 33, 27 of 27 (three times, and twice with half of the processors busy), 24 of 24, 26 of 26, 20 of 20, 4 of 4 |
+| `npm run test:desktop` | **visible Firefox** on the desktop, nobody at the computer | 6 passed, 2 not run (they need a user or a window in front): `test-results/desktop-idle.json`. |
+| `npm run test:live-audit` | **live and paid**, haiku, real Firefox headless | exported skill; file and shell tools off, denied, allowed; PDF and picture: all passed, run again on the final candidate. A skill run cost 0.006 USD. Chats leave transcripts in the folder of Claude Code of this user; nothing else of the user was written |
+| `test:claude`, `test:chat`, `test:milestone` (live) | not run again: their paths (standalone server, chat, resume) ran in `test:live-audit` on the candidate | Prompt 5 |
+| `web-ext lint --warnings-as-errors` 10.8.0 on the unpacked .xpi | **packaged**, official linter, from the local npm cache | Firefox package: 0 errors, 0 warnings, 0 notices. Thunderbird package: 0 errors and the same 4 warnings |
+| `mcpb unpack`, `validate`, `info` 2.1.2 | **packaged**, official tool | unpacks, manifest valid, "Not signed". Claude Desktop itself was not used |
+| `node .opus-inbox/audit_tools.mjs check-parity` | documents | OK |
+| 30 new guards taken out one at a time, in a copy | control of the new unit tests, simulated | 29 noticed at once, 1 (frames that leave a grant under a rule) after its test was made stricter |
+| Signed build | none exists | open |
+
+**The failure of Prompt 6.** One of its runs of `test:integration` failed (14 of 15 passed in its record) in "run: the documented options in a folder of the helper"; the message was not kept. It did not come back in 20 runs of the untouched `67b4e72`. With every processor busy, the same test failed in 8 of 12 runs, each time with this assertion: `assert.deepEqual(hello.map((b) => b.ticket), [r.ticket])`, actual `[]`, expected one ticket (output in `test-results/integration-race/`). The test double of Claude Code ended before the MCP server of that run had logged in to the pipe. It is a race of the test, and the test now waits for the login: 12 of 12 under the same load. Whether the failure of Prompt 6 was this one is **not known**, because its message was not kept; it is the same test. No product defect was found behind it.
+
+Other failures on the way, on earlier states of the candidate, with logs in `test-results/before-final/`: `test:packaged` 12 of 16 once, because a click on a switch of the old add-ons did not arrive; 16 of 16 in every run since. `test:companion` while the mutation runs loaded the computer: twice a click on Stop missed (fixed, below), and **once four replay checks ended with "The element of this step is not on the page". That one did not come back in 5 further runs, 2 of them under load, and its cause is not known.**
+
+After the runs: no registration, no entry of a test in the temp folder, no helper and no test Firefox was left. `%LOCALAPPDATA%\FirefoxCompanion` does not exist. Three folders `fc-claude-config`, `fc-docs` and `fc-empty` in the temp folder are older than this audit and were left.
+
+### Found and fixed by the audit
+
+| Defect | Since | How it was found | Fix and its test |
+|---|---|---|---|
+| `tabs_create` with `duplicateOf` gave a grant for the origin that the tab showed at that moment, also when it had just left the granted one | Prompt 4 | reading | origin compared (U, failed before) |
+| `windows_close` closed a window with a tab that the user had taken over or was busy with; `tabs_close` a tab that was handed to the user | Prompt 4 | reading | both refuse (U, failed before; F) |
+| After the user closed the window of a session, its `tabs_create` failed for good | Prompt 4 | reading | closed windows are forgotten (U, failed before; F) |
+| A call whose text held U+2028 or U+2029 was never answered: the line reader of Node ends a line there. Nothing could be smuggled in, because quotes are escaped | Prompt 2 | a hostile client name in the audit suite | own line reader, escapes on the way out (I, failed on `67b4e72`) |
+| A card put a value of several lines into one line, so a second command would read as arguments of the first; a long card pushed its buttons away | Prompt 2 | reading, for the new shell tools | line breaks kept, long values scroll, their size is named (U, F) |
+| A file or a choice made right after New went to the chat before | Prompt 3 | two tests | the new chat comes before the answer, and what follows waits for it (F) |
+| Stop moved away under the pointer while text streamed in | Prompt 3 | the companion suite under load | Stop is above the messages (F) |
+| Damaged site rules counted as none; uninstall left a new file of chats | Prompt 7 | audit suite | fail closed (F), file listed (I) |
+| The sidebar was not parsed by any test but the Firefox suites | Prompt 2 | a broken line | every shipped script is parsed (U) |
+
+### Review of authorization and recovery
+
+| Area | Result |
+|---|---|
+| Pipe and key file | access lists name the current user only, network path denied, existing pipe and Everyone stop the host, doctor names the file (I, run again). **Open: another Windows account** |
+| Session identity | IDs from the host; tickets of chat runs work once; a client cannot name itself as another kind; 205 unknown actions over an authenticated pipe refused (F) |
+| Tab and frame grants, origin changes | run again (F); new: copies, windows, levels, browser pages, site rules |
+| Private windows | run again (F): no list, count, log or lost grant without the second tick; downloads stay private (U) |
+| Upload scope | run again (I, F): listed folders only, by handle, checked at each read; a key outside is path_not_allowed |
+| Redaction, recording defaults | run again (U, F): secret fields, cookies, tokens; text is asked for at replay, also by the exported skill (live) |
+| Take over, pause, stop, revoke | each ended a waiting call 39 to 42 ms after the click (measured); queued actions never start (U, F); a pause also ends chat runs that may have a command under way |
+| Optional and remote paths | off after install and after each upgrade (PI, PF); off, revoke and stop end queued backend actions before they start (F, run again); pairing, expiry and revocation (I, F on one computer) |
+| Recovery | helper killed, Firefox closed, add-on restarted, interrupted install, damaged settings: run again |
+| New limits to know | an allowed shell command can do what the user can do, and a stop cannot take back what it did. Ask rules of Claude Code are what brings each call to the card: a Claude Code that ignores them would run read-only commands without a card, so the live check belongs to each new version |
+
+### Compared with the sources
+
+Companion was measured headless on this computer with local pages (`test-results/measure.json`). The others were not run: FoxPilot is installed in the user's everyday Firefox, which must not be changed, and the others would have to be downloaded and installed. What is said of them is from their instructions or the source audit at the pinned commits, and nothing of it was measured.
+
+| Workflow | Companion, observed | Other, not measured |
+|---|---|---|
+| Everyday control (FoxPilot): read a form, set a field, send it, know the outcome | Setup: installer, add-on, Connect, attach a tab with one question of Firefox. 4 calls and 2 cards, 447 ms without the cards; in one batch 1 call after the read and 2 cards, 359 ms. The reply said "navigated" and the page confirmed one save | Its instructions ask for a fresh snapshot after each action, so list, snapshot, fill, snapshot, click, snapshot: 6 calls and no card. Its permission is per site, not per tab (02 in "Permission boundaries") |
+| Action outcome | dispatched and observed are apart; a dead button says that nothing changed (F) | not measured |
+| Sidebar and recording (ccfox) | chat, history, resume, recording, replay with a card for each step, export as a skill that a model ran (live) | sidebar chat (01-F16) and a mode that acts without asking (01 in "Permission boundaries"); not run |
+| Background and several profiles (Agent F) | read, navigate, open, read and close in the background: 0 switches of the tab in front (F). On the visible desktop another program stays in front (D, Prompt 5). Two profiles: ambiguous, pick, no grant carried over (F) | any connected profile, the focused tab is the default (03); not run |
+| Approvals (Inari MCP) | a card for each action, bound to element, value, origin and one call; 500 ms guard; denied, late and swapped ones do nothing (F) | approval bound to tool, site and argument hash (07); not run |
+| Reconnect | new helper 1.1 s after it was killed, next call session_ended, grants back with one click (F) | not measured |
+| Pause and revoke | pause 41 ms, take over 39 ms, stop 42 ms, revoke 39 ms from the click to the end of the call (F) | not measured |
+
+### Checks kept apart
+
+| Check | State | Needs |
+|---|---|---|
+| Claude Desktop | manifest valid, server started as the manifest says reaches the helper (PI, PF). **Not verified**: not installed there | yes of the user, or a test sign-in (check 11) |
+| Thunderbird | lint: 4 warnings, one of them the missing data declaration; name length fixed in Prompt 6. Mocked and played only. **Not run in Thunderbird, not submitted** | Thunderbird and a dummy account (check 8); declaration and store review by the owner |
+| AC-03, AC-04 | **open** for another account; the rest run again. This Windows has other enabled accounts, none was used and none was created | their user, with the steps of check 1 |
+| AC-06 | **open** for a restart with the add-on staying installed | a signed build |
+| Remote link | works on one computer (I, F); **not tested between two** | a second computer, its firewall (check 9) |
+| Public name | "`<name>` for Firefox" in the policies, also those of 2026-12-01, and in the trademark guidelines, which name "Firefox NewGadget Extension" as not allowed; read on 2026-11-25. **To decide** | owner |
+| Add-on IDs, license, data declaration, signing | **to decide**: IDs are placeholders; NOTICE says no license; bookmarksInfo, searchTerms, personalCommunications; API key and certificate | owner, RELEASE.md |
+| Claude subscription | Legal and compliance, read on 2026-11-25: a user may sign in to the unmodified Claude Code with their own subscription; a third party may not offer claude.ai login or route requests through plan credentials for its users; running Claude Code in a product needs the Commercial Terms. `--bare`, which never reads a subscription login, is to become the default of `claude -p`. **To decide** | owner |
 
 ### Results of Prompt 6
 
@@ -143,7 +246,7 @@ What `test:install` and `test:packaged` show, by what Prompt 6 named:
 |---|---|---|
 | Fresh install | only its own files, one registration, one entry in Settings, again: no change; standard folder through the questions | add-on first, then the installer |
 | Helper discovery | registration and manifest, path `Jörg Müller & Söhne` | found by itself 1 s after the installer ended |
-| Pairing | key proved both ways, doctor without a session, wrong key named | every hop reports 0.5.0 |
+| Pairing | key proved both ways, doctor without a session, wrong key named | every hop reports its version |
 | Permission setup | | declined: no grant; accepted: grant, and one approved click arrives once |
 | cookies | optional in the manifest | not given at install; container refused, after the button it opens; reading stays off |
 | Missing helper | client says not_installed and names the installer | sidebar too, and both go on after an install |
@@ -255,7 +358,7 @@ AC-01, AC-02, AC-05, AC-07, AC-08 and AC-09 are met (AC-02 with the temporary ad
 - FC-TAB-32 was deferred and is built, because Prompt 4 asked for a separate grant.
 - A reopened tab has no history (FC-DATA-15). Frames of the same origin are shown in pictures (FC-SHOT-08).
 
-Not built from the areas of Prompt 4: custom comboboxes (FC-ACT-14), strokes, upload of a screenshot, catching a file chooser, consent banners, sign-in notice, locators as arguments, articles as Markdown, links, HTML, element details, page summary, comparison, quality check, network idle, browser events, several addresses, filters and details of tabs, moving, pinning, muting, unloading and waking tabs, changes of tabs at the end of a reply, changing bookmarks, clipboard, site rules, 120 calls per minute, a capture queue, zoom, element and full-page pictures, `expect` in a batch, `switch_browser`, `ask_user`. Element details are FC-DBG-10 now.
+Not built from the areas of Prompt 4: strokes, upload of a screenshot, catching a file chooser, consent banners, sign-in notice, locators as arguments, articles as Markdown, links, HTML, page summary, comparison, quality check, network idle, browser events, several addresses, filters of the tab list, unloading and waking tabs, changes of tabs at the end of a reply, changing bookmarks, a capture queue, zoom, element and full-page pictures, `expect` in a batch, `switch_browser`, `ask_user`. Element details are FC-DBG-10 now. Each is a row in "Release audit", Outstanding rows, with where to build it. Built by Prompt 7 from that list: custom comboboxes, details of a tab, moving, pinning and muting, clipboard, site rules, 120 calls per minute.
 
 Not built from the areas of Prompt 5: preferences, privileged script, other add-ons and process output of the isolated Firefox (FC-DBG-12); keys, dragging and frames of Windows input; uploads and WebMCP in isolated tabs; HTML drag and drop there (Firefox does not start it from BiDi input); bodies there; a relay for the remote link; page requests (FC-DATA-13); a first-run page (FC-GRANT-24); conditions of schedules and notices outside the sidebar.
 
@@ -268,28 +371,28 @@ Still true from Prompt 3: skills and agents are listed only after the first mess
 ## Blockers and open checks
 
 1. Second Windows account (AC-03, AC-04). Use an existing second account; none was created:
-   1. First user: `release\FirefoxCompanionSetup-0.5.0.exe install --home C:\Users\Public\fc-acl-test`, load the add-on, press Connect, note the pipe name in `C:\Users\Public\fc-acl-test\profiles\<id>.json`.
+   1. First user: `release\FirefoxCompanionSetup-0.6.0.exe install --home C:\Users\Public\fc-acl-test`, load the add-on, press Connect, note the pipe name in `C:\Users\Public\fc-acl-test\profiles\<id>.json`.
    2. Second user: `Get-Content C:\Users\Public\fc-acl-test\key.bin` must be denied.
    3. Second user: `$c = New-Object IO.Pipes.NamedPipeClientStream('.', '<name>', 'InOut'); $c.Connect(2000)` must fail with "Access to the path is denied".
-   4. First user: press Disconnect, then `release\FirefoxCompanionSetup-0.5.0.exe uninstall --home C:\Users\Public\fc-acl-test`.
+   4. First user: press Disconnect, then `release\FirefoxCompanionSetup-0.6.0.exe uninstall --home C:\Users\Public\fc-acl-test`.
 2. Restart of Firefox (AC-06, FC-GRANT-16, FC-UI-03): after the user signs a build, attach a tab, start a chat, press Stop everything, restart Firefox with session restore. Expected: no grant, paused, the helper reconnects, the chat is listed and goes on.
-3. Visible desktop: focus and minimized windows are observed now (FC-TAB-11, FC-SHOT-01). Open there: clicks and typing while another program is in front, the isolated Firefox with a window, and one JSON record of the idle mode: leave the computer alone for a minute and run `npm run test:desktop`.
-4. Open from Prompt 3, not worked on: saved prompts (FC-AGT-10), the switch for file and shell tools in a chat (FC-AGT-02), the run of an exported skill by a model (FC-AGT-08).
+3. Visible desktop: focus and minimized windows are observed (FC-TAB-11, FC-SHOT-01), and the record of the idle mode exists (`test-results/desktop-idle.json`, 2026-11-25). Open there: clicks and typing while another program is in front, the isolated Firefox with a window, Windows input while somebody uses the computer (run `npm run test:desktop` and keep working), a file pasted into the chat and the picture on the clipboard of Windows (they need the yes of the user to overwrite that clipboard).
+4. Prompt 3: saved prompts (FC-AGT-10), the switch for file and shell tools (FC-AGT-02) and the run of an exported skill (FC-AGT-08) are done; Status of each says what is missing. One replay failure under load is unexplained ("Results of Prompt 7").
 5. Public distribution with a subscription sign-in: a decision for the user. Event page wake (D1): an inference, not tested.
 6. Mozilla review of `incognito: spanning`, of the optional cookies, webRequest and webRequestBlocking, of WebMCP offered by an add-on, and the data declaration (cookies and storage of sites; mail in the Thunderbird add-on): not asked.
 7. Not tried: screen reader, two windows with the sidebar, real sites with editors and drag targets (open question 16), an add-on update with stored data of a real user. From 0.3.0 and 0.4.0 in a test profile: PF; Firefox leaves cookies given when it turns from required to optional.
-8. Thunderbird (FC-DATA-20): not installed, and nothing was downloaded. With it: `release\FirefoxCompanionSetup-0.5.0.exe install --thunderbird`, load `release\optional\firefox-companion-mail-0.5.0-unsigned.xpi` as a temporary add-on, Connect, share one account with a client of `server.mjs --mail`, use a dummy account.
+8. Thunderbird (FC-DATA-20): not installed, and nothing was downloaded. With it: `release\FirefoxCompanionSetup-0.6.0.exe install --thunderbird`, load `release\optional\firefox-companion-mail-0.6.0-unsigned.xpi` as a temporary add-on, Connect, share one account with a client of `server.mjs --mail`, use a dummy account.
 9. Remote link between two computers, and what a firewall does with it. Developer Edition with the developer build.
 10. Signing and public release: [RELEASE.md](RELEASE.md). Prerequisites, all of the owner: public name and the two add-on IDs (fixed by the first submission), license and copyright holder, listed or self-distributed, data declaration (bookmarksInfo, searchTerms, personalCommunications), Mozilla account with an API key, a code-signing certificate, and the subscription question (5).
-11. Claude Desktop itself: installing the .mcpb file changes the user's own Claude Desktop, so it was not done. With the user's yes, or a Claude Desktop with a test sign-in: Settings, Extensions, Advanced settings, Install Extension, `release\firefox-companion-0.5.0.mcpb`, then ask for the connection status with the helper installed. Claude Desktop 6.28899.6 starts Node bundles in its own Node 24.22.3 with the arguments of the manifest (read from its files). Unsigned bundles: not tried.
-12. Lint and validation ran on 2026-11-25 with the download the user allowed (npm, pinned, without install scripts, in a scratch folder). Open: the data declaration of the mail add-on, and the review of the Thunderbird add-ons site.
-13. Not tried: Windows SmartScreen and security software with the unsigned program, Windows before 11, Firefox older than 160 or absent, an account with special letters (only the folder had them), the Uninstall button in Settings by hand (its command was run), an installation while a chat runs, power loss (kills only), a full disk.
+11. Claude Desktop itself: installing the .mcpb file changes the user's own Claude Desktop, so it was not done. With the user's yes, or a Claude Desktop with a test sign-in: Settings, Extensions, Advanced settings, Install Extension, `release\firefox-companion-0.6.0.mcpb`, then ask for the connection status with the helper installed. Claude Desktop 6.28899.6 starts Node bundles in its own Node 24.22.3 with the arguments of the manifest (read from its files). Unsigned bundles: not tried.
+12. Lint and validation ran again on the 0.6.0 files, with the pinned tools from the local npm cache. Open: the data declaration of the mail add-on, and the review of the Thunderbird add-ons site.
+13. Not tried: more than one Firefox window with several chats at work, real sites, Windows SmartScreen and security software with the unsigned program, Windows before 11, Firefox older than 160 or absent, an account with special letters (only the folder had them), the Uninstall button in Settings by hand (its command was run), an installation while a chat runs, power loss (kills only), a full disk.
 14. Limits: a file that a later version drops is not deleted by an upgrade. Servers that a client started and optional programs run on after an uninstall until their owner ends them. The optional programs have no installer.
 
 ## Try it by hand
 
-1. `npm run release`, then start `release\FirefoxCompanionSetup-0.5.0.exe` and choose `i`. `d` checks, `u` removes.
-2. In Firefox open `about:debugging#/runtime/this-firefox`, choose Load Temporary Add-on, and pick `release\firefox-companion-0.5.0-unsigned.xpi`. It is gone after a restart of Firefox.
+1. `npm run release`, then start `release\FirefoxCompanionSetup-0.6.0.exe` and choose `i`. `d` checks, `u` removes.
+2. In Firefox open `about:debugging#/runtime/this-firefox`, choose Load Temporary Add-on, and pick `release\firefox-companion-0.6.0-unsigned.xpi`. It is gone after a restart of Firefox.
 3. Open the sidebar with the toolbar button and press Connect. Tabs: attach this tab; Frames shows frames of other sites; Take over and Give back hold one tab; Stop everything holds all of it. Browser data has the switches, the upload folders and the name of this profile.
 4. In PowerShell, `claude mcp add -s user firefox-companion -- node "$env:LOCALAPPDATA\FirefoxCompanion\mcp\server.mjs"` registers the MCP server. It needs no chat.
 
@@ -298,6 +401,7 @@ Still true from Prompt 3: skills and agents are listed only after the first mess
 - `router.mjs` holds every rule. A new tool is an entry in `TOOLS`, a handler, and a sample in `router.test.mjs`. A new switch is a line in `GROUPS`.
 - A new backend is a name in `KNOWN` (backends.mjs) and a program with `Backend` of `backends/link.mjs`.
 - `r.page(call, origin, {cmd}, frame)` is the only way into a page, also of an isolated tab, which loads the same `content.js`.
+- `test/firefox/audit.mjs "<part>"` and `test/live/audit.mjs skill|chat|files` are the checks of Prompt 7.
 - `test/firefox/advanced.mjs "<part>"` runs its setup and the checks that match.
 - `test/firefox/control.mjs` with the pages of [fixtures.mjs](../test/firefox/fixtures.mjs) is the place for further real checks; `node test/firefox/control.mjs "<part of a name>"` stops after that check.
-- Not decided: whether file and shell tools in a chat get the approval card through `--permission-prompt-tool`.
+- A tool that a chat run may ask for beyond Companion is a name in `CHAT_TOOLS` (chats.mjs) and in `Offered` (Chat.cs), and needs the live check of `npm run test:live-audit`.
