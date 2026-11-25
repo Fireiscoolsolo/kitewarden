@@ -1104,15 +1104,15 @@
     pill.style.cssText = 'all:initial;position:fixed;right:12px;bottom:12px;z-index:2147483647;pointer-events:auto';
     const root = pill.attachShadow({ mode: 'closed' });
     const box = document.createElement('div');
-    box.style.cssText = 'display:flex;gap:8px;align-items:center;max-width:70vw;padding:6px 10px;border-radius:16px;background:#1c1b22;color:#fff;font:13px/1.3 system-ui,sans-serif;box-shadow:0 1px 6px #0006';
+    box.style.cssText = 'display:flex;gap:8px;align-items:center;max-width:70vw;padding:7px 8px 7px 12px;border-radius:10px;background:#16232b;color:#e6edf0;border:1px solid #33424b;font:13px/1.3 system-ui,sans-serif;box-shadow:0 1px 6px #0006';
     const dot = document.createElement('span');
-    dot.style.cssText = `flex:none;width:10px;height:10px;border-radius:50%;background:${kind === 'work' ? '#45a1ff' : '#e22850'}`;
+    dot.style.cssText = `flex:none;width:10px;height:10px;border-radius:50%;background:${kind === 'work' ? '#58c7b6' : '#ff5c50'}`;
     const text = document.createElement('span');
     text.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
     text.textContent = words;
     const stop = document.createElement('button');
     stop.textContent = label;
-    stop.style.cssText = 'flex:none;font:inherit;color:inherit;background:#fff3;border:0;border-radius:10px;padding:2px 10px;cursor:pointer';
+    stop.style.cssText = 'flex:none;font:inherit;color:inherit;background:#2f3e47;border:0;border-radius:7px;padding:4px 10px;cursor:pointer';
     stop.addEventListener('click', (e) => e.isTrusted && browser.runtime.sendMessage(message));
     box.append(dot, text, stop);
     root.append(box);

@@ -4,10 +4,21 @@
     <meta charset="utf-8" />
     <title>Firefox Companion</title>
     <style>
-      body { font: message-box; max-width: 46em; margin: 1em auto; padding: 0 1em; color: CanvasText; background: Canvas; }
-      .card { border: 2px solid AccentColor; border-radius: 6px; padding: 0.5em 1em; margin: 0.5em 0; }
-      label { display: block; }
-      h2 { font-size: 1em; }
+      :root { color-scheme: light dark; --paper: light-dark(#fbfcfc, #171f25); --panel: light-dark(#eef3f4, #202b32); --ink: light-dark(#16232b, #e6edf0); --soft: light-dark(#51626c, #a3b3bc); --line: light-dark(#d5dfe2, #33424b); --pine: light-dark(#0b6e63, #58c7b6); --warn: light-dark(#b25e00, #f0b455); --permit: light-dark(#fff7e8, #2e2617); }
+      body { font: 14px/1.5 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; max-width: 44em; margin: 0 auto; padding: 24px 20px 48px; color: var(--ink); background: var(--paper); }
+      h1, h2 { font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; font-weight: 600; line-height: 1.3; }
+      h1 { font-size: 20px; margin: 0 0 4px; }
+      h2 { font-size: 15px; margin: 24px 0 6px; padding-top: 16px; border-top: 1px solid var(--line); }
+      p { margin: 0 0 8px; }
+      ul { padding: 0; list-style: none; }
+      li { padding: 6px 0; border-bottom: 1px solid var(--line); }
+      #state { color: var(--soft); }
+      .card { border: 1.5px solid var(--warn); border-radius: 10px; background: var(--permit); padding: 12px 14px; margin: 10px 0; }
+      .card h2 { margin: 0 0 8px; padding: 0; border: 0; }
+      label { display: block; padding: 3px 0; }
+      button { font: inherit; min-height: 32px; padding: 4px 12px; margin: 0 6px 6px 0; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--ink); cursor: pointer; }
+      button:hover { border-color: var(--soft); }
+      :focus-visible { outline: 2px solid var(--pine); outline-offset: 2px; }
     </style>
     <script type="module" src="page.mjs"></script>
   </head>

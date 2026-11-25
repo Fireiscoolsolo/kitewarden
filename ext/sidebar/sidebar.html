@@ -7,41 +7,50 @@
     <script type="module" src="sidebar.mjs"></script>
   </head>
   <body>
-    <div id="cards" aria-live="polite"></div>
-    <div id="requests" aria-live="polite"></div>
-
-    <header>
-      <h1 id="link-title" role="status">Starting</h1>
-      <p id="link-detail" class="sub"></p>
-      <p class="row">
-        <button id="connect" hidden>Connect</button>
-        <button id="disconnect" hidden>Disconnect</button>
-        <button id="pause" aria-pressed="false">Pause</button>
-        <button id="halt">Stop everything</button>
-        <button id="resume-work" hidden>Resume work</button>
-        <button id="reset-rules" hidden>Reset the site rules</button>
-        <!-- Last, so that it moves no other button when it appears. -->
-        <button id="retry" hidden>Retry now</button>
-      </p>
+    <div id="top">
+      <header>
+        <div class="bar">
+          <h1 id="link-title" role="status">Starting</h1>
+          <p class="row controls">
+            <button id="connect" hidden>Connect</button>
+            <button id="pause" aria-pressed="false">Pause</button>
+            <button id="halt">Stop everything</button>
+            <button id="resume-work" hidden>Resume work</button>
+            <button id="reset-rules" hidden>Reset the site rules</button>
+          </p>
+        </div>
+        <div class="bar">
+          <p id="link-detail" class="sub"></p>
+          <p class="row">
+            <button id="disconnect" class="quiet" hidden>Disconnect</button>
+            <!-- Last, so that it moves no other button when it appears. -->
+            <button id="retry" class="quiet" hidden>Retry now</button>
+          </p>
+        </div>
+        <nav aria-label="Parts">
+          <button data-show="chat" aria-current="page"><span class="i i-chat"></span>Chat</button>
+          <button data-show="tabs"><span class="i i-tabs"></span>Tabs</button>
+          <button data-show="workflows"><span class="i i-workflows"></span>Workflows</button>
+          <button data-show="activity"><span class="i i-activity"></span>Activity</button>
+          <button data-show="advanced"><span class="i i-advanced"></span>Advanced</button>
+        </nav>
+      </header>
+      <div id="cards" aria-live="polite"></div>
+      <div id="requests" aria-live="polite"></div>
+    </div>
+    <div id="notices">
       <p id="message" role="status"></p>
       <div id="halt-report" role="status"></div>
       <p class="row"><button id="move" hidden>Move the tab here</button></p>
-      <nav aria-label="Parts" class="row">
-        <button data-show="chat" aria-current="page">Chat</button>
-        <button data-show="tabs">Tabs</button>
-        <button data-show="workflows">Workflows</button>
-        <button data-show="activity">Activity</button>
-        <button data-show="advanced">Advanced</button>
-      </nav>
-    </header>
+    </div>
 
     <main data-panel="chat">
       <section aria-label="Chat">
-        <p class="row">
-          <label class="grow">Conversation <select id="chat-list"></select></label>
-          <button id="chat-new">New</button>
-          <button id="chat-delete">Delete</button>
-        </p>
+        <div class="bar pick">
+          <select id="chat-list" aria-label="Conversation"></select>
+          <button id="chat-new"><span class="i i-plus"></span>New</button>
+          <button id="chat-delete" class="icon" title="Delete this conversation"><span class="i i-trash"></span><span class="hide">Delete</span></button>
+        </div>
         <div id="chat-undo"></div>
         <!-- Above the messages, so that text that streams in does not move it away under the pointer. -->
         <p class="row">
@@ -49,6 +58,10 @@
           <button id="try-again" hidden>Try again</button>
         </p>
         <div id="chat-items" role="log" aria-label="Messages" tabindex="0"></div>
+        <div id="chat-empty">
+          <img src="empty-chat.svg" alt="" width="128" height="77" />
+          <p>Let Claude see a tab, then ask about it. Nothing is read until you attach it, and each action asks you first.</p>
+        </div>
         <div id="link-ask" role="status"></div>
         <p id="run-state" class="sub" role="status"></p>
         <div id="queue"></div>
@@ -59,23 +72,24 @@
             <button id="allow-act">Let Claude read and act</button>
           </p>
           <div id="draft" aria-live="polite"></div>
-          <label>Message <textarea id="prompt" rows="3" placeholder="Enter sends, Shift+Enter adds a line, Esc stops"></textarea></label>
-          <p class="row">
-            <button id="send">Send</button>
+          <div class="box">
+            <textarea id="prompt" rows="3" aria-label="Message" placeholder="Ask Claude. Enter sends, Esc stops"></textarea>
+            <div class="bar">
+              <p class="row" role="group" aria-label="Add to the message">
+                <button id="attach-page" class="icon" title="Add the text of this page"><span class="i i-page"></span><span class="hide">Page text</span></button>
+                <button id="attach-selection" class="icon" title="Add the selected text"><span class="i i-selection"></span><span class="hide">Selected text</span></button>
+                <button id="attach-shot" class="icon" title="Add a screenshot of this tab"><span class="i i-camera"></span><span class="hide">Screenshot</span></button>
+                <button id="attach-file" class="icon" title="Add a file"><span class="i i-file"></span><span class="hide">File…</span></button>
+              </p>
+              <button id="send">Send</button>
+            </div>
+          </div>
+          <p class="row picks">
             <select id="skill-pick" aria-label="Insert a skill" hidden></select>
             <select id="prompt-pick" aria-label="Insert a saved prompt" hidden></select>
           </p>
           <div id="prompt-blanks" role="group" aria-label="Blanks of the saved prompt"></div>
-          <fieldset>
-            <legend>Add to the message</legend>
-            <p class="row">
-              <button id="attach-page">Page text</button>
-              <button id="attach-selection">Selected text</button>
-              <button id="attach-shot">Screenshot</button>
-              <button id="attach-file">File…</button>
-            </p>
-            <input id="file" type="file" multiple hidden />
-          </fieldset>
+          <input id="file" type="file" multiple hidden />
         </div>
       </section>
       <details>

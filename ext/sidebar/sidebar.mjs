@@ -139,7 +139,7 @@ function drawGrants() {
   part('grants', data, (list) =>
     list.length
       ? list.map((g) => {
-          const li = el('li', {}, el('strong', { textContent: g.title || `Tab ${g.tabId}` }), el('span', { className: 'sub', textContent: `${g.origins.join(', ')} · ${g.frames.length ? `frames of ${g.frames.join(', ')} · ` : ''}${g.private ? 'private · ' : ''}${g.stopped ? 'with you · ' : ''}${g.level === 'act' ? 'read and act' : 'read'} · ${g.label} · ${g.state === 'active' ? 'active' : g.reason === 'permission' ? 'suspended: Firefox took the permission away' : g.state === 'pending' ? 'loading' : 'suspended: other site'}` }));
+          const li = el('li', { className: `pass ${g.level} ${g.stopped ? 'stopped' : g.state}` }, el('strong', { textContent: g.title || `Tab ${g.tabId}` }), el('span', { className: 'sub', textContent: `${g.origins.join(', ')} · ${g.frames.length ? `frames of ${g.frames.join(', ')} · ` : ''}${g.private ? 'private · ' : ''}${g.stopped ? 'with you · ' : ''}${g.level === 'act' ? 'read and act' : 'read'} · ${g.label} · ${g.state === 'active' ? 'active' : g.reason === 'permission' ? 'suspended: Firefox took the permission away' : g.state === 'pending' ? 'loading' : 'suspended: other site'}` }));
           const row = el('p', { className: 'row' });
           if (g.state === 'suspended' && g.now) row.append(onPress(el('button', { textContent: `Approve ${g.now}`, className: 'approve' }), () => approveOrigin(g.id, g.now, g.tabId)));
           if (g.state === 'active') row.append(onPress(el('button', { textContent: 'Frames…', className: 'frames' }), () => showFrames(g.id)));
