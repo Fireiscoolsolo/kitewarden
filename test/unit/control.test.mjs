@@ -534,6 +534,8 @@ test('site rules: block, only, and ask cover subdomains, stand above grants, and
   const h = call('search_history', { query: 'x' });
   await answer(true);
   assert.deepEqual((await h).result.entries.map((e) => e.title), ['H']);
+  await router.setRules(noRules());
+  assert.ok(!(await call('read_page', { tabId: 1 })).result.outline.includes('In frame 6'), 'a frame does not come back with the rule');
 
   await router.setRules(addRule(noRules(), 'ask', 'a.example'));
   let r = call('read_page', { tabId: 1 });

@@ -479,8 +479,8 @@ try {
     await sb.click('#queue .edit-waiting');
     await until('back', () => sb.eval('return document.getElementById("prompt").value === "second message"'));
     await until('no longer waiting', async () => (await sb.text('#queue')) === '');
-    // The button moves down while text streams in above it, so a click can miss.
-    await until('stopped', async () => (await sb.eval('return document.getElementById("stop").hidden')) || (await sb.click('#stop').catch(() => {}), false), 15_000, 400);
+    await sb.click('#stop');
+    await idle();
   });
 
   await check('FC-GRANT-25', 'the orders of a hostile page: each ends in a refusal or a card, and nothing happened', async (n) => {

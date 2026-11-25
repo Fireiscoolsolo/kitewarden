@@ -43,14 +43,15 @@
           <button id="chat-delete">Delete</button>
         </p>
         <div id="chat-undo"></div>
-        <div id="chat-items" role="log" aria-label="Messages" tabindex="0"></div>
-        <div id="link-ask" role="status"></div>
-        <p id="run-state" class="sub" role="status"></p>
-        <div id="queue"></div>
+        <!-- Above the messages, so that text that streams in does not move it away under the pointer. -->
         <p class="row">
           <button id="stop" hidden>Stop</button>
           <button id="try-again" hidden>Try again</button>
         </p>
+        <div id="chat-items" role="log" aria-label="Messages" tabindex="0"></div>
+        <div id="link-ask" role="status"></div>
+        <p id="run-state" class="sub" role="status"></p>
+        <div id="queue"></div>
         <div id="composer">
           <p id="chat-tab"></p>
           <p class="row">
