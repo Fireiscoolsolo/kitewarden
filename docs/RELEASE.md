@@ -22,7 +22,7 @@ Nothing is signed, submitted or published. This is the path, and what has to be 
 ## Before the first release: decisions and prerequisites
 
 1. Public name and icon, the two add-on IDs, the developer name.
-2. License. `NOTICE.txt` says that none is chosen; AMO asks for one when a listing is made. Copyright holder. Terms of the AI tool that made the icons and pictures: whether they may be distributed, and under what license.
+2. License: MPL-2.0, decided 2026-11-25 (`LICENSE`, `NOTICE.txt`). Choose the same in the listing of AMO. Open: the copyright holder, and where recipients of the programs get the source (MPL-2.0, 3.2). Terms of the AI tool that made the icons and pictures: whether they may be distributed, and under what license.
 3. Listed or self-distributed (open question 4). Privacy text; data declaration above.
 4. Public distribution around a subscription sign-in of Claude (open question 3; [Legal and compliance](https://code.claude.com/docs/en/legal-and-compliance) read again on 2026-11-25: unchanged in this point). Until then do not promote the sidebar chat as a feature of a public release.
 5. Accounts: Mozilla account with AMO API key; a code-signing certificate for Windows (Authenticode); optional a certificate for `mcpb sign`.

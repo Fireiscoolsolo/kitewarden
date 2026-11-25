@@ -6,8 +6,8 @@ Handoff after Prompt 7, the release audit (2026-11-25). Requirements, evidence a
 
 | Use | Verdict | What the evidence supports | Still blocked |
 |---|---|---|---|
-| Local testing by the owner, on this kind of computer | **Ready**, with the limits on the right | Every suite passed on the candidate `43e97e3`: units, integration, packaged artifacts with Firefox played by the test and in real Firefox, all Firefox suites headless. The visible desktop without a user and short live runs passed on it too, with two desktop checks not run (rows below). The Firefox suites of the development build and the integration suite ran on `49b42d6`, which differs only in `NOTICE.txt`. Install, upgrade from 0.5.0 and 0.4.0, interruption, doctor and uninstall work with the packaged files | The add-on is temporary and gone after each restart of Firefox. Cross-account denial (AC-03, AC-04) is not shown, so use it on a computer whose other accounts you trust. Claude Desktop, Thunderbird, two computers and real sites were not tried. File and shell tools of a chat are as strong as the user's own account: leave them off unless needed |
-| Public distribution | **Not ready** | Lint and validation of the packages are clean (the mail add-on has four warnings), builds are reproducible, the rules of Mozilla and Anthropic were read again | Public name, add-on IDs, license, terms of the artwork, data declaration, listed or self-distributed, and the subscription question are decisions of the owner. No signed build, so AC-06 is open. AC-03 and AC-04 are open. Mozilla has reviewed nothing. The policies of 2026-12-01 come into effect in days |
+| Local testing by the owner, on this kind of computer | **Ready**, with the limits on the right | Every suite passed, on the candidate `86a44b5` or with the same product code: units, integration, packaged artifacts with Firefox played by the test and in real Firefox, all Firefox suites headless. On it ran: units, install, packaged. The visible desktop without a user (two checks not run) and short live runs passed on `43e97e3`, the integration and Firefox suites of the development build on `49b42d6`. Since those only the license changed: `LICENSE`, `NOTICE.txt`, the license fields of package.json and of the bundle, and the field list of one install test. Install, upgrade from 0.5.0 and 0.4.0, interruption, doctor and uninstall work with the packaged files | The add-on is temporary and gone after each restart of Firefox. Cross-account denial (AC-03, AC-04) is not shown, so use it on a computer whose other accounts you trust. Claude Desktop, Thunderbird, two computers and real sites were not tried. File and shell tools of a chat are as strong as the user's own account: leave them off unless needed |
+| Public distribution | **Not ready** | Lint and validation of the packages are clean (the mail add-on has four warnings), builds are reproducible, the rules of Mozilla and Anthropic were read again | Public name, add-on IDs, copyright holder, terms of the artwork, data declaration, listed or self-distributed, and the subscription question are decisions of the owner. No signed build, so AC-06 is open. AC-03 and AC-04 are open. Mozilla has reviewed nothing. The policies of 2026-12-01 come into effect in days |
 
 ## Checkpoint
 
@@ -16,7 +16,7 @@ Handoff after Prompt 7, the release audit (2026-11-25). Requirements, evidence a
 - `feat/browser-control` = `70c9a70`, the end of Prompt 4 (code `6b0e049`).
 - `feat/optional-backends` starts there: two `wip:` commits, then **`0c95826`, the code and tests of the Prompt 5 results**, plus the commits that add this file and the last parity rows, up to `e46f5c5`.
 - Prompt 6 went on to `67b4e72` on the same branch: code `d3483b0`, lint fix `c41fffa`, version 0.5.0.
-- **Prompt 7 starts there. The final candidate is `43e97e3`, version 0.6.0, protocol 4**: code, tests and user documents that the results below belong to. The commit after it holds this file and the parity document.
+- **Prompt 7 starts there. The final candidate is `86a44b5`, version 0.6.0, protocol 4**: code, tests and user documents that the results below belong to. The commit after it holds this file and the parity document.
 - Nothing is signed, published or pushed, and no everyday Firefox profile was touched: every Firefox of the tests ran with `-no-remote` and a profile in the temp folder.
 - Prompt 1: the audit is complete and its checkers pass. The orchestrator's delivery was refused. Its record in `.claude/opus-orchestrator/` is unchanged and not in Git.
 
@@ -122,26 +122,27 @@ From Prompt 4, still valid:
 
 ## Packaged artifacts
 
-Version 0.6.0, protocol 4, from `43e97e3`, not signed. `npm run release` makes them; `release/` is not in Git. SHA-256:
+Version 0.6.0, protocol 4, from `86a44b5`, not signed. `npm run release` makes them; `release/` is not in Git. SHA-256:
 
 | Path | What | SHA-256 |
 |---|---|---|
-| `release/FirefoxCompanionSetup-0.6.0.exe` | per-user installer, upgrade, doctor, uninstall | `e11f0f4212e411f57a3821fc9ebdefed265e589c6485b036f0bded726b764650` |
-| `release/firefox-companion-0.6.0-unsigned.xpi` | everyday Firefox add-on | `084f578db9b3889c16ea64184be165bf4d0ce3bec508eb942d0e49da7c47266c` |
-| `release/firefox-companion-0.6.0.mcpb` | Claude Desktop bundle | `bef5208b11acfffe2e15696f2a8a85a0071242bc2720c529dc4ec504d376534b` |
-| `release/optional/firefox-companion-optional-0.6.0.zip` | isolated Firefox, Windows input, remote link; separate | `a887c5318431fe120d1b2fb5f482d5e153be6f445653f6c76e545ad04894fe2e` |
-| `release/optional/firefox-companion-mail-0.6.0-unsigned.xpi` | Thunderbird add-on; separate | `3077b99f74a07c58f6dc028cedf462e40afc96a8793af82b6cf5dbb1ca85ed21` |
-| `release/CONTENTS.txt` | hashes of every file inside | `78f0510a5b322245de6a1edfe6d3da45bf5400cd5d7295d67cc828bd82324c4a` |
-| `release/NOTICE.txt` | license state, third-party code (none), trademarks; unchanged since 0.5.0 | `1c81f84631bbf54a6ca447956db848f91a00dcdca9efc08a482b6abab520e18f` |
+| `release/FirefoxCompanionSetup-0.6.0.exe` | per-user installer, upgrade, doctor, uninstall | `2f9e22e22e7e9db87e80b1fa1cdfbb976b923f5a7a2b901a564f2e7c25ef35e2` |
+| `release/firefox-companion-0.6.0-unsigned.xpi` | everyday Firefox add-on | `b59ae112fd3f74c7ac8f1bcf2fb3de2c582d59f6b64c8d9cb19203df969f0adb` |
+| `release/firefox-companion-0.6.0.mcpb` | Claude Desktop bundle | `0ce01b3b4a81f2a83ec11645e075553e14598cc8f3f338acfb338616653c0cf1` |
+| `release/optional/firefox-companion-optional-0.6.0.zip` | isolated Firefox, Windows input, remote link; separate | `40c46b1f6b07f224a3523b54ec04235b25092e4d272808af7cfa1a1a0e2cd6a0` |
+| `release/optional/firefox-companion-mail-0.6.0-unsigned.xpi` | Thunderbird add-on; separate | `a075861a6978c3f7222681fd93624b2b7623bb805cf678903cc6c2e57e0263cb` |
+| `release/CONTENTS.txt` | hashes of every file inside | `07ded34a3a99d1c1590e0c344df83d7f66a5326e9bf1fab823490321f90493cd` |
+| `release/NOTICE.txt` | license (MPL-2.0), third-party code (none), trademarks | `4429e1cbedc646ad54b131c45229a718212a1ce5cde9a46edcbb73b75ad0f84e` |
+| `release/LICENSE` | text of MPL-2.0 | `1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5` |
 | `release/SETUP.md` | for users | `4997a7c7b3517cb987c9bc20277094193b9eb6079ed39843f88f50b4117de312` |
 
-`SHA256SUMS.txt` lists the same. The working folder, a clone with autocrlf on in a path with a space, and a plain clone gave the same bytes for `43e97e3`, programs included (csc 4.8 of this Windows). The developer build is not in `release/`; packing stops at a trace of it. The everyday package, the mail add-on, the optional programs and the developer build are four separate things, and none contains another.
+`SHA256SUMS.txt` lists the same. The working folder, a clone with autocrlf on in a path with a space, and a plain clone gave the same bytes for `86a44b5`, programs included (csc 4.8 of this Windows). The developer build is not in `release/`; packing stops at a trace of it. The everyday package, the mail add-on, the optional programs and the developer build are four separate things, and none contains another.
 
 ### Results of Prompt 7
 
 Windows 11 build 26300, without elevation, Firefox 160.0.1 release, Node 26.12.1, Claude Code 2.1.302 (haiku for the live runs), Claude Desktop not run (6.28899.6 when Prompt 6 read its files), on 2026-11-25. The user's own Firefox ran all the time and was not touched: every test Firefox ran with `-no-remote` and a profile in the temp folder. Complete output of each run: `test-results/final/` (not in Git).
 
-| Command | Kind of evidence | Result on `43e97e3` |
+| Command | Kind of evidence | Result on `86a44b5` |
 |---|---|---|
 | `npm test` | simulated, and package checks | 130 of 130 |
 | `npm run test:integration` | real helper, pipes, server; Firefox played by the test; Claude Code a test double | 54 of 54, and 54 of 54 in each of 10 more runs of the commit before. On the untouched `67b4e72`: 51 of 51 in each of 20 runs |
@@ -217,7 +218,7 @@ Companion was measured headless on this computer with local pages (`test-results
 | AC-06 | **open** for a restart with the add-on staying installed | a signed build |
 | Remote link | works on one computer (I, F); **not tested between two** | a second computer, its firewall (check 9) |
 | Public name | "`<name>` for Firefox" in the policies, also those of 2026-12-01, and in the trademark guidelines, which name "Firefox NewGadget Extension" as not allowed; read on 2026-11-25. **To decide** | owner |
-| Add-on IDs, license, data declaration, signing | **to decide**: IDs are placeholders; NOTICE says no license; bookmarksInfo, searchTerms, personalCommunications; API key and certificate | owner, RELEASE.md |
+| Add-on IDs, data declaration, signing | **to decide** (license decided 2026-11-25: MPL-2.0): IDs are placeholders; bookmarksInfo, searchTerms, personalCommunications; API key and certificate | owner, RELEASE.md |
 | Claude subscription | Legal and compliance, read on 2026-11-25: a user may sign in to the unmodified Claude Code with their own subscription; a third party may not offer claude.ai login or route requests through plan credentials for its users; running Claude Code in a product needs the Commercial Terms. `--bare`, which never reads a subscription login, is to become the default of `claude -p`. **To decide** | owner |
 
 ### Results of Prompt 6
@@ -385,7 +386,7 @@ Still true from Prompt 3: skills and agents are listed only after the first mess
 7. Not tried: screen reader, two windows with the sidebar, real sites with editors and drag targets (open question 16), an add-on update with stored data of a real user. From 0.3.0 and 0.4.0 in a test profile: PF; Firefox leaves cookies given when it turns from required to optional.
 8. Thunderbird (FC-DATA-20): not installed, and nothing was downloaded. With it: `release\FirefoxCompanionSetup-0.6.0.exe install --thunderbird`, load `release\optional\firefox-companion-mail-0.6.0-unsigned.xpi` as a temporary add-on, Connect, share one account with a client of `server.mjs --mail`, use a dummy account.
 9. Remote link between two computers, and what a firewall does with it. Developer Edition with the developer build.
-10. Signing and public release: [RELEASE.md](RELEASE.md). Prerequisites, all of the owner: public name and the two add-on IDs (fixed by the first submission), license and copyright holder, terms of the artwork (made with another AI tool), listed or self-distributed, data declaration (bookmarksInfo, searchTerms, personalCommunications), Mozilla account with an API key, a code-signing certificate, and the subscription question (5).
+10. Signing and public release: [RELEASE.md](RELEASE.md). Prerequisites, all of the owner: public name and the two add-on IDs (fixed by the first submission), copyright holder (license: MPL-2.0, decided), a public place for the source, terms of the artwork (made with another AI tool), listed or self-distributed, data declaration (bookmarksInfo, searchTerms, personalCommunications), Mozilla account with an API key, a code-signing certificate, and the subscription question (5).
 11. Claude Desktop itself: installing the .mcpb file changes the user's own Claude Desktop, so it was not done. With the user's yes, or a Claude Desktop with a test sign-in: Settings, Extensions, Advanced settings, Install Extension, `release\firefox-companion-0.6.0.mcpb`, then ask for the connection status with the helper installed. Claude Desktop 6.28899.6 starts Node bundles in its own Node 24.22.3 with the arguments of the manifest (read from its files). Unsigned bundles: not tried.
 12. Lint and validation ran again on the 0.6.0 files, with the pinned tools from the local npm cache. Open: the data declaration of the mail add-on, and the review of the Thunderbird add-ons site.
 13. Not tried: more than one Firefox window with several chats at work, real sites, Windows SmartScreen and security software with the unsigned program, Windows before 11, Firefox older than 160 or absent, an account with special letters (only the folder had them), the Uninstall button in Settings by hand (its command was run), an installation while a chat runs, power loss (kills only), a full disk.
