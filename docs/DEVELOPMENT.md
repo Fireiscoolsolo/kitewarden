@@ -48,4 +48,4 @@ Run the live ones only when the way Claude or the server is started changes. Tes
 
 A client may make 120 calls a minute, so the checks of `:control` and `:audit` pace themselves. Two suites must not run at the same time: they share the registration.
 
-`test:install` and `test:packaged` build earlier commits (`67b4e72`, `e46f5c5`, `70c9a70`) from Git, so they need the history.
+`test:install` and `test:packaged` build earlier commits (`8bfefbe`, `7bb7f27`, `d34fba3`) from Git, so they need the history.

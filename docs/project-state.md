@@ -6,17 +6,17 @@ Handoff after Prompt 7, the release audit (2026-11-25). Requirements, evidence a
 
 | Use | Verdict | What the evidence supports | Still blocked |
 |---|---|---|---|
-| Local testing by the owner, on this kind of computer | **Ready**, with the limits on the right | Every suite passed, on the candidate `86a44b5` or with the same product code: units, integration, packaged artifacts with Firefox played by the test and in real Firefox, all Firefox suites headless. On it ran: units, install, packaged. The visible desktop without a user (two checks not run) and short live runs passed on `43e97e3`, the integration and Firefox suites of the development build on `49b42d6`. Since those only the license changed: `LICENSE`, `NOTICE.txt`, the license fields of package.json and of the bundle, and the field list of one install test. Install, upgrade from 0.5.0 and 0.4.0, interruption, doctor and uninstall work with the packaged files | The add-on is temporary and gone after each restart of Firefox. Cross-account denial (AC-03, AC-04) is not shown, so use it on a computer whose other accounts you trust. Claude Desktop, Thunderbird, two computers and real sites were not tried. File and shell tools of a chat are as strong as the user's own account: leave them off unless needed |
+| Local testing by the owner, on this kind of computer | **Ready**, with the limits on the right | Every suite passed, on the candidate `bf6c5ba` or with the same product code: units, integration, packaged artifacts with Firefox played by the test and in real Firefox, all Firefox suites headless. On it ran: units, install, packaged. The visible desktop without a user (two checks not run) and short live runs passed on `ef59754`, the integration and Firefox suites of the development build on `f1693e1`. Since those only the license changed: `LICENSE`, `NOTICE.txt`, the license fields of package.json and of the bundle, the field list of one install test, and the address of the source in `NOTICE.txt`. Install, upgrade from 0.5.0 and 0.4.0, interruption, doctor and uninstall work with the packaged files | The add-on is temporary and gone after each restart of Firefox. Cross-account denial (AC-03, AC-04) is not shown, so use it on a computer whose other accounts you trust. Claude Desktop, Thunderbird, two computers and real sites were not tried. File and shell tools of a chat are as strong as the user's own account: leave them off unless needed |
 | Public distribution | **Not ready** | Lint and validation of the packages are clean (the mail add-on has four warnings), builds are reproducible, the rules of Mozilla and Anthropic were read again | Public name, add-on IDs, copyright holder, terms of the artwork, data declaration, listed or self-distributed, and the subscription question are decisions of the owner. No signed build, so AC-06 is open. AC-03 and AC-04 are open. Mozilla has reviewed nothing. The policies of 2026-12-01 come into effect in days |
 
 ## Checkpoint
 
-- Local Git repository, nothing pushed. Author is a placeholder identity of this repository.
-- `main` = `4082ac1`, the audit baseline. `feat/windows-bridge-slice` = `bfb39b0`, the end of Prompt 2. `feat/sidebar-chat` = `d51c615`, the end of Prompt 3.
-- `feat/browser-control` = `70c9a70`, the end of Prompt 4 (code `6b0e049`).
-- `feat/optional-backends` starts there: two `wip:` commits, then **`0c95826`, the code and tests of the Prompt 5 results**, plus the commits that add this file and the last parity rows, up to `e46f5c5`.
-- Prompt 6 went on to `67b4e72` on the same branch: code `d3483b0`, lint fix `c41fffa`, version 0.5.0.
-- **Prompt 7 starts there. The final candidate is `86a44b5`, version 0.6.0, protocol 4**: code, tests and user documents that the results below belong to. The commit after it holds this file and the parity document.
+- Source: https://github.com/Fireiscoolsolo/firefox-companion, public, pushed 2026-11-25 with a history from which local folder paths were removed (so every hash differs from the first local repository; the hashes here are those of GitHub). Author is a placeholder identity of this repository.
+- `main` = `42a20ca`, the audit baseline. `feat/windows-bridge-slice` = `2e99263`, the end of Prompt 2. `feat/sidebar-chat` = `59f65f2`, the end of Prompt 3.
+- `feat/browser-control` = `d34fba3`, the end of Prompt 4 (code `fa75413`).
+- `feat/optional-backends` starts there: two `wip:` commits, then **`26d1256`, the code and tests of the Prompt 5 results**, plus the commits that add this file and the last parity rows, up to `7bb7f27`.
+- Prompt 6 went on to `8bfefbe` on the same branch: code `ae0de1c`, lint fix `e726f09`, version 0.5.0.
+- **Prompt 7 starts there. The final candidate is `bf6c5ba`, version 0.6.0, protocol 4**: code, tests and user documents that the results below belong to. The commit after it holds this file and the parity document.
 - Nothing is signed, published or pushed, and no everyday Firefox profile was touched: every Firefox of the tests ran with `-no-remote` and a profile in the temp folder.
 - Prompt 1: the audit is complete and its checkers pass. The orchestrator's delivery was refused. Its record in `.claude/opus-orchestrator/` is unchanged and not in Git.
 
@@ -122,35 +122,35 @@ From Prompt 4, still valid:
 
 ## Packaged artifacts
 
-Version 0.6.0, protocol 4, from `86a44b5`, not signed. `npm run release` makes them; `release/` is not in Git. SHA-256:
+Version 0.6.0, protocol 4, from `bf6c5ba`, not signed. `npm run release` makes them; `release/` is not in Git. SHA-256:
 
 | Path | What | SHA-256 |
 |---|---|---|
-| `release/FirefoxCompanionSetup-0.6.0.exe` | per-user installer, upgrade, doctor, uninstall | `2f9e22e22e7e9db87e80b1fa1cdfbb976b923f5a7a2b901a564f2e7c25ef35e2` |
-| `release/firefox-companion-0.6.0-unsigned.xpi` | everyday Firefox add-on | `b59ae112fd3f74c7ac8f1bcf2fb3de2c582d59f6b64c8d9cb19203df969f0adb` |
-| `release/firefox-companion-0.6.0.mcpb` | Claude Desktop bundle | `0ce01b3b4a81f2a83ec11645e075553e14598cc8f3f338acfb338616653c0cf1` |
-| `release/optional/firefox-companion-optional-0.6.0.zip` | isolated Firefox, Windows input, remote link; separate | `40c46b1f6b07f224a3523b54ec04235b25092e4d272808af7cfa1a1a0e2cd6a0` |
-| `release/optional/firefox-companion-mail-0.6.0-unsigned.xpi` | Thunderbird add-on; separate | `a075861a6978c3f7222681fd93624b2b7623bb805cf678903cc6c2e57e0263cb` |
-| `release/CONTENTS.txt` | hashes of every file inside | `07ded34a3a99d1c1590e0c344df83d7f66a5326e9bf1fab823490321f90493cd` |
-| `release/NOTICE.txt` | license (MPL-2.0), third-party code (none), trademarks | `4429e1cbedc646ad54b131c45229a718212a1ce5cde9a46edcbb73b75ad0f84e` |
+| `release/FirefoxCompanionSetup-0.6.0.exe` | per-user installer, upgrade, doctor, uninstall | `0f48c10ec0e77d0ffcbbbeba7a5067cddb4310bfd9792c736fad4a7123849d65` |
+| `release/firefox-companion-0.6.0-unsigned.xpi` | everyday Firefox add-on | `946bfe93ea952787799516effe2789e9e72d38e7c9fb018a992df28fb2a5b807` |
+| `release/firefox-companion-0.6.0.mcpb` | Claude Desktop bundle | `e423bb36d97688776b06603ee190860aac051147dc1be76da224081c6e3d9584` |
+| `release/optional/firefox-companion-optional-0.6.0.zip` | isolated Firefox, Windows input, remote link; separate | `19d436b79219b6216c916d345b5167c8fd2e05e15f0ab7d00045c0991a4a31b1` |
+| `release/optional/firefox-companion-mail-0.6.0-unsigned.xpi` | Thunderbird add-on; separate | `1bae49092ec39d0ddbfdf5a13e4f6f63186f1c1569ad34cce3950d5f6c10b22f` |
+| `release/CONTENTS.txt` | hashes of every file inside | `bd04eea4517fa7d040a2468ed05465c5e76fe54e2799373756cb1a9864f75aaf` |
+| `release/NOTICE.txt` | license (MPL-2.0), third-party code (none), trademarks | `c4961ab459c750f422fd883fcab78ae14058fe6d9bea3ebd3393427f5a2a0f98` |
 | `release/LICENSE` | text of MPL-2.0 | `1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5` |
 | `release/SETUP.md` | for users | `4997a7c7b3517cb987c9bc20277094193b9eb6079ed39843f88f50b4117de312` |
 
-`SHA256SUMS.txt` lists the same. The working folder, a clone with autocrlf on in a path with a space, and a plain clone gave the same bytes for `86a44b5`, programs included (csc 4.8 of this Windows). The developer build is not in `release/`; packing stops at a trace of it. The everyday package, the mail add-on, the optional programs and the developer build are four separate things, and none contains another.
+`SHA256SUMS.txt` lists the same. The working folder, a clone with autocrlf on in a path with a space, and a plain clone gave the same bytes for `bf6c5ba`, programs included (csc 4.8 of this Windows). The developer build is not in `release/`; packing stops at a trace of it. The everyday package, the mail add-on, the optional programs and the developer build are four separate things, and none contains another.
 
 ### Results of Prompt 7
 
 Windows 11 build 26300, without elevation, Firefox 160.0.1 release, Node 26.12.1, Claude Code 2.1.302 (haiku for the live runs), Claude Desktop not run (6.28899.6 when Prompt 6 read its files), on 2026-11-25. The user's own Firefox ran all the time and was not touched: every test Firefox ran with `-no-remote` and a profile in the temp folder. Complete output of each run: `test-results/final/` (not in Git).
 
-| Command | Kind of evidence | Result on `86a44b5` |
+| Command | Kind of evidence | Result on `bf6c5ba` |
 |---|---|---|
 | `npm test` | simulated, and package checks | 130 of 130 |
-| `npm run test:integration` | real helper, pipes, server; Firefox played by the test; Claude Code a test double | 54 of 54, and 54 of 54 in each of 10 more runs of the commit before. On the untouched `67b4e72`: 51 of 51 in each of 20 runs |
+| `npm run test:integration` | real helper, pipes, server; Firefox played by the test; Claude Code a test double | 54 of 54, and 54 of 54 in each of 10 more runs of the commit before. On the untouched `8bfefbe`: 51 of 51 in each of 20 runs |
 | `npm run test:install` | **packaged**: setup program, files, registry, pipes; Firefox played | 21 of 21 |
 | `npm run test:packaged` | **packaged** in real Firefox, headless | 16 of 16, with the upgrade from 0.5.0 new |
 | `npm run test:firefox`, `:companion`, `:control`, `:audit`, `:advanced`, `:developer` | development build in real Firefox, headless | 33 of 33, 27 of 27 (before that three times, and twice with half of the processors busy), 24 of 24, 26 of 26, 20 of 20, 4 of 4 |
-| `npm run test:desktop` | **visible Firefox** on the desktop, nobody at the computer | on `43e97e3`, nobody at the computer: 6 passed, 0 failed, 2 not run (`test-results/final/test-desktop.log`): another window kept in front, because the new Firefox window was in front itself, and the refusal of Windows input while somebody uses the computer. Earlier, before the new look, in use, with another program in front: 5 passed, 3 not run (`desktop-in-use.json`): the focus stayed with the other program also after a new window; the refusal of Windows input while somebody types was again not observed, because the user rested at that moment |
-| `npm run test:live-audit` | **live and paid**, haiku, real Firefox headless | exported skill; file and shell tools off, denied, allowed; PDF and picture: all 7 checks passed on `43e97e3` (`test-results/final/test-live-audit.log`). The skill run cost 0.006 USD; the log has no cost of the chat runs. Chats leave transcripts in the folder of Claude Code of this user; nothing else of the user was written |
+| `npm run test:desktop` | **visible Firefox** on the desktop, nobody at the computer | on `ef59754`, nobody at the computer: 6 passed, 0 failed, 2 not run (`test-results/final/test-desktop.log`): another window kept in front, because the new Firefox window was in front itself, and the refusal of Windows input while somebody uses the computer. Earlier, before the new look, in use, with another program in front: 5 passed, 3 not run (`desktop-in-use.json`): the focus stayed with the other program also after a new window; the refusal of Windows input while somebody types was again not observed, because the user rested at that moment |
+| `npm run test:live-audit` | **live and paid**, haiku, real Firefox headless | exported skill; file and shell tools off, denied, allowed; PDF and picture: all 7 checks passed on `ef59754` (`test-results/final/test-live-audit.log`). The skill run cost 0.006 USD; the log has no cost of the chat runs. Chats leave transcripts in the folder of Claude Code of this user; nothing else of the user was written |
 | `test:claude`, `test:chat`, `test:milestone` (live) | not run again: their paths (standalone server, chat, resume) ran in `test:live-audit` on the candidate | Prompt 5 |
 | `web-ext lint --warnings-as-errors` 10.8.0 on the unpacked .xpi | **packaged**, official linter, from the local npm cache | Firefox package: 0 errors, 0 warnings, 0 notices. Thunderbird package: 0 errors and the same 4 warnings |
 | `mcpb unpack`, `validate`, `info` 2.1.2 | **packaged**, official tool | unpacks, manifest valid, "Not signed". Claude Desktop itself was not used |
@@ -158,7 +158,7 @@ Windows 11 build 26300, without elevation, Firefox 160.0.1 release, Node 26.12.1
 | 30 new guards taken out one at a time, in a copy | control of the new unit tests, simulated | 29 noticed at once, 1 (frames that leave a grant under a rule) after its test was made stricter |
 | Signed build | none exists | open |
 
-**The failure of Prompt 6.** One of its runs of `test:integration` failed (14 of 15 passed in its record) in "run: the documented options in a folder of the helper"; the message was not kept. It did not come back in 20 runs of the untouched `67b4e72`. With every processor busy, the same test failed in 8 of 12 runs, each time with this assertion: `assert.deepEqual(hello.map((b) => b.ticket), [r.ticket])`, actual `[]`, expected one ticket (output in `test-results/integration-race/`). The test double of Claude Code ended before the MCP server of that run had logged in to the pipe. It is a race of the test, and the test now waits for the login: 12 of 12 under the same load. Whether the failure of Prompt 6 was this one is **not known**, because its message was not kept; it is the same test. No product defect was found behind it.
+**The failure of Prompt 6.** One of its runs of `test:integration` failed (14 of 15 passed in its record) in "run: the documented options in a folder of the helper"; the message was not kept. It did not come back in 20 runs of the untouched `8bfefbe`. With every processor busy, the same test failed in 8 of 12 runs, each time with this assertion: `assert.deepEqual(hello.map((b) => b.ticket), [r.ticket])`, actual `[]`, expected one ticket (output in `test-results/integration-race/`). The test double of Claude Code ended before the MCP server of that run had logged in to the pipe. It is a race of the test, and the test now waits for the login: 12 of 12 under the same load. Whether the failure of Prompt 6 was this one is **not known**, because its message was not kept; it is the same test. No product defect was found behind it.
 
 Other failures on the way, on earlier states of the candidate, with logs in `test-results/before-final/`: `test:packaged` 12 of 16 once, because a click on a switch of the old add-ons did not arrive; 16 of 16 in every run since. `test:companion` while the mutation runs loaded the computer: twice a click on Stop missed (fixed, below), and once four replay checks ended with "The element of this step is not on the page". Its cause was found afterwards: the first defect of the next table, not the load.
 
@@ -172,7 +172,7 @@ After the runs: no registration, no entry of a test in the temp folder, no helpe
 | `tabs_create` with `duplicateOf` gave a grant for the origin that the tab showed at that moment, also when it had just left the granted one | Prompt 4 | reading | origin compared (U, failed before) |
 | `windows_close` closed a window with a tab that the user had taken over or was busy with; `tabs_close` a tab that was handed to the user | Prompt 4 | reading | both refuse (U, failed before; F) |
 | After the user closed the window of a session, its `tabs_create` failed for good | Prompt 4 | reading | closed windows are forgotten (U, failed before; F) |
-| A call whose text held U+2028 or U+2029 was never answered: the line reader of Node ends a line there. Nothing could be smuggled in, because quotes are escaped | Prompt 2 | a hostile client name in the audit suite | own line reader, escapes on the way out (I, failed on `67b4e72`) |
+| A call whose text held U+2028 or U+2029 was never answered: the line reader of Node ends a line there. Nothing could be smuggled in, because quotes are escaped | Prompt 2 | a hostile client name in the audit suite | own line reader, escapes on the way out (I, failed on `8bfefbe`) |
 | A card put a value of several lines into one line, so a second command would read as arguments of the first; a long card pushed its buttons away | Prompt 2 | reading, for the new shell tools | line breaks kept, long values scroll, their size is named (U, F) |
 | A file or a choice made right after New went to the chat before | Prompt 3 | two tests | the new chat comes before the answer, and what follows waits for it (F) |
 | Stop moved away under the pointer while text streamed in | Prompt 3 | the companion suite under load | Stop is above the messages (F) |
@@ -223,7 +223,7 @@ Companion was measured headless on this computer with local pages (`test-results
 
 ### Results of Prompt 6
 
-Windows 11 build 26300, without elevation (medium integrity), Firefox 160.0.1 release, Node 26.12.1, Claude Code 2.1.302, Claude Desktop 6.28899.6 (files read, not run), on 2026-11-24 and 25. The results are of 2026-11-25, in a fresh clone of `d3483b0` with autocrlf on.
+Windows 11 build 26300, without elevation (medium integrity), Firefox 160.0.1 release, Node 26.12.1, Claude Code 2.1.302, Claude Desktop 6.28899.6 (files read, not run), on 2026-11-24 and 25. The results are of 2026-11-25, in a fresh clone of `ae0de1c` with autocrlf on.
 
 | Command | Kind of evidence | Result |
 |---|---|---|
@@ -237,7 +237,7 @@ Windows 11 build 26300, without elevation (medium integrity), Firefox 160.0.1 re
 | `web-ext lint --warnings-as-errors` 10.8.0 on the unpacked .xpi | **packaged artifact**, official linter | Firefox package: 0 errors, 0 warnings, 0 notices. Thunderbird package: one error at first (name of 49 characters, limit 45), fixed; 4 warnings left: accountsRead, messagesRead and accounts.list are not of Firefox, no data declaration |
 | `mcpb unpack`, `validate`, `info` 2.1.2 | **packaged artifact**, official tool | unpacks, manifest valid, "Not signed" |
 | 12 runs of both tools on copies, 10 with planted mistakes | control of the tools | all 10 seen, 2 unchanged copies clean |
-| after the fix: `npm test`, `test:integration`, `test:install` | as above, in the working folder at `c41fffa` | 116 of 116, 51 of 51, 21 of 21. `test:packaged` and the Firefox suites were not run again: their files have the same bytes |
+| after the fix: `npm test`, `test:integration`, `test:install` | as above, in the working folder at `e726f09` | 116 of 116, 51 of 51, 21 of 21. `test:packaged` and the Firefox suites were not run again: their files have the same bytes |
 | Signed build | none exists | open |
 | `node .opus-inbox/audit_tools.mjs check-parity` | documents | OK |
 
@@ -267,7 +267,7 @@ After the runs: registration and entries in Settings absent, no folder `%LOCALAP
 
 ## Commands and results of Prompt 5
 
-Windows 11 build 26300, Firefox 160.0.1 (release), Node 26.12.1, Claude Code 2.1.302, on 2026-11-24, for `0c95826`.
+Windows 11 build 26300, Firefox 160.0.1 (release), Node 26.12.1, Claude Code 2.1.302, on 2026-11-24, for `26d1256`.
 
 | Command | Kind of evidence | Result |
 |---|---|---|
