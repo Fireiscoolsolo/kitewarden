@@ -61,6 +61,7 @@ export const bundleManifest = () => ({
   description: 'Works with the Firefox tabs that you attach.',
   long_description: 'Needs the Firefox add-on and its helper for Windows (FirefoxCompanionSetup). Works only with tabs that you attach in the Firefox sidebar.',
   author: { name: 'Firefox Companion' },
+  license: 'MPL-2.0',
   server: {
     type: 'node',
     entry_point: 'server/server.mjs',
@@ -100,7 +101,7 @@ function release() {
   cpSync(path.join(dist, 'FirefoxCompanionSetup.exe'), path.join(out, setup));
   for (const [n, f] of inside) contents.push(`${sha256(readFileSync(f))}  ${setup}!${n}`);
 
-  for (const f of ['NOTICE.txt', 'docs/SETUP.md']) cpSync(path.join(root, f), path.join(out, path.basename(f)));
+  for (const f of ['LICENSE', 'NOTICE.txt', 'docs/SETUP.md']) cpSync(path.join(root, f), path.join(out, path.basename(f)));
   writeFileSync(path.join(out, 'CONTENTS.txt'), `${contents.sort().join('\n')}\n`);
   const sums = tree(out).map(([n, d]) => `${sha256(d)}  ${n}\n`).join('');
   writeFileSync(path.join(out, 'SHA256SUMS.txt'), sums);
