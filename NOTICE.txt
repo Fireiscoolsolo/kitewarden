@@ -5,13 +5,9 @@ License
   copy, change or distribute this software.
 
 Third-party code
-  None. The add-ons, the helper, the MCP server and the optional programs are original code. They contain no library or
-  font of others. The projects named in docs/feature-parity.md ("Pinned sources and licenses") were read as references
+  None. The add-ons, the helper, the MCP server and the optional programs are original code. They contain no library, font
+  or artwork of others. The projects named in docs/feature-parity.md ("Pinned sources and licenses") were read as references
   for behavior only (decision D8).
-
-Artwork
-  The icons and pictures were made with another AI tool and supplied by the owner. The owner has not yet confirmed the
-  terms under which they may be distributed.
 
 Used on your computer, not part of this software
   Firefox, the .NET Framework 4.8 of Windows, Node.js, Claude Code and Claude Desktop, each under its own terms. The .mcpb
