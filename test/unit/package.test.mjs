@@ -36,4 +36,5 @@ test('permissions: exactly these, each with a use in the code, and cookies only 
   for (const p of [...m.permissions, ...m.optional_permissions]) assert.ok(code.some(([, c]) => used[p].test(c)), `${p} is used`);
   assert.deepEqual(code.filter(([, c]) => /\.cookies\b(?!\s*[:,}])/.test(c.replace(/\/\/.*|\/\*[\s\S]*?\*\//g, ''))).map(([n]) => n), ['sitedata.mjs'], 'one file reads cookies');
   assert.equal(m.externally_connectable, undefined);
+  for (const part of ['extension', 'thunderbird']) assert.ok(JSON.parse(read(path.join(root, 'dist', part, 'manifest.json'))).name.length <= 45, `${part}: web-ext lint refuses a longer name`);
 });
