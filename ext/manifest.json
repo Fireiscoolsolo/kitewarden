@@ -1,15 +1,17 @@
 {
   "manifest_version": 2,
   "name": "Kitewarden",
-  "version": "0.6.0",
+  "version": "1.0.0",
   "description": "Connects the tabs you choose to Claude on this computer.",
   "incognito": "spanning",
   "browser_specific_settings": {
     "gecko": {
       "id": "firefox@fireiscoolsolo.github.io",
       "strict_min_version": "160.0",
+      "update_url": "https://fireiscoolsolo.github.io/kitewarden/updates.json",
       "data_collection_permissions": {
-        "required": ["browsingActivity", "websiteContent", "websiteActivity"]
+        "required": ["browsingActivity", "websiteContent", "websiteActivity"],
+        "optional": ["bookmarksInfo"]
       }
     }
   },

@@ -2,7 +2,7 @@
 // The extension enforces it. The MCP server uses it to list tools and to refuse bad arguments early.
 
 export const PROTOCOL = 4;
-export const VERSION = '0.6.0';
+export const VERSION = '1.0.0';
 
 export const LIMITS = {
   toBrowser: 256 * 1024, // one client frame; Firefox accepts at most 1 MB from a native host
@@ -59,6 +59,11 @@ export const LIMITS = {
   pairings: 20,
   pairDays: 90,
 };
+
+/** Data types of the manifest's optional data declaration that a group sends to Claude; asked together with its permissions. */
+export const DATA = { bookmarks: ['bookmarksInfo'] };
+/** What permissions.request and permissions.contains get for a group. */
+export const asksFor = (name) => ({ permissions: GROUPS[name], ...(DATA[name] ? { data_collection: DATA[name] } : {}) });
 
 /** Groups that are off until the user turns them on, with the Firefox permissions that each needs. */
 export const GROUPS = {

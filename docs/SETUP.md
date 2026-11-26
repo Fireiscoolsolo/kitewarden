@@ -16,7 +16,7 @@ Kitewarden needs Windows 11 and Firefox 160 or later. It is not signed yet, so F
 Check a file before you use it. The value must be the one in `SHA256SUMS.txt`, taken from a place you trust:
 
 ```powershell
-Get-FileHash .\KitewardenSetup-0.6.0.exe -Algorithm SHA256
+Get-FileHash .\KitewardenSetup-1.0.0.exe -Algorithm SHA256
 ```
 
 ## Install the helper
@@ -35,11 +35,11 @@ It changes no Firefox profile, no Firefox setting, no PATH, and starts nothing a
 Without questions, for scripts:
 
 ```powershell
-.\KitewardenSetup-0.6.0.exe install --dry-run
+.\KitewardenSetup-1.0.0.exe install --dry-run
 ```
 
 ```powershell
-.\KitewardenSetup-0.6.0.exe install
+.\KitewardenSetup-1.0.0.exe install
 ```
 
 Further options: `--home <folder>` for another folder, `--claude-code` to register with Claude Code, `--thunderbird` for the mail add-on. Exit code 0 is done, 1 failed and undone, 2 a wrong option, 3 installed but Claude Code was not changed.
@@ -112,7 +112,7 @@ Extract the optional zip to a folder of your choice. Each program works with the
 Run the check first. It names each problem with its fix and prints no key:
 
 ```powershell
-.\KitewardenSetup-0.6.0.exe doctor --claude-code
+.\KitewardenSetup-1.0.0.exe doctor --claude-code
 ```
 
 | You see | Do |

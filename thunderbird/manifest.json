@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Kitewarden for Thunderbird",
-  "version": "0.6.0",
+  "version": "1.0.0",
   "description": "Lets clients on this computer read mail that you share, one message at a time after your approval.",
   "browser_specific_settings": {
     "gecko": { "id": "thunderbird@fireiscoolsolo.github.io", "strict_min_version": "140.0" }

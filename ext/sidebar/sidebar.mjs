@@ -1,5 +1,5 @@
 // Shows the state of the background page and sends the user's gestures to it. It holds no rules of its own.
-import { GROUPS, VIRTUAL, hostPattern, oneLine, originOf } from '../shared/protocol.mjs';
+import { GROUPS, VIRTUAL, asksFor, hostPattern, oneLine, originOf } from '../shared/protocol.mjs';
 import { drawAdvanced, startAdvanced } from './advanced.mjs';
 import { drawChat, startChat } from './chat.mjs';
 import { $, answered, current, el, onPress, options, part, port, run, send, ui, withSite } from './ui.mjs';
@@ -10,7 +10,7 @@ let shot = null; // object URL of the last picture
 // Connection
 
 const LINK = {
-  off: ['Not connected', 'Press Connect to start the helper on this computer. Claude then sees only the tabs you attach.'],
+  off: ['Not connected', 'Press Connect to start the helper on this computer. Claude then sees only the tabs you attach, and what it reads of them goes to Anthropic through your own Claude app. Kitewarden itself sends nothing anywhere.'],
   connecting: ['Connecting', 'Starting the helper.'],
   connected: ['Connected', 'The helper is running.'],
   waiting: ['Helper stopped', 'It is started again by itself.'],
@@ -223,7 +223,7 @@ function drawControl() {
   part('folders', s.folders, (list) => (list.length ? list.map((f) => el('li', {}, f, ' ', onPress(el('button', { textContent: 'Remove' }), () => run('remove_folder', { path: f }, 'Removed.')))) : [el('li', { className: 'sub', textContent: 'None: every upload is refused.' })]));
   part('switches', s.switches, (on) => Object.keys(GROUPS).filter((n) => !s.backends.some((b) => b.id === n)).map((name) => {
     const box = el('input', { type: 'checkbox', checked: on[name] === true, id: `switch-${name}` });
-    onPress(box, () => (box.checked ? (GROUPS[name].length ? browser.permissions.request({ permissions: GROUPS[name] }) : Promise.resolve(true)).then((ok) => run('set_switch', { name, on: ok }, ok ? 'On.' : 'Firefox did not allow it.')) : run('set_switch', { name, on: false }, 'Off.')));
+    onPress(box, () => (box.checked ? (GROUPS[name].length ? browser.permissions.request(asksFor(name)) : Promise.resolve(true)).then((ok) => run('set_switch', { name, on: ok }, ok ? 'On.' : 'Firefox did not allow it.')) : run('set_switch', { name, on: false }, 'Off.')));
     return el('label', { className: 'check' }, box, `Clients may ask for ${LABEL[name] ?? name}`);
   }));
   if (document.activeElement !== $('profile-label')) $('profile-label').value = s.profile.label ?? '';

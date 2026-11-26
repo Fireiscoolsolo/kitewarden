@@ -1,7 +1,7 @@
 // The one command path. The sidebar and every MCP server end up in `call`, with the same sessions, checks and log.
 // What the tools do is in the *tools.mjs files and sitedata.mjs; every rule about who may do it is here.
 import { noRules, ruleFor } from '../grants/rules.mjs';
-import { GROUPS, LIMITS, PROTOCOL, TOOLS, ToolError, VERSION, VIRTUAL, checkArgs, oneLine, originOf, plainUrl, toolSpec } from '../shared/protocol.mjs';
+import { GROUPS, LIMITS, asksFor, PROTOCOL, TOOLS, ToolError, VERSION, VIRTUAL, checkArgs, oneLine, originOf, plainUrl, toolSpec } from '../shared/protocol.mjs';
 import { devTools } from './devtools.mjs';
 import { pageTools, screenshot } from './pagetools.mjs';
 import { siteTools } from './sitedata.mjs';
@@ -402,7 +402,7 @@ export class Router {
 
   async group(name) {
     if (!this.switches[name]) throw new ToolError('tool_off', `The user has not turned ${name} on in the sidebar.`);
-    if (GROUPS[name].length && !(await this.api.browser.permissions.contains({ permissions: GROUPS[name] }))) throw new ToolError('permission_required', `Firefox no longer allows ${name}. Ask the user to turn it on again in the sidebar.`);
+    if (GROUPS[name].length && !(await this.api.browser.permissions.contains(asksFor(name)))) throw new ToolError('permission_required', `Firefox no longer allows ${name}. Ask the user to turn it on again in the sidebar.`);
   }
 
   /** Actions in one tab run one after the other. A queued one that is stopped never begins. */

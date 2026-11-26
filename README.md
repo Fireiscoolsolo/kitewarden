@@ -10,14 +10,14 @@ Website: [fireiscoolsolo.github.io/kitewarden](https://fireiscoolsolo.github.io/
 
 ## Status
 
-Version 0.6.0. Works on Windows 11 with Firefox 160 or later. **Not signed yet**: Firefox loads the add-on only as a temporary add-on, which is gone after a restart. Not published on addons.mozilla.org. Ready for local testing; not ready for public distribution ([what is open](docs/project-state.md)).
+Version 1.0.0, prepared and not released yet ([changes](CHANGELOG.md)). Works on Windows 11 with Firefox 160 or later. **Not signed yet**: until Mozilla signs it, Firefox loads the add-on only as a temporary add-on, which is gone after a restart. It will be self-distributed from GitHub, not listed on addons.mozilla.org ([what is open](docs/project-state.md)).
 
 ## How it works
 
 - **The add-on** (`ext/`) holds the sidebar, the grants and the approval cards. Claude sees only tabs you attach to its session, at the level you choose: read, or read and act.
 - **The helper** (`host/`), a small Windows program, connects the add-on to clients over a local pipe restricted to your Windows user (that other accounts are refused is not tested yet).
 - **The MCP server** (`mcp/`) gives Claude Code or Claude Desktop the browser tools.
-- **The sidebar chat** runs your own installed, signed-in Claude Code. The add-on holds no account and no key.
+- **The sidebar chat** (experimental) runs your own installed, signed-in Claude Code. The add-on holds no account and no key.
 
 Site rules can keep sites away from Claude entirely. Pause and Stop everything end all work at once. File and shell tools in the chat are off unless you turn them on, and then each use asks too.
 
@@ -41,6 +41,7 @@ The same commit gives the same bytes. All test suites, including the ones in rea
 
 ## Documents
 
+- [CHANGELOG.md](CHANGELOG.md): what changed in each version
 - [SETUP.md](docs/SETUP.md): installing, permissions, troubleshooting
 - [DEVELOPMENT.md](docs/DEVELOPMENT.md): building, testing, reproducible builds
 - [project-state.md](docs/project-state.md): what works, test results, what is open

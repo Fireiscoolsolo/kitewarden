@@ -28,7 +28,7 @@ static class Program
     // The add-on for Thunderbird is another one, with a registration of its own that the user asks for.
     public const string MailHostName = "kitewarden_mail";
     public const string MailExtensionId = "thunderbird@fireiscoolsolo.github.io";
-    public const string Version = "0.6.0";
+    public const string Version = "1.0.0";
     public const int Protocol = 4;
 
     static int Main(string[] args)
