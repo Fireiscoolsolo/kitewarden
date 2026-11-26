@@ -226,7 +226,7 @@ try {
   // ---- upgrade from 0.4.0 with what a user set up
 
   h = place('upgrade');
-  const v4 = earlier('e46f5c5');
+  const v4 = earlier('7bb7f27');
   let kept, allowed;
   await begin();
   await load(v4.xpi);
@@ -325,7 +325,7 @@ try {
   // ---- upgrade from 0.3.0, whose manifest required cookies
 
   h = place('older');
-  const v3 = earlier('70c9a70');
+  const v3 = earlier('d34fba3');
   await begin();
   await load(v3.xpi);
 
@@ -356,7 +356,7 @@ try {
   // ---- upgrade from 0.5.0, the packages of Prompt 6
 
   h = place('previous');
-  const v5 = earlier('67b4e72');
+  const v5 = earlier('8bfefbe');
   await begin();
   await load(v5.xpi);
 

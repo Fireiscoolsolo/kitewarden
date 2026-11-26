@@ -14,7 +14,7 @@ import { FakeFirefox, McpClient, buildAt, powershell, root, until } from '../hel
 
 const release = path.join(root, 'release');
 const SETUP = path.join(release, `FirefoxCompanionSetup-${VERSION}.exe`);
-const BASELINE = 'e46f5c5'; // version 0.4.0, the state before this installer
+const BASELINE = '7bb7f27'; // version 0.4.0, the state before this installer
 const REG = 'HKCU\\Software\\Mozilla\\NativeMessagingHosts\\firefox_companion';
 const APPS = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall';
 const PROFILE = '11111111-2222-3333-4444-555555555555';
