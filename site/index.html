@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kitewarden: Claude in the Firefox tabs you choose</title>
+<meta name="description" content="A Firefox add-on that lets Claude read and act in the tabs you attach, and asks before every change.">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <a href="./"><img src="icon.svg" width="28" height="28" alt=""> Kitewarden</a>
+  <nav aria-label="Site">
+    <a href="./" aria-current="page">Home</a>
+    <a href="privacy.html">Privacy</a>
+    <a href="https://github.com/Fireiscoolsolo/kitewarden">Source</a>
+  </nav>
+</header>
+<main>
+  <h1>Claude works in the tabs you choose, and asks before it changes anything.</h1>
+  <p class="lead">Kitewarden is a Firefox add-on for Windows. You attach a tab in the sidebar, Claude reads it or acts in it, and every action that changes something waits for your Allow.</p>
+
+  <figure>
+    <img src="sidebar.png" width="948" height="696" alt="The Kitewarden sidebar in Firefox: an empty chat, an approval card asking to allow a click, and the Tabs panel.">
+    <figcaption>The sidebar with an approval card. Nothing happens in the page until you press Allow.</figcaption>
+  </figure>
+
+  <h2>What it does</h2>
+  <ul class="facts">
+    <li><strong>Only the tabs you attach</strong>Claude sees a tab only after you attach it, at the level you pick: read, or read and act. Other tabs stay out of reach.</li>
+    <li><strong>You approve each change</strong>Reading a tab you attached needs no click, unless a site rule says to ask. Anything that changes a page shows a card first.</li>
+    <li><strong>Sites can stay off-limits</strong>Site rules keep chosen sites away from Claude in every tool. Pause and Stop everything end all work at once.</li>
+    <li><strong>Your own Claude</strong>It works with Claude Code or Claude Desktop on your computer, signed in with your account. Kitewarden holds no account or key and runs no server.</li>
+  </ul>
+
+  <div class="status" role="note">
+    <p><strong>Not released yet.</strong> Version 0.6.0 works for local testing, but it isn't signed by Mozilla, so Firefox keeps it only until a restart.</p>
+    <p>To try it now, build it from the <a href="https://github.com/Fireiscoolsolo/kitewarden">source on GitHub</a> and follow <a href="https://github.com/Fireiscoolsolo/kitewarden/blob/main/docs/SETUP.md">the setup guide</a>.</p>
+  </div>
+
+  <h2>Needs</h2>
+  <p>Windows 11, Firefox 160 or later, and Claude Code or Claude Desktop.</p>
+</main>
+<footer>
+  <p>Kitewarden is open source under the <a href="https://github.com/Fireiscoolsolo/kitewarden/blob/main/LICENSE">Mozilla Public License 2.0</a>. <a href="privacy.html">Privacy policy</a>.</p>
+  <p>Kitewarden is not made, endorsed or supported by Mozilla or Anthropic. Firefox is a trademark of the Mozilla Foundation; Claude is a trademark of Anthropic, PBC.</p>
+</footer>
+</body>
+</html>

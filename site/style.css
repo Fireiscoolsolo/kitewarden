@@ -1,0 +1,40 @@
+:root {
+  color-scheme: light dark;
+  --paper: light-dark(#fbfcfc, #171f25);
+  --ink: light-dark(#16232b, #e6edf0);
+  --soft: light-dark(#51626c, #a3b3bc);
+  --line: light-dark(#d5dfe2, #33424b);
+  --pine: light-dark(#0b6e63, #58c7b6);
+  --permit: light-dark(#fff7e8, #2e2617);
+  --warn: light-dark(#b25e00, #f0b455);
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 1.0625rem/1.6 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+main, header, footer { max-width: 44rem; margin: 0 auto; padding: 0 1.25rem; }
+header { display: flex; align-items: center; gap: .6rem; padding-top: 1.5rem; flex-wrap: wrap; }
+header > a { display: flex; align-items: center; gap: .6rem; color: inherit; text-decoration: none; font-weight: 600; }
+header nav { margin-left: auto; display: flex; gap: 1.1rem; font-size: .95rem; }
+header nav a { color: var(--soft); }
+header nav a[aria-current] { color: var(--ink); }
+h1 { font-size: clamp(2rem, 5vw, 2.75rem); line-height: 1.15; letter-spacing: -.02em; margin: 3rem 0 1rem; font-weight: 650; }
+h2 { font-size: 1.3rem; margin: 2.5rem 0 .5rem; font-weight: 650; }
+p, li { max-width: 68ch; }
+a { color: var(--pine); text-underline-offset: .15em; }
+a:focus-visible { outline: 2px solid var(--pine); outline-offset: 3px; border-radius: 3px; }
+.lead { font-size: 1.2rem; color: var(--soft); margin: 0 0 2rem; }
+figure { margin: 0 0 1rem; }
+figure img { display: block; max-width: 100%; height: auto; border: 1px solid var(--line); border-radius: 10px; }
+figcaption { font-size: .9rem; color: var(--soft); margin-top: .5rem; }
+.facts { list-style: none; padding: 0; margin: 0; }
+.facts li { padding: .9rem 0; border-top: 1px solid var(--line); }
+.facts strong { display: block; }
+.status { background: var(--permit); border-left: 4px solid var(--warn); padding: 1rem 1.25rem; border-radius: 0 8px 8px 0; margin: 2.5rem 0; }
+.status p { margin: .25rem 0; }
+.updated { color: var(--soft); font-size: .95rem; }
+footer { color: var(--soft); font-size: .9rem; padding-top: 2rem; padding-bottom: 3rem; margin-top: 3rem; border-top: 1px solid var(--line); }
+footer p { margin: .4rem 0; }

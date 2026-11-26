@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy policy · Kitewarden</title>
+<meta name="description" content="What Kitewarden does with your data: it runs no server and collects nothing. What you attach goes to the Claude app on your computer.">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <a href="./"><img src="icon.svg" width="28" height="28" alt=""> Kitewarden</a>
+  <nav aria-label="Site">
+    <a href="./">Home</a>
+    <a href="privacy.html" aria-current="page">Privacy</a>
+    <a href="https://github.com/Fireiscoolsolo/kitewarden">Source</a>
+  </nav>
+</header>
+<main>
+  <h1>Privacy policy</h1>
+  <p class="updated">Last updated 25 November 2026. Applies to version 0.6.0 of the Kitewarden Firefox add-on, its Windows helper, and its optional parts.</p>
+
+  <h2>In short</h2>
+  <p>Kitewarden has no server and collects nothing. Its developer receives none of your data: no usage counts, no error reports, no account. What you let Claude see goes from Firefox to the Claude app on your own computer, and from there to Anthropic under your own Claude account.</p>
+
+  <h2>What goes where</h2>
+  <ul>
+    <li><strong>To the helper on your computer.</strong> When Claude asks for it, the add-on sends the helper the content, address and title of tabs you attached, and the results of actions you allowed. The helper talks only over a local connection restricted to your Windows user. It sends nothing over the internet.</li>
+    <li><strong>To your Claude app.</strong> The helper passes that data to Claude Code or Claude Desktop on your computer. That app sends it to Anthropic to get Claude's answer, under <a href="https://www.anthropic.com/legal/privacy">Anthropic's privacy policy</a> and the terms of your Claude account. Kitewarden doesn't control what Anthropic does with it.</li>
+    <li><strong>Optional permissions.</strong> Bookmarks, history, downloads, tab groups, cookies and network requests are off until you turn them on. Once on, their data goes the same way only when Claude uses a tool that needs it. Kitewarden can write to the clipboard if you allow it, and it never reads the clipboard.</li>
+    <li><strong>Optional parts.</strong> The remote link sends data directly between two computers that you pair, over an encrypted connection, and through no other server. The Thunderbird add-on sends only the mail you share with Claude, the same way as tabs.</li>
+  </ul>
+
+  <h2>What stays on your computer</h2>
+  <ul>
+    <li>In Firefox: your settings, site rules, chats, workflows and schedules. They're removed when you remove the add-on.</li>
+    <li>In <code>%LOCALAPPDATA%\Kitewarden</code>: the helper's key, the keys of computers paired for the remote link, and the profiles of the isolated Firefox. Uninstalling Kitewarden deletes these.</li>
+    <li>Claude Code keeps its own transcripts of chats. Kitewarden doesn't remove them, so delete them in Claude Code if you want them gone.</li>
+  </ul>
+
+  <h2>Your controls</h2>
+  <p>You choose which tabs Claude can see and whether it can act in them. Site rules keep sites away from Claude entirely. Disconnect, Pause and Stop everything end access at once. Firefox hides private windows from the add-on unless you allow it there, and even then Claude reaches a private tab only through a grant you give that tab.</p>
+
+  <h2>Changes and questions</h2>
+  <p>Changes to this policy are listed in the <a href="https://github.com/Fireiscoolsolo/kitewarden/commits/main/site/privacy.html">history of this page</a>. Ask questions or report a problem in <a href="https://github.com/Fireiscoolsolo/kitewarden/issues">the project's issues on GitHub</a>.</p>
+</main>
+<footer>
+  <p>Kitewarden is open source under the <a href="https://github.com/Fireiscoolsolo/kitewarden/blob/main/LICENSE">Mozilla Public License 2.0</a>.</p>
+  <p>Kitewarden is not made, endorsed or supported by Mozilla or Anthropic. Firefox is a trademark of the Mozilla Foundation; Claude is a trademark of Anthropic, PBC.</p>
+</footer>
+</body>
+</html>
