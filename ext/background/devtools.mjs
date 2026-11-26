@@ -135,7 +135,7 @@ async function windowsInput(r, call, spec, origin, a) {
   if (frameOfRef(a.ref)) throw new ToolError('not_supported', 'Real Windows input works in the top frame only.');
   return withRef(r, call, origin, a.ref, async (f) => {
     const t = await r.page(call, f.origin, { cmd: 'describe', ref: a.ref }, f.frame);
-    await r.ask(call, spec, origin, { tool: 'windows_input', target: t.description, value: 'A real mouse click in this Firefox window, sent by the Windows input backend', link: t.link, download: t.download }, a.reason, f);
+    await r.ask(call, spec, origin, { tool: 'windows_input', target: t.description, value: 'A real mouse click in this Firefox window, sent by the Windows input backend once you have not used mouse or keyboard for 2 seconds', link: t.link, download: t.download }, a.reason, f);
     const tab = await r.tab(call.tabId);
     const w = tab?.active ? await r.api.browser.windows.get(tab.windowId) : null;
     if (!w || w.state === 'minimized') throw new ToolError('not_actionable', 'The tab is not in front, or its window is minimized.');

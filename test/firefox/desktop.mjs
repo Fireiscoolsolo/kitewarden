@@ -173,7 +173,7 @@ try {
     if (!active) throw Object.assign(new Error('not run: nobody uses this computer'), { skipped: true });
     const r = await act('windows_input', { action: 'click', ref: await refOf('Real only') });
     n(r.text);
-    if (!/using mouse or keyboard/.test(r.text)) throw Object.assign(new Error(`not shown: the user rested in that moment (${r.text.slice(0, 80)})`), { skipped: true });
+    if (!/(using|used) mouse or keyboard/.test(r.text)) throw Object.assign(new Error(`not shown: the user rested in that moment (${r.text.slice(0, 80)})`), { skipped: true });
     assert.equal(r.code, 'not_actionable');
     assert.ok(!A.reports.includes('real click'));
   });

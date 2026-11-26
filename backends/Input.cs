@@ -41,7 +41,8 @@ static class Input
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
 
     const uint Move = 0x200, Down = 0x201, Up = 0x202, DoubleClick = 0x203;
-    const int IdleMs = 700, WaitMs = 8000;
+    // Clicks only after the user has not touched mouse or keyboard for IdleMs, waiting at most WaitMs for that.
+    const int IdleMs = 2000, WaitMs = 5000;
 
     static int Refuse(string why)
     {
@@ -82,9 +83,10 @@ static class Input
         var clock = Stopwatch.StartNew();
         while (Idle() < IdleMs)
         {
-            if (clock.ElapsedMilliseconds > WaitMs) return Refuse("the user is using mouse or keyboard");
+            if (clock.ElapsedMilliseconds > WaitMs) return Refuse("the user is using mouse or keyboard; it clicks only after " + IdleMs / 1000 + " s without them");
             Thread.Sleep(50);
         }
+        uint still = LastInputTime();
         if (IsIconic(win) || !IsWindowEnabled(win)) return Refuse("the window is minimized or blocked by a dialog");
         Rect r;
         GetWindowRect(win, out r);
@@ -93,10 +95,13 @@ static class Input
         if (GetAncestor(WindowFromPoint(at), 2) != win) return Refuse("another window covers the point");
         if (!ScreenToClient(win, ref at)) return Refuse("the point is not in the window");
         IntPtr l = new IntPtr((at.Y << 16) | (at.X & 0xFFFF));
+        // Posted messages are not input, so any change of the last input time is the user. A press always gets its release.
+        if (LastInputTime() != still) return Refuse("the user used mouse or keyboard; nothing was sent");
         if (!PostMessage(win, Move, IntPtr.Zero, l)) return Refuse("Windows did not take the message");
         Thread.Sleep(40);
         for (int n = 1; n <= count; n++)
         {
+            if (LastInputTime() != still) return Refuse(n == 1 ? "the user used mouse or keyboard; nothing was clicked" : "the user used mouse or keyboard; one click was sent, not two");
             PostMessage(win, n == 1 ? Down : DoubleClick, new IntPtr(1), l);
             Thread.Sleep(40);
             PostMessage(win, Up, IntPtr.Zero, l);
@@ -111,6 +116,14 @@ static class Input
         var i = new LastInput();
         i.Size = (uint)Marshal.SizeOf(typeof(LastInput));
         return GetLastInputInfo(ref i) ? unchecked((uint)Environment.TickCount - i.Time) : 0;
+    }
+
+    /// <summary>When mouse or keyboard was last used. 0 if Windows does not say; then Idle() is 0 as well, and no click gets this far.</summary>
+    static uint LastInputTime()
+    {
+        var i = new LastInput();
+        i.Size = (uint)Marshal.SizeOf(typeof(LastInput));
+        return GetLastInputInfo(ref i) ? i.Time : 0;
     }
 
     /// <summary>The parent of a process, if it is the program named.</summary>
