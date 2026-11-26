@@ -12,12 +12,12 @@ Handoff after Prompt 7, the release audit (2026-11-25). Requirements, evidence a
 ## Checkpoint
 
 - Source: https://github.com/Fireiscoolsolo/firefox-companion, public, pushed 2026-11-25 with a history from which local folder paths were removed (so every hash differs from the first local repository; the hashes here are those of GitHub). Author is a placeholder identity of this repository.
-- `main` = `42a20ca`, the audit baseline. `feat/windows-bridge-slice` = `2e99263`, the end of Prompt 2. `feat/sidebar-chat` = `59f65f2`, the end of Prompt 3.
+- On GitHub only `main` exists; it is the end of `feat/optional-backends` below. The other branch names are those of the local repository. Locally `main` = `42a20ca`, the audit baseline. `feat/windows-bridge-slice` = `2e99263`, the end of Prompt 2. `feat/sidebar-chat` = `59f65f2`, the end of Prompt 3.
 - `feat/browser-control` = `d34fba3`, the end of Prompt 4 (code `fa75413`).
 - `feat/optional-backends` starts there: two `wip:` commits, then **`26d1256`, the code and tests of the Prompt 5 results**, plus the commits that add this file and the last parity rows, up to `7bb7f27`.
 - Prompt 6 went on to `8bfefbe` on the same branch: code `ae0de1c`, lint fix `e726f09`, version 0.5.0.
 - **Prompt 7 starts there. The final candidate is `bf6c5ba`, version 0.6.0, protocol 4**: code, tests and user documents that the results below belong to. The commit after it holds this file and the parity document.
-- Nothing is signed, published or pushed, and no everyday Firefox profile was touched: every Firefox of the tests ran with `-no-remote` and a profile in the temp folder.
+- Nothing is signed or published as a package (the source is on GitHub), and no everyday Firefox profile was touched: every Firefox of the tests ran with `-no-remote` and a profile in the temp folder.
 - Prompt 1: the audit is complete and its checkers pass. The orchestrator's delivery was refused. Its record in `.claude/opus-orchestrator/` is unchanged and not in Git.
 
 ## What exists
