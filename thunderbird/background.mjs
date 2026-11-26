@@ -6,7 +6,7 @@ import { Grants } from '../grants/grants.mjs';
 import { ToolError, oneLine } from '../shared/protocol.mjs';
 import { Shares, mailTools } from './mail.mjs';
 
-const HOST = 'firefox_companion_mail';
+const HOST = 'kitewarden_mail';
 const PAGE = browser.runtime.getURL('thunderbird/page.html');
 const profile = { id: null, label: 'Thunderbird' };
 let log = [];

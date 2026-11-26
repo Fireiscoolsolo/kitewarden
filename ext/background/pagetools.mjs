@@ -211,7 +211,7 @@ export async function screenshot(r, call, spec, origin) {
 
 async function capture(r, call) {
   if (call.tabId >= VIRTUAL || (await r.api.hasAllUrls())) return { dataUrl: await r.api.captureTab(call.tabId), via: 'captureTab' };
-  const need = new ToolError('permission_required', 'A picture needs the user: ask them to press the Firefox Companion toolbar button on this tab, or to allow screenshots of any granted tab in the sidebar.');
+  const need = new ToolError('permission_required', 'A picture needs the user: ask them to press the Kitewarden toolbar button on this tab, or to allow screenshots of any granted tab in the sidebar.');
   const tab = await r.tab(call.tabId);
   if (!tab?.active) throw need;
   let dataUrl;

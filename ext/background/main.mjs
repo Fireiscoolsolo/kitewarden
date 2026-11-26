@@ -15,7 +15,7 @@ import { Router } from './router.mjs';
 import { Prompts } from '../chat/prompts.mjs';
 import { addRule, noRules, readable, removeRule } from '../grants/rules.mjs';
 
-const HOST = 'firefox_companion';
+const HOST = 'kitewarden';
 const SIDEBAR = browser.runtime.getURL('sidebar/sidebar.html');
 const LOG_LINES = 500;
 const ASK_MS = 70_000;
@@ -564,7 +564,7 @@ function changed() {
           ? ['', 'Connected']
           : ['!', 'Not connected'];
     browser.browserAction.setBadgeText({ text });
-    browser.browserAction.setTitle({ title: `Firefox Companion: ${title}` });
+    browser.browserAction.setTitle({ title: `Kitewarden: ${title}` });
   });
 }
 

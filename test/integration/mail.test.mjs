@@ -7,8 +7,8 @@ import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { FakeFirefox, HOST, McpClient, host, installHome } from '../helpers.mjs';
 
-const MAIL_ID = 'mail@firefox-companion.invalid';
-const REG = 'HKCU\\Software\\Mozilla\\NativeMessagingHosts\\firefox_companion_mail';
+const MAIL_ID = 'thunderbird@kitewarden.com';
+const REG = 'HKCU\\Software\\Mozilla\\NativeMessagingHosts\\kitewarden_mail';
 const key = () => spawnSync('reg', ['query', REG, '/ve'], { encoding: 'utf8' }).status === 0;
 let home;
 let had;
@@ -36,15 +36,15 @@ test('an installation without the option registers nothing for Thunderbird; with
   assert.equal(key(), false);
   assert.equal(existsSync(path.join(home.dir, 'native-manifest-mail.json')), false);
   const dry = host('install', '--home', home.dir, '--thunderbird', '--dry-run');
-  assert.match(dry.stdout, /would: set HKCU.*firefox_companion_mail/);
+  assert.match(dry.stdout, /would: set HKCU.*kitewarden_mail/);
   assert.equal(key(), false);
   assert.equal(host('install', '--home', home.dir, '--thunderbird').status, 0);
   const m = JSON.parse(readFileSync(path.join(home.dir, 'native-manifest-mail.json'), 'utf8'));
-  assert.deepEqual([m.name, m.allowed_extensions], ['firefox_companion_mail', [MAIL_ID]]);
-  assert.deepEqual(JSON.parse(readFileSync(path.join(home.dir, 'native-manifest.json'), 'utf8')).allowed_extensions, ['bridge@firefox-companion.invalid']);
+  assert.deepEqual([m.name, m.allowed_extensions], ['kitewarden_mail', [MAIL_ID]]);
+  assert.deepEqual(JSON.parse(readFileSync(path.join(home.dir, 'native-manifest.json'), 'utf8')).allowed_extensions, ['firefox@kitewarden.com']);
   assert.match(host('doctor', '--home', home.dir).stdout, /ok {4}thunderbird/);
   const r = host('uninstall', '--home', home.dir, '--dry-run');
-  assert.match(r.stdout, /delete HKCU.*firefox_companion_mail/);
+  assert.match(r.stdout, /delete HKCU.*kitewarden_mail/);
   spawnSync('reg', ['delete', REG, '/f']);
 });
 

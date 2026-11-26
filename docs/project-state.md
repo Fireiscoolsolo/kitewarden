@@ -7,11 +7,11 @@ Handoff after Prompt 7, the release audit (2026-11-25). Requirements, evidence a
 | Use | Verdict | What the evidence supports | Still blocked |
 |---|---|---|---|
 | Local testing by the owner, on this kind of computer | **Ready**, with the limits on the right | Every suite passed, on the candidate `bf6c5ba` or with the same product code: units, integration, packaged artifacts with Firefox played by the test and in real Firefox, all Firefox suites headless. On it ran: units, install, packaged. The visible desktop without a user (two checks not run) and short live runs passed on `ef59754`, the integration and Firefox suites of the development build on `f1693e1`. Since those only the license changed: `LICENSE`, `NOTICE.txt`, the license fields of package.json and of the bundle, the field list of one install test, and the address of the source in `NOTICE.txt`. Install, upgrade from 0.5.0 and 0.4.0, interruption, doctor and uninstall work with the packaged files | The add-on is temporary and gone after each restart of Firefox. Cross-account denial (AC-03, AC-04) is not shown, so use it on a computer whose other accounts you trust. Claude Desktop, Thunderbird, two computers and real sites were not tried. File and shell tools of a chat are as strong as the user's own account: leave them off unless needed |
-| Public distribution | **Not ready** | Lint and validation of the packages are clean (the mail add-on has four warnings), builds are reproducible, the rules of Mozilla and Anthropic were read again | Public name, add-on IDs, copyright holder, terms of the artwork, data declaration, listed or self-distributed, and the subscription question are decisions of the owner. No signed build, so AC-06 is open. AC-03 and AC-04 are open. Mozilla has reviewed nothing. The policies of 2026-12-01 come into effect in days |
+| Public distribution | **Not ready** | Lint and validation of the packages are clean (the mail add-on has four warnings), builds are reproducible, the rules of Mozilla and Anthropic were read again | Public name, add-on IDs, copyright holder, terms of the artwork, data declaration, listed or self-distributed, and the subscription question are decisions of the owner (name and IDs: decided, D10). No signed build, so AC-06 is open. AC-03 and AC-04 are open. Mozilla has reviewed nothing. The policies of 2026-12-01 come into effect in days |
 
 ## Checkpoint
 
-- Source: https://github.com/Fireiscoolsolo/firefox-companion, public, pushed 2026-11-25 with a history from which local folder paths were removed (so every hash differs from the first local repository; the hashes here are those of GitHub). Author is a placeholder identity of this repository.
+- Source: https://github.com/Fireiscoolsolo/kitewarden, public, pushed 2026-11-25 with a history from which local folder paths were removed (so every hash differs from the first local repository; the hashes here are those of GitHub). Author is a placeholder identity of this repository.
 - On GitHub only `main` exists; it is the end of `feat/optional-backends` below. The other branch names are those of the local repository. Locally `main` = `42a20ca`, the audit baseline. `feat/windows-bridge-slice` = `2e99263`, the end of Prompt 2. `feat/sidebar-chat` = `59f65f2`, the end of Prompt 3.
 - `feat/browser-control` = `d34fba3`, the end of Prompt 4 (code `fa75413`).
 - `feat/optional-backends` starts there: two `wip:` commits, then **`26d1256`, the code and tests of the Prompt 5 results**, plus the commits that add this file and the last parity rows, up to `7bb7f27`.
@@ -43,7 +43,7 @@ Beside it, separate and off: optional programs that the user starts, an add-on f
 | Host, pipe, login | [host/native/Host.cs](../host/native/Host.cs) |
 | Files for uploads | [host/native/Files.cs](../host/native/Files.cs) |
 | Claude Code runs, skill file | [host/native/Chat.cs](../host/native/Chat.cs) |
-| Install, upgrade, recovery, uninstall, doctor; FirefoxCompanionSetup | [host/native/Setup.cs](../host/native/Setup.cs) |
+| Install, upgrade, recovery, uninstall, doctor; KitewardenSetup | [host/native/Setup.cs](../host/native/Setup.cs) |
 | MCP server, pipe client, choice of profile | [mcp/server/server.mjs](../mcp/server/server.mjs) (entry), [serve.mjs](../mcp/server/serve.mjs), [link.mjs](../mcp/server/link.mjs) |
 | Console, requests, bodies of granted tabs; hooks in the page | [ext/background/observe.mjs](../ext/background/observe.mjs), [ext/page/hooks.js](../ext/page/hooks.js) |
 | Diagnostics, page tools (WebMCP), calls of the backends | [ext/background/devtools.mjs](../ext/background/devtools.mjs) |
@@ -65,14 +65,14 @@ From Prompts 2 and 3, still valid:
 
 - Both entry points call `router.call(sessionId, id, tool, args)`. Grants live in memory only: session, tab, exact origins, level. Only messages of the real sidebar port change grants, answer cards, pause, stop or connect. A card closes after 60 s seen or 120 s unseen, ignores its first 500 ms, and serves one waiting call.
 - Pipe login: host nonce, client nonce and HMAC, host HMAC, then versions. After a lost link calls in flight end with `outcome_unknown`, nothing is repeated, the next call returns `session_ended`, grants are gone.
-- A chat is a session of kind `chat`. A run is one `claude -p` process per message in a job object, with Companion tools only, joined to its chat by a ticket that works once. Skill files are written only after a preview. The list of options is in [Chat.cs](../host/native/Chat.cs).
+- A chat is a session of kind `chat`. A run is one `claude -p` process per message in a job object, with Kitewarden tools only, joined to its chat by a ticket that works once. Skill files are written only after a preview. The list of options is in [Chat.cs](../host/native/Chat.cs).
 - `router.call(..., { user: true })` opens the tools that are for the user only (`get_selection`) and waives no other check.
 
 New in Prompt 7:
 
 - **Site rules** (`storage.local.siteRules` `{block, ask, allow}`, hosts): `ruleFor` in rules.mjs is the only judge. `authorize`, `authorizeFrame`, `allowedSite` (opening, navigating, granting, approving), the tab list, history and bookmarks ask it. `setRules` takes blocked origins and frames out of every grant and suspends what is there. Rules that cannot be read are no rules: `router.unreadable` refuses everything until they are, or the user resets them.
 - **Order of codes** in `authorize`: `site_blocked` and `restricted_page` come before `grant_suspended`, as the matrix says.
-- **File, shell and web tools of a chat** (`chat.tools`, off at first, never copied to a new chat): the helper adds `--tools`, an `ask` rule for each of them, `--permission-mode manual` and `--permission-prompt-tool mcp__firefox-companion__chat_permission`, and `FC_CHAT_TOOLS` for the MCP server of that run, which then lists that tool. `Chats.permission` asks on the ordinary card: only in a run of that chat that began with the switch on, only the tools of `CHAT_TOOLS` (the same list as `Offered` in Chat.cs), the whole input, hidden characters written out, at most 20,000 characters, and the switch again after the card. Anything but an allow is answered as a deny. The outcome becomes done with the tool's result. A pause ends such a run.
+- **File, shell and web tools of a chat** (`chat.tools`, off at first, never copied to a new chat): the helper adds `--tools`, an `ask` rule for each of them, `--permission-mode manual` and `--permission-prompt-tool mcp__kitewarden__chat_permission`, and `FC_CHAT_TOOLS` for the MCP server of that run, which then lists that tool. `Chats.permission` asks on the ordinary card: only in a run of that chat that began with the switch on, only the tools of `CHAT_TOOLS` (the same list as `Offered` in Chat.cs), the whole input, hidden characters written out, at most 20,000 characters, and the switch again after the card. Anything but an allow is answered as a deny. The outcome becomes done with the tool's result. A pause ends such a run.
 - **Levels:** `router.setLevel` ends acting calls of that tab when it goes down. `call.level` holds the level of a call.
 - **Clipboard:** group `clipboard`, `api.clipboard`. `session.copied` is what ctrl+v inserts; nothing reads the clipboard.
 - **Lists of a page** (role combobox or listbox, aria-haspopup listbox): `choose` in content.js, through `form_input`.
@@ -126,11 +126,11 @@ Version 0.6.0, protocol 4, from `bf6c5ba`, not signed. `npm run release` makes t
 
 | Path | What | SHA-256 |
 |---|---|---|
-| `release/FirefoxCompanionSetup-0.6.0.exe` | per-user installer, upgrade, doctor, uninstall | `0f48c10ec0e77d0ffcbbbeba7a5067cddb4310bfd9792c736fad4a7123849d65` |
-| `release/firefox-companion-0.6.0-unsigned.xpi` | everyday Firefox add-on | `946bfe93ea952787799516effe2789e9e72d38e7c9fb018a992df28fb2a5b807` |
-| `release/firefox-companion-0.6.0.mcpb` | Claude Desktop bundle | `e423bb36d97688776b06603ee190860aac051147dc1be76da224081c6e3d9584` |
-| `release/optional/firefox-companion-optional-0.6.0.zip` | isolated Firefox, Windows input, remote link; separate | `19d436b79219b6216c916d345b5167c8fd2e05e15f0ab7d00045c0991a4a31b1` |
-| `release/optional/firefox-companion-mail-0.6.0-unsigned.xpi` | Thunderbird add-on; separate | `1bae49092ec39d0ddbfdf5a13e4f6f63186f1c1569ad34cce3950d5f6c10b22f` |
+| `release/KitewardenSetup-0.6.0.exe` | per-user installer, upgrade, doctor, uninstall | `0f48c10ec0e77d0ffcbbbeba7a5067cddb4310bfd9792c736fad4a7123849d65` |
+| `release/kitewarden-0.6.0-unsigned.xpi` | everyday Firefox add-on | `946bfe93ea952787799516effe2789e9e72d38e7c9fb018a992df28fb2a5b807` |
+| `release/kitewarden-0.6.0.mcpb` | Claude Desktop bundle | `e423bb36d97688776b06603ee190860aac051147dc1be76da224081c6e3d9584` |
+| `release/optional/kitewarden-optional-0.6.0.zip` | isolated Firefox, Windows input, remote link; separate | `19d436b79219b6216c916d345b5167c8fd2e05e15f0ab7d00045c0991a4a31b1` |
+| `release/optional/kitewarden-mail-0.6.0-unsigned.xpi` | Thunderbird add-on; separate | `1bae49092ec39d0ddbfdf5a13e4f6f63186f1c1569ad34cce3950d5f6c10b22f` |
 | `release/CONTENTS.txt` | hashes of every file inside | `bd04eea4517fa7d040a2468ed05465c5e76fe54e2799373756cb1a9864f75aaf` |
 | `release/NOTICE.txt` | license (MPL-2.0), third-party code (none), trademarks | `c4961ab459c750f422fd883fcab78ae14058fe6d9bea3ebd3393427f5a2a0f98` |
 | `release/LICENSE` | text of MPL-2.0 | `1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5` |
@@ -162,7 +162,7 @@ Windows 11 build 26300, without elevation, Firefox 160.0.1 release, Node 26.12.1
 
 Other failures on the way, on earlier states of the candidate, with logs in `test-results/before-final/`: `test:packaged` 12 of 16 once, because a click on a switch of the old add-ons did not arrive; 16 of 16 in every run since. `test:companion` while the mutation runs loaded the computer: twice a click on Stop missed (fixed, below), and once four replay checks ended with "The element of this step is not on the page". Its cause was found afterwards: the first defect of the next table, not the load.
 
-After the runs: no registration, no entry of a test in the temp folder, no helper and no test Firefox was left. `%LOCALAPPDATA%\FirefoxCompanion` does not exist. Three folders `fc-claude-config`, `fc-docs` and `fc-empty` in the temp folder are older than this audit and were left.
+After the runs: no registration, no entry of a test in the temp folder, no helper and no test Firefox was left. `%LOCALAPPDATA%\Kitewarden` does not exist. Three folders `fc-claude-config`, `fc-docs` and `fc-empty` in the temp folder are older than this audit and were left.
 
 ### Found and fixed by the audit
 
@@ -196,9 +196,9 @@ After the runs: no registration, no entry of a test in the temp folder, no helpe
 
 ### Compared with the sources
 
-Companion was measured headless on this computer with local pages (`test-results/measure.json`). The others were not run: FoxPilot is installed in the user's everyday Firefox, which must not be changed, and the others would have to be downloaded and installed. What is said of them is from their instructions or the source audit at the pinned commits, and nothing of it was measured.
+Kitewarden was measured headless on this computer with local pages (`test-results/measure.json`). The others were not run: FoxPilot is installed in the user's everyday Firefox, which must not be changed, and the others would have to be downloaded and installed. What is said of them is from their instructions or the source audit at the pinned commits, and nothing of it was measured.
 
-| Workflow | Companion, observed | Other, not measured |
+| Workflow | Kitewarden, observed | Other, not measured |
 |---|---|---|
 | Everyday control (FoxPilot): read a form, set a field, send it, know the outcome | Setup: installer, add-on, Connect, attach a tab with one question of Firefox. 4 calls and 2 cards, 447 ms without the cards; in one batch 1 call after the read and 2 cards, 359 ms. The reply said "navigated" and the page confirmed one save | Its instructions ask for a fresh snapshot after each action, so list, snapshot, fill, snapshot, click, snapshot: 6 calls and no card. Its permission is per site, not per tab (02 in "Permission boundaries") |
 | Action outcome | dispatched and observed are apart; a dead button says that nothing changed (F) | not measured |
@@ -217,8 +217,8 @@ Companion was measured headless on this computer with local pages (`test-results
 | AC-03, AC-04 | **open** for another account; the rest run again. This Windows has other enabled accounts, none was used and none was created | their user, with the steps of check 1 |
 | AC-06 | **open** for a restart with the add-on staying installed | a signed build |
 | Remote link | works on one computer (I, F); **not tested between two** | a second computer, its firewall (check 9) |
-| Public name | "`<name>` for Firefox" in the policies, also those of 2026-12-01, and in the trademark guidelines, which name "Firefox NewGadget Extension" as not allowed; read on 2026-11-25. **To decide** | owner |
-| Add-on IDs, data declaration, signing | **to decide** (license decided 2026-11-25: MPL-2.0): IDs are placeholders; bookmarksInfo, searchTerms, personalCommunications; API key and certificate | owner, RELEASE.md |
+| Public name | "`<name>` for Firefox" in the policies, also those of 2026-12-01, and in the trademark guidelines, which name "Firefox NewGadget Extension" as not allowed; read on 2026-11-25. **Decided** 2026-11-25: Kitewarden (D10); a trademark office search is open | owner |
+| Data declaration, signing | **to decide** (license MPL-2.0 and IDs firefox@kitewarden.com, thunderbird@kitewarden.com decided 2026-11-25): bookmarksInfo, searchTerms, personalCommunications; API key and certificate | owner, RELEASE.md |
 | Claude subscription | Legal and compliance, read on 2026-11-25: a user may sign in to the unmodified Claude Code with their own subscription; a third party may not offer claude.ai login or route requests through plan credentials for its users; running Claude Code in a product needs the Commercial Terms. `--bare`, which never reads a subscription login, is to become the default of `claude -p`. **To decide** | owner |
 
 ### Results of Prompt 6
@@ -263,7 +263,7 @@ What `test:install` and `test:packaged` show, by what Prompt 6 named:
 
 Fixed on the way: the module ID was taken from an embedded program, so the installer differed at each build; the sidebar named developer folders for the optional programs. The stored data of the upgrade check was partly seeded (workflow, schedule, pairing, chat); switches, folder and label were set by clicks.
 
-After the runs: registration and entries in Settings absent, no folder `%LOCALAPPDATA%\FirefoxCompanion`, no process and no temporary folder of these tests, no entry in the user's Claude Code. The user's everyday Firefox profile, Claude Code configuration and Claude Desktop were not changed.
+After the runs: registration and entries in Settings absent, no folder `%LOCALAPPDATA%\Kitewarden`, no process and no temporary folder of these tests, no entry in the user's Claude Code. The user's everyday Firefox profile, Claude Code configuration and Claude Desktop were not changed.
 
 ## Commands and results of Prompt 5
 
@@ -288,7 +288,7 @@ The desktop runs, in order, with the same input files: (1) screen saver up, so n
 
 26 guards were taken out of the build one at a time (senders, origins, HttpOnly, tokens, switches after the card, backends that are off, digest of a workflow, missed times, expiry, fingerprint, shares of mail and others). At first three were not noticed; those tests were made stricter, and then all 26 failed a test. Simulated evidence.
 
-After the runs: both registry keys absent, no process of the helper, the backends or a test Firefox, no temporary folder of these tests. A test run that is killed leaves the key behind; `firefox-companion-host.exe uninstall --home <that folder>` removes it.
+After the runs: both registry keys absent, no process of the helper, the backends or a test Firefox, no temporary folder of these tests. A test run that is killed leaves the key behind; `kitewarden-host.exe uninstall --home <that folder>` removes it.
 
 ### What Prompt 5 asked for, by backend
 
@@ -374,30 +374,30 @@ Still true from Prompt 3: skills and agents are listed only after the first mess
 ## Blockers and open checks
 
 1. Second Windows account (AC-03, AC-04). Use an existing second account; none was created:
-   1. First user: `release\FirefoxCompanionSetup-0.6.0.exe install --home C:\Users\Public\fc-acl-test`, load the add-on, press Connect, note the pipe name in `C:\Users\Public\fc-acl-test\profiles\<id>.json`.
+   1. First user: `release\KitewardenSetup-0.6.0.exe install --home C:\Users\Public\fc-acl-test`, load the add-on, press Connect, note the pipe name in `C:\Users\Public\fc-acl-test\profiles\<id>.json`.
    2. Second user: `Get-Content C:\Users\Public\fc-acl-test\key.bin` must be denied.
    3. Second user: `$c = New-Object IO.Pipes.NamedPipeClientStream('.', '<name>', 'InOut'); $c.Connect(2000)` must fail with "Access to the path is denied".
-   4. First user: press Disconnect, then `release\FirefoxCompanionSetup-0.6.0.exe uninstall --home C:\Users\Public\fc-acl-test`.
+   4. First user: press Disconnect, then `release\KitewardenSetup-0.6.0.exe uninstall --home C:\Users\Public\fc-acl-test`.
 2. Restart of Firefox (AC-06, FC-GRANT-16, FC-UI-03): after the user signs a build, attach a tab, start a chat, press Stop everything, restart Firefox with session restore. Expected: no grant, paused, the helper reconnects, the chat is listed and goes on.
 3. Visible desktop: focus and minimized windows are observed (FC-TAB-11, FC-SHOT-01), and the record of the idle mode exists (`test-results/desktop-idle.json`, 2026-11-25). Open there: clicks and typing while another program is in front, the isolated Firefox with a window, Windows input while somebody uses the computer (run `npm run test:desktop` and keep working), a file pasted into the chat and the picture on the clipboard of Windows (they need the yes of the user to overwrite that clipboard).
 4. Prompt 3: saved prompts (FC-AGT-10), the switch for file and shell tools (FC-AGT-02) and the run of an exported skill (FC-AGT-08) are done; Status of each says what is missing. A replay that failed once is explained and fixed ("Found and fixed by the audit").
 5. Public distribution with a subscription sign-in: a decision for the user. Event page wake (D1): an inference, not tested.
 6. Mozilla review of `incognito: spanning`, of the optional cookies, webRequest and webRequestBlocking, of WebMCP offered by an add-on, and the data declaration (cookies and storage of sites; mail in the Thunderbird add-on): not asked.
 7. Not tried: screen reader, two windows with the sidebar, real sites with editors and drag targets (open question 16), an add-on update with stored data of a real user. From 0.3.0 and 0.4.0 in a test profile: PF; Firefox leaves cookies given when it turns from required to optional.
-8. Thunderbird (FC-DATA-20): not installed, and nothing was downloaded. With it: `release\FirefoxCompanionSetup-0.6.0.exe install --thunderbird`, load `release\optional\firefox-companion-mail-0.6.0-unsigned.xpi` as a temporary add-on, Connect, share one account with a client of `server.mjs --mail`, use a dummy account.
+8. Thunderbird (FC-DATA-20): not installed, and nothing was downloaded. With it: `release\KitewardenSetup-0.6.0.exe install --thunderbird`, load `release\optional\kitewarden-mail-0.6.0-unsigned.xpi` as a temporary add-on, Connect, share one account with a client of `server.mjs --mail`, use a dummy account.
 9. Remote link between two computers, and what a firewall does with it. Developer Edition with the developer build.
 10. Signing and public release: [RELEASE.md](RELEASE.md). Prerequisites, all of the owner: public name and the two add-on IDs (fixed by the first submission), copyright holder (license: MPL-2.0, decided), a public place for the source, terms of the artwork (made with another AI tool), listed or self-distributed, data declaration (bookmarksInfo, searchTerms, personalCommunications), Mozilla account with an API key, a code-signing certificate, and the subscription question (5).
-11. Claude Desktop itself: installing the .mcpb file changes the user's own Claude Desktop, so it was not done. With the user's yes, or a Claude Desktop with a test sign-in: Settings, Extensions, Advanced settings, Install Extension, `release\firefox-companion-0.6.0.mcpb`, then ask for the connection status with the helper installed. Claude Desktop 6.28899.6 starts Node bundles in its own Node 24.22.3 with the arguments of the manifest (read from its files). Unsigned bundles: not tried.
+11. Claude Desktop itself: installing the .mcpb file changes the user's own Claude Desktop, so it was not done. With the user's yes, or a Claude Desktop with a test sign-in: Settings, Extensions, Advanced settings, Install Extension, `release\kitewarden-0.6.0.mcpb`, then ask for the connection status with the helper installed. Claude Desktop 6.28899.6 starts Node bundles in its own Node 24.22.3 with the arguments of the manifest (read from its files). Unsigned bundles: not tried.
 12. Lint and validation ran again on the 0.6.0 files, with the pinned tools from the local npm cache. Open: the data declaration of the mail add-on, and the review of the Thunderbird add-ons site.
 13. Not tried: more than one Firefox window with several chats at work, real sites, Windows SmartScreen and security software with the unsigned program, Windows before 11, Firefox older than 160 or absent, an account with special letters (only the folder had them), the Uninstall button in Settings by hand (its command was run), an installation while a chat runs, power loss (kills only), a full disk.
 14. Limits: a file that a later version drops is not deleted by an upgrade. Servers that a client started and optional programs run on after an uninstall until their owner ends them. The optional programs have no installer.
 
 ## Try it by hand
 
-1. `npm run release`, then start `release\FirefoxCompanionSetup-0.6.0.exe` and choose `i`. `d` checks, `u` removes.
-2. In Firefox open `about:debugging#/runtime/this-firefox`, choose Load Temporary Add-on, and pick `release\firefox-companion-0.6.0-unsigned.xpi`. It is gone after a restart of Firefox.
+1. `npm run release`, then start `release\KitewardenSetup-0.6.0.exe` and choose `i`. `d` checks, `u` removes.
+2. In Firefox open `about:debugging#/runtime/this-firefox`, choose Load Temporary Add-on, and pick `release\kitewarden-0.6.0-unsigned.xpi`. It is gone after a restart of Firefox.
 3. Open the sidebar with the toolbar button and press Connect. Tabs: attach this tab; Frames shows frames of other sites; Take over and Give back hold one tab; Stop everything holds all of it. Browser data has the switches, the upload folders and the name of this profile.
-4. In PowerShell, `claude mcp add -s user firefox-companion -- node "$env:LOCALAPPDATA\FirefoxCompanion\mcp\server.mjs"` registers the MCP server. It needs no chat.
+4. In PowerShell, `claude mcp add -s user kitewarden -- node "$env:LOCALAPPDATA\Kitewarden\mcp\server.mjs"` registers the MCP server. It needs no chat.
 
 ## What comes next can build on
 
@@ -407,4 +407,4 @@ Still true from Prompt 3: skills and agents are listed only after the first mess
 - `test/firefox/audit.mjs "<part>"` and `test/live/audit.mjs skill|chat|files` are the checks of Prompt 7.
 - `test/firefox/advanced.mjs "<part>"` runs its setup and the checks that match.
 - `test/firefox/control.mjs` with the pages of [fixtures.mjs](../test/firefox/fixtures.mjs) is the place for further real checks; `node test/firefox/control.mjs "<part of a name>"` stops after that check.
-- A tool that a chat run may ask for beyond Companion is a name in `CHAT_TOOLS` (chats.mjs) and in `Offered` (Chat.cs), and needs the live check of `npm run test:live-audit`.
+- A tool that a chat run may ask for beyond Kitewarden is a name in `CHAT_TOOLS` (chats.mjs) and in `Offered` (Chat.cs), and needs the live check of `npm run test:live-audit`.

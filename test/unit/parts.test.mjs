@@ -122,7 +122,7 @@ test('native link: names why it is down, Retry now opens at once, messages count
   l.start();
   ports[0].on.message({ type: 'from_client', session: 's', body: '{}' });
   assert.deepEqual(seen.messages, []);
-  drop('No such native application firefox_companion');
+  drop('No such native application kitewarden');
   assert.deepEqual([l.status.state, l.status.code], ['waiting', 'helper_missing']);
   l.retryNow();
   assert.equal(ports.length, 2);

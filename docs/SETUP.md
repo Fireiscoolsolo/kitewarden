@@ -1,32 +1,32 @@
-# Firefox Companion: setup and troubleshooting
+# Kitewarden: setup and troubleshooting
 
-Firefox Companion is a working name. It needs Windows 11 and Firefox 160 or later. It is not signed yet, so Firefox release loads the add-on only for one run ("Load the add-on"). It is not made or supported by Mozilla or Anthropic.
+Kitewarden needs Windows 11 and Firefox 160 or later. It is not signed yet, so Firefox release loads the add-on only for one run ("Load the add-on"). It is not made or supported by Mozilla or Anthropic.
 
 ## What you have
 
 | File | What it is |
 |---|---|
-| `FirefoxCompanionSetup-<version>.exe` | Installs, upgrades, checks and removes the helper, for your Windows user only |
-| `firefox-companion-<version>-unsigned.xpi` | The add-on for everyday Firefox |
-| `firefox-companion-<version>.mcpb` | For Claude Desktop |
-| `optional\firefox-companion-optional-<version>.zip` | Programs that you start yourself: isolated Firefox, Windows input, remote link. Nothing of it is installed |
-| `optional\firefox-companion-mail-<version>-unsigned.xpi` | A separate add-on for Thunderbird |
+| `KitewardenSetup-<version>.exe` | Installs, upgrades, checks and removes the helper, for your Windows user only |
+| `kitewarden-<version>-unsigned.xpi` | The add-on for everyday Firefox |
+| `kitewarden-<version>.mcpb` | For Claude Desktop |
+| `optional\kitewarden-optional-<version>.zip` | Programs that you start yourself: isolated Firefox, Windows input, remote link. Nothing of it is installed |
+| `optional\kitewarden-mail-<version>-unsigned.xpi` | A separate add-on for Thunderbird |
 | `SHA256SUMS.txt`, `CONTENTS.txt`, `NOTICE.txt` | Checksums of these files and of what is inside them; licensing and trademarks |
 
 Check a file before you use it. The value must be the one in `SHA256SUMS.txt`, taken from a place you trust:
 
 ```powershell
-Get-FileHash .\FirefoxCompanionSetup-0.6.0.exe -Algorithm SHA256
+Get-FileHash .\KitewardenSetup-0.6.0.exe -Algorithm SHA256
 ```
 
 ## Install the helper
 
-Start `FirefoxCompanionSetup-<version>.exe` and choose `i`. It lists what it will do and asks. Windows may warn about an unknown publisher, because the program is not signed.
+Start `KitewardenSetup-<version>.exe` and choose `i`. It lists what it will do and asks. Windows may warn about an unknown publisher, because the program is not signed.
 
 It needs no administrator rights and changes only this:
 
-- the folder `%LOCALAPPDATA%\FirefoxCompanion`, readable by you only: program, MCP server, a random key, the name of the pipe;
-- one registry value, `HKCU\Software\Mozilla\NativeMessagingHosts\firefox_companion`, which lets exactly this add-on start the helper;
+- the folder `%LOCALAPPDATA%\Kitewarden`, readable by you only: program, MCP server, a random key, the name of the pipe;
+- one registry value, `HKCU\Software\Mozilla\NativeMessagingHosts\kitewarden`, which lets exactly this add-on start the helper;
 - one entry in Settings, Apps;
 - in Claude Code one server entry, only if you say yes.
 
@@ -35,11 +35,11 @@ It changes no Firefox profile, no Firefox setting, no PATH, and starts nothing a
 Without questions, for scripts:
 
 ```powershell
-.\FirefoxCompanionSetup-0.6.0.exe install --dry-run
+.\KitewardenSetup-0.6.0.exe install --dry-run
 ```
 
 ```powershell
-.\FirefoxCompanionSetup-0.6.0.exe install
+.\KitewardenSetup-0.6.0.exe install
 ```
 
 Further options: `--home <folder>` for another folder, `--claude-code` to register with Claude Code, `--thunderbird` for the mail add-on. Exit code 0 is done, 1 failed and undone, 2 a wrong option, 3 installed but Claude Code was not changed.
@@ -67,10 +67,10 @@ Claude works only with tabs that you attach to its session in the sidebar, and e
 **Claude Code** needs Node 22 or later on PATH. Answer yes in the installer, or:
 
 ```powershell
-claude mcp add -s user firefox-companion -- node "$env:LOCALAPPDATA\FirefoxCompanion\mcp\server.mjs"
+claude mcp add -s user kitewarden -- node "$env:LOCALAPPDATA\Kitewarden\mcp\server.mjs"
 ```
 
-`claude mcp get firefox-companion` must say Connected. The installer adds no allow rule, hook or instruction file. If another entry of that name exists, it stays as it is.
+`claude mcp get kitewarden` must say Connected. The installer adds no allow rule, hook or instruction file. If another entry of that name exists, it stays as it is.
 
 **Claude Desktop** brings its own Node. Settings, Desktop app, Extensions: Manage (older layout: Settings, Extensions), Advanced settings, Install Extension, pick the `.mcpb` file. Leave the folder as it is unless you used `--home`. A file installed this way is updated by hand: install the new one after each upgrade of the helper. Your organization may block extensions.
 
@@ -78,7 +78,7 @@ Instead of the `.mcpb` file, with Node installed: add the entry that the install
 
 **The chat in the sidebar** runs your own installed and signed-in Claude Code. The add-on holds no account and no key.
 
-The run has the tools of Firefox Companion and no others. Two switches of a chat, both off at first, add to that:
+The run has the tools of Kitewarden and no others. Two switches of a chat, both off at first, add to that:
 
 - **Skills, plugins and agents** of your Claude Code. Hooks and shell commands in skills stay off.
 - **File, shell and web tools on this computer.** Each use shows its whole input on a card and runs only after Allow, read-only commands included. What you allow there is not limited to attached tabs: a command can do what you can do, and it starts in the folder of the helper. Text of a page can try to talk Claude into a command, so read the card. Pause and Stop end such a run; a command that began may have taken effect. Needs Claude Code 2.1.302 or later.
@@ -93,7 +93,7 @@ Instructions hidden in a page can still mislead Claude inside what you attached.
 
 ## Upgrade
 
-Start the newer `FirefoxCompanionSetup` and choose `i`, then load or update the add-on. Firefox may stay open: the running helper is stopped, chats that it runs end, and the add-on starts the new one. Kept: key, pairings of remote clients, profiles, Thunderbird registration, and in the add-on all settings, chats, workflows and schedules. Switches stay as you set them. Grants always end.
+Start the newer `KitewardenSetup` and choose `i`, then load or update the add-on. Firefox may stay open: the running helper is stopped, chats that it runs end, and the add-on starts the new one. Kept: key, pairings of remote clients, profiles, Thunderbird registration, and in the add-on all settings, chats, workflows and schedules. Switches stay as you set them. Grants always end.
 
 An older installer refuses to replace a newer version. If the parts speak different protocols, the sidebar and `connection_status` name the older part.
 
@@ -101,7 +101,7 @@ An older installer refuses to replace a newer version. If the parts speak differ
 
 ## Uninstall
 
-Settings, Apps, Firefox Companion, Uninstall, or choose `u` in the setup program. It removes the registration, stops the helper, and deletes its own files and the Claude Code entry that it made. Files of others in the folder stay. Not removed: the add-on and its data (remove it in `about:addons`), the Claude Desktop extension (remove it there), transcripts of Claude Code, and skills that you exported.
+Settings, Apps, Kitewarden, Uninstall, or choose `u` in the setup program. It removes the registration, stops the helper, and deletes its own files and the Claude Code entry that it made. Files of others in the folder stay. Not removed: the add-on and its data (remove it in `about:addons`), the Claude Desktop extension (remove it there), transcripts of Claude Code, and skills that you exported.
 
 ## Optional parts
 
@@ -112,7 +112,7 @@ Extract the optional zip to a folder of your choice. Each program works with the
 Run the check first. It names each problem with its fix and prints no key:
 
 ```powershell
-.\FirefoxCompanionSetup-0.6.0.exe doctor --claude-code
+.\KitewardenSetup-0.6.0.exe doctor --claude-code
 ```
 
 | You see | Do |
@@ -123,7 +123,7 @@ Run the check first. It names each problem with its fix and prints no key:
 | Versions differ | Update the part that is named as older |
 | Installer: being used by another process | Nothing was changed. Close the program that holds the file, run again |
 | Installer: this installer is damaged | Get the file again and check its checksum |
-| Installer: exists and is not a Firefox Companion folder | Choose another folder with `--home` |
+| Installer: exists and is not a Kitewarden folder | Choose another folder with `--home` |
 | Client: not_installed | The client looks in another folder than the installer used |
 | Client: session_ended | The helper was restarted. Attach the tab again, or press the button that gives the lost grants back |
 | Client: permission_required for a container | Press Allow tabs in containers |

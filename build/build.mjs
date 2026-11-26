@@ -32,8 +32,8 @@ for (const f of ['gateway.mjs', 'client.mjs', 'wire.mjs']) cpSync(path.join(root
 // The other computer needs the folder remote alone.
 for (const f of ['serve.mjs', 'link.mjs', 'protocol.mjs']) cpSync(path.join(dist, 'mcp', f), path.join(dist, 'remote', f));
 
-compile(path.join(dist, 'backends/firefox-companion-input.exe'), [path.join(root, 'backends/Input.cs')]);
-compile(path.join(dist, 'host/firefox-companion-host.exe'), ['/r:System.Web.Extensions.dll', '/r:System.Core.dll', ...['Host.cs', 'Setup.cs', 'Chat.cs', 'Files.cs'].map((f) => path.join(root, 'host/native', f))]);
+compile(path.join(dist, 'backends/kitewarden-input.exe'), [path.join(root, 'backends/Input.cs')]);
+compile(path.join(dist, 'host/kitewarden-host.exe'), ['/r:System.Web.Extensions.dll', '/r:System.Core.dll', ...['Host.cs', 'Setup.cs', 'Chat.cs', 'Files.cs'].map((f) => path.join(root, 'host/native', f))]);
 cpSync(path.join(root, 'NOTICE.txt'), path.join(dist, 'host/NOTICE.txt'));
 // The add-on for Thunderbird: the rules of the everyday add-on, and tools of its own.
 cpSync(path.join(root, 'thunderbird'), path.join(dist, 'thunderbird/thunderbird'), { recursive: true });
@@ -59,7 +59,7 @@ if (developer) {
   change('extension/background/main.mjs', '// developer build: more tools', 'Object.assign(HANDLERS, scriptTools);');
   change('extension/page/content.js', "if (m.cmd === 'hooks') return; // for hooks.js", "if (m.cmd === 'hooks' || m.cmd === 'script') return;");
   change('extension/sidebar/sidebar.mjs', 'const WANTS = {', "const WANTS = {\n  javascript_tool: 'run script in this page',");
-  change('extension/manifest.json', '"Firefox Companion (working name)"', '"Firefox Companion (developer build)"');
+  change('extension/manifest.json', '"Kitewarden"', '"Kitewarden (developer build)"');
   change('mcp/serve.mjs', 'const PAGE_DATA = [', "const PAGE_DATA = ['javascript_tool', ");
 }
 console.log('built dist/extension, dist/mcp, dist/host, dist/backends, dist/remote, dist/thunderbird');

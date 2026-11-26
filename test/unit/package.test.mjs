@@ -25,7 +25,7 @@ test('everyday package: no code from strings, no user scripts, no remote code, n
     'test actions': /['"]test\.[a-z]/,
   };
   for (const f of everyday().filter((x) => /\.(mjs|js|html|json)$/.test(x))) for (const [what, re] of Object.entries(never)) assert.ok(!re.test(read(f)), `${what} in ${path.relative(root, f)}`);
-  assert.ok(!everyday().some((f) => /isolated|gateway|firefox-companion-input|pagescript|thunderbird/i.test(path.basename(f))), 'optional parts are installed apart');
+  assert.ok(!everyday().some((f) => /isolated|gateway|kitewarden-input|pagescript|thunderbird/i.test(path.basename(f))), 'optional parts are installed apart');
 });
 
 test('every script of the packages parses, also those that only Firefox loads', () => {

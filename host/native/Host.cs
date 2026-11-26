@@ -16,18 +16,18 @@ using System.Threading;
 using System.Web.Script.Serialization;
 using Microsoft.Win32.SafeHandles;
 
-[assembly: System.Reflection.AssemblyTitle("Firefox Companion helper")]
-[assembly: System.Reflection.AssemblyProduct("Firefox Companion (working name)")]
+[assembly: System.Reflection.AssemblyTitle("Kitewarden helper")]
+[assembly: System.Reflection.AssemblyProduct("Kitewarden")]
 [assembly: System.Reflection.AssemblyVersion(Program.Version)]
 [assembly: System.Reflection.AssemblyFileVersion(Program.Version)]
 
 static class Program
 {
-    public const string HostName = "firefox_companion";
-    public const string ExtensionId = "bridge@firefox-companion.invalid";
+    public const string HostName = "kitewarden";
+    public const string ExtensionId = "firefox@kitewarden.com";
     // The add-on for Thunderbird is another one, with a registration of its own that the user asks for.
-    public const string MailHostName = "firefox_companion_mail";
-    public const string MailExtensionId = "mail@firefox-companion.invalid";
+    public const string MailHostName = "kitewarden_mail";
+    public const string MailExtensionId = "thunderbird@kitewarden.com";
     public const string Version = "0.6.0";
     public const int Protocol = 4;
 
@@ -145,7 +145,7 @@ static class Crypto
     public static string Mac(byte[] key, string role, int protocol, string hostNonce, string clientNonce)
     {
         using (var h = new HMACSHA256(key))
-            return Hex(h.ComputeHash(Encoding.ASCII.GetBytes("firefox-companion|" + role + "|" + protocol + "|" + hostNonce + "|" + clientNonce)));
+            return Hex(h.ComputeHash(Encoding.ASCII.GetBytes("kitewarden|" + role + "|" + protocol + "|" + hostNonce + "|" + clientNonce)));
     }
 
     public static bool Same(string a, string b)

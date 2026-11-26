@@ -35,7 +35,7 @@ async function check(row, name, fn, { always = false } = {}) {
     await fn((n) => notes.push(n));
   } catch (e) {
     error = e;
-    notes.push(`console: ${JSON.stringify(await f.chrome('return Services.console.getMessageArray().map((m) => m.message ?? String(m)).filter((m) => /moz-extension|firefox-companion|hooks.js|content.js/.test(m)).slice(-6)').catch((x) => x.message))}`);
+    notes.push(`console: ${JSON.stringify(await f.chrome('return Services.console.getMessageArray().map((m) => m.message ?? String(m)).filter((m) => /moz-extension|kitewarden|hooks.js|content.js/.test(m)).slice(-6)').catch((x) => x.message))}`);
     notes.push(`server: ${A.requests.slice(-8).map((x) => x.path)}; page: ${await f.page('return [location.href, document.readyState, performance.getEntriesByType("resource").map((x) => x.name.split("/").pop() + ":" + Math.round(x.duration)).join()].join(" ")').catch((x) => x.message.slice(0, 100))}`);
     notes.push(`sidebar: ${(await sb.text('body').catch((x) => x.message)).replace(/\s+/g, ' ').slice(0, 1200)}`);
     for (let i = await sb.eval('return document.querySelectorAll("#cards .card").length').catch(() => 0); i > 0; i--) await sb.answerCard(false).catch(() => {});
@@ -599,7 +599,7 @@ try {
     await backendIs('isolated', 'off');
     await turnOn('isolated');
     // The helper is killed: the backend connects again by itself, and is off again.
-    const all = JSON.parse(execFileSync('powershell.exe', ['-NoProfile', '-Command', 'Get-CimInstance Win32_Process -Filter "Name=\'firefox-companion-host.exe\'" | Select-Object ProcessId, ExecutablePath | ConvertTo-Json'], { encoding: 'utf8' }));
+    const all = JSON.parse(execFileSync('powershell.exe', ['-NoProfile', '-Command', 'Get-CimInstance Win32_Process -Filter "Name=\'kitewarden-host.exe\'" | Select-Object ProcessId, ExecutablePath | ConvertTo-Json'], { encoding: 'utf8' }));
     process.kill([all].flat().find((x) => x.ExecutablePath.toLowerCase().startsWith(home.dir.toLowerCase())).ProcessId);
     await until('connected again', async () => (await sb.text('#link-title')) === 'Connected', 15_000, 200);
     await until('isolated again', async () => /· version/.test((await sb.text('#backend-isolated')) ?? ''), 20_000, 300);

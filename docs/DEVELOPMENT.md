@@ -10,7 +10,7 @@ Windows 11, Node 22.2 or later, Git, and the C# compiler that ships with Windows
 | `npm run release` | unit tests and package checks, then `release/` with checksums. Nothing is signed or sent |
 | `npm run build:developer` | also `dist/developer`, with the page-scripting tool. Never packed, signed or published; `release.mjs` stops if it finds a trace of it |
 
-`dist/` and `release/` are not in Git. `dist\host\firefox-companion-host.exe install` installs from `dist/` without an entry in Settings, Apps; load `dist\extension\manifest.json` as a temporary add-on.
+`dist/` and `release/` are not in Git. `dist\host\kitewarden-host.exe install` installs from `dist/` without an entry in Settings, Apps; load `dist\extension\manifest.json` as a temporary add-on.
 
 ### Same bytes from the same commit
 
@@ -28,7 +28,7 @@ One version in `shared/protocol.mjs`, `host/native/Host.cs`, `ext/manifest.json`
 
 ## Install, upgrade, recovery
 
-[Setup.cs](../host/native/Setup.cs) is part of the helper; with the files inside it, it is `FirefoxCompanionSetup`. It writes new files to `<home>\setup\new-*`, then `journal.txt`, then moves each old file to `setup\old-*` and the new one into its place. As long as the journal exists the old version counts: a failure or the next run moves everything back. Deleting the journal commits. `install.json` (pipe name) and `key.bin` are made once and kept; `installed.json` holds version and hashes. A running program can be moved, so Firefox may stay open.
+[Setup.cs](../host/native/Setup.cs) is part of the helper; with the files inside it, it is `KitewardenSetup`. It writes new files to `<home>\setup\new-*`, then `journal.txt`, then moves each old file to `setup\old-*` and the new one into its place. As long as the journal exists the old version counts: a failure or the next run moves everything back. Deleting the journal commits. `install.json` (pipe name) and `key.bin` are made once and kept; `installed.json` holds version and hashes. A running program can be moved, so Firefox may stay open.
 
 Add a program file in `Names` (Setup.cs) and, for `mcp/`, in `build.mjs`. A file that a version no longer has must be deleted by the installer; nothing does that yet.
 

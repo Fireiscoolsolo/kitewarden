@@ -38,7 +38,7 @@ const blocks = input.message.content;
 const text = blocks.findLast((b) => b.type === 'text').text;
 writeFileSync(file, JSON.stringify([...past, text]));
 
-const config = JSON.parse(readFileSync(value('--mcp-config'), 'utf8')).mcpServers['firefox-companion'];
+const config = JSON.parse(readFileSync(value('--mcp-config'), 'utf8')).mcpServers['kitewarden'];
 const mcp = spawn(config.command, config.args, { env: { ...process.env, ...config.env }, stdio: ['pipe', 'pipe', 'inherit'] });
 const waiting = new Map();
 let next = 1;
@@ -52,7 +52,7 @@ const ask = (method, params) => new Promise((r) => {
 });
 await ask('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test-double', version: '0' } });
 const { tools } = await ask('tools/list', {});
-out({ type: 'system', subtype: 'init', model: value('--model') ?? 'default', apiKeySource: 'none', tools: tools.map((t) => `mcp__firefox-companion__${t.name}`), mcp_servers: [{ name: 'firefox-companion', status: 'connected' }], skills: ['demo-skill'], agents: ['demo-agent'], plugins: [{ name: 'demo-plugin', path: 'C:\\private' }] });
+out({ type: 'system', subtype: 'init', model: value('--model') ?? 'default', apiKeySource: 'none', tools: tools.map((t) => `mcp__kitewarden__${t.name}`), mcp_servers: [{ name: 'kitewarden', status: 'connected' }], skills: ['demo-skill'], agents: ['demo-agent'], plugins: [{ name: 'demo-plugin', path: 'C:\\private' }] });
 
 let n = 0;
 async function say(full, ms = 0) {
@@ -69,7 +69,7 @@ async function say(full, ms = 0) {
 }
 async function call(name, args) {
   const id = `toolu_${++n}`;
-  out({ type: 'assistant', message: { id: `msg_${n}`, content: [{ type: 'tool_use', id, name: `mcp__firefox-companion__${name}`, input: args }] } });
+  out({ type: 'assistant', message: { id: `msg_${n}`, content: [{ type: 'tool_use', id, name: `mcp__kitewarden__${name}`, input: args }] } });
   const r = await ask('tools/call', { name, arguments: args });
   out({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, is_error: r.isError === true, content: r.content }] } });
   return r.content.map((c) => c.text ?? '').join('');

@@ -1,12 +1,12 @@
 {
   "manifest_version": 2,
-  "name": "Firefox Companion (working name)",
+  "name": "Kitewarden",
   "version": "0.6.0",
   "description": "Connects the tabs you choose to Claude on this computer.",
   "incognito": "spanning",
   "browser_specific_settings": {
     "gecko": {
-      "id": "bridge@firefox-companion.invalid",
+      "id": "firefox@kitewarden.com",
       "strict_min_version": "160.0",
       "data_collection_permissions": {
         "required": ["browsingActivity", "websiteContent", "websiteActivity"]
@@ -18,13 +18,13 @@
   "content_security_policy": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src data: blob:",
   "background": { "page": "background/index.html", "persistent": true },
   "sidebar_action": {
-    "default_title": "Firefox Companion",
+    "default_title": "Kitewarden",
     "default_panel": "sidebar/sidebar.html",
     "default_icon": "icon.svg",
     "open_at_install": false
   },
   "browser_action": {
-    "default_title": "Firefox Companion",
+    "default_title": "Kitewarden",
     "default_icon": "icon.svg",
     "default_area": "navbar"
   },

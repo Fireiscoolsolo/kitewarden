@@ -1,5 +1,5 @@
 // install, uninstall and doctor. Per user, without administrator rights. The same program is the helper (it installs from the
-// folders beside it, for developers) and, with the files inside it, FirefoxCompanionSetup.
+// folders beside it, for developers) and, with the files inside it, KitewardenSetup.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -17,9 +17,9 @@ static class Setup
 {
     const string RegistryPath = @"Software\Mozilla\NativeMessagingHosts\" + Program.HostName;
     const string MailRegistryPath = @"Software\Mozilla\NativeMessagingHosts\" + Program.MailHostName;
-    const string AppsPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\FirefoxCompanion";
-    const string Exe = "firefox-companion-host.exe";
-    const string ClientName = "firefox-companion"; // in Claude Code
+    const string AppsPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Kitewarden";
+    const string Exe = "kitewarden-host.exe";
+    const string ClientName = "kitewarden"; // in Claude Code
     const int Windows11 = 22000;
     /// <summary>Every program file, by its place in the installation.</summary>
     static readonly string[] Names = { Exe, @"mcp\server.mjs", @"mcp\serve.mjs", @"mcp\link.mjs", @"mcp\protocol.mjs", "NOTICE.txt" };
@@ -28,7 +28,7 @@ static class Setup
 
     public static bool Bundled { get { return Assembly.GetExecutingAssembly().GetManifestResourceInfo("payload.txt") != null; } }
     static string Self { get { return Assembly.GetExecutingAssembly().Location; } }
-    static string DefaultDir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FirefoxCompanion"); } }
+    static string DefaultDir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Kitewarden"); } }
 
     static string Manifest(Home h) { return Path.Combine(h.Dir, "native-manifest.json"); }
     static string MailManifest(Home h) { return Path.Combine(h.Dir, "native-manifest-mail.json"); }
@@ -52,7 +52,7 @@ static class Setup
             else { Console.Error.WriteLine("Unknown option " + args[i]); return 2; }
         }
         var home = new Home(dir);
-        if (ask && !Yes("Remove Firefox Companion from " + home.Dir + "? Firefox keeps the add-on and its data.")) return 1;
+        if (ask && !Yes("Remove Kitewarden from " + home.Dir + "? Firefox keeps the add-on and its data.")) return 1;
         int code;
         try { code = mode == "install" ? Install(home, dry, mail, claude) : mode == "uninstall" ? Uninstall(home, dry) : Doctor(home, claude); }
         catch (Exception e) { Console.Error.WriteLine(mode + " failed: " + e.Message); code = 1; }
@@ -69,12 +69,12 @@ static class Setup
         return code;
     }
 
-    // ---- FirefoxCompanionSetup without arguments: a person has started it
+    // ---- KitewardenSetup without arguments: a person has started it
 
     public static int Ask()
     {
         var h = new Home(DefaultDir);
-        Console.WriteLine("Firefox Companion " + Program.Version + " (working name), helper for Firefox.");
+        Console.WriteLine("Kitewarden " + Program.Version + ", helper for Firefox.");
         Console.WriteLine("For this Windows user only, without administrator rights. This program is not signed.");
         Console.WriteLine(File.Exists(h.Install) ? "Installed here: version " + (InstalledVersion(h) ?? "unknown") + " in " + h.Dir : "Not installed yet. Folder: " + h.Dir);
         Console.Write("[i] install, upgrade or repair   [d] diagnose   [u] uninstall   [q] quit: ");
@@ -87,7 +87,7 @@ static class Setup
             code = Run("install", new[] { "install" });
             if (code == 0 && Runs.FindClaude() != null && Yes("Register the MCP server with Claude Code for this user (claude mcp add)?"))
                 code = ClaudeAdd(h, false);
-            if (code == 0) Console.WriteLine("Next: open Firefox, open the Firefox Companion sidebar and press Connect. See SETUP.md.");
+            if (code == 0) Console.WriteLine("Next: open Firefox, open the Kitewarden sidebar and press Connect. See SETUP.md.");
         }
         Pause();
         return code;
@@ -107,7 +107,7 @@ static class Setup
 
     // ---- install
 
-    /// <summary>The program files. The ones inside FirefoxCompanionSetup must have the hashes that were written when it was made.</summary>
+    /// <summary>The program files. The ones inside KitewardenSetup must have the hashes that were written when it was made.</summary>
     static SortedDictionary<string, byte[]> Payload()
     {
         var files = new SortedDictionary<string, byte[]>(StringComparer.Ordinal);
@@ -129,7 +129,7 @@ static class Setup
         foreach (var n in Names)
         {
             string file = n.StartsWith(@"mcp\") ? Path.Combine(source, @"..\" + n) : Path.Combine(source, n);
-            if (!File.Exists(file)) throw new Exception("missing " + Path.GetFileName(n) + " next to the host; use FirefoxCompanionSetup, or run the build first");
+            if (!File.Exists(file)) throw new Exception("missing " + Path.GetFileName(n) + " next to the host; use KitewardenSetup, or run the build first");
             files[n] = File.ReadAllBytes(file);
         }
         return files;
@@ -155,10 +155,10 @@ static class Setup
 
     static int Install(Home h, bool dry, bool mail, bool claude)
     {
-        if (WindowsBuild() < Windows11) throw new Exception("Firefox Companion needs Windows 11");
+        if (WindowsBuild() < Windows11) throw new Exception("Kitewarden needs Windows 11");
         var files = Payload();
         bool exists = Directory.Exists(h.Dir);
-        if (exists && !Ours(h)) throw new Exception(h.Dir + " exists and is not a Firefox Companion folder");
+        if (exists && !Ours(h)) throw new Exception(h.Dir + " exists and is not a Kitewarden folder");
         Version now;
         if (Version.TryParse(InstalledVersion(h) ?? "", out now) && now > new Version(Program.Version))
             throw new Exception("version " + now + " is installed, which is newer than " + Program.Version + ". Uninstall it first if you want the older one");
@@ -178,7 +178,7 @@ static class Setup
             else step("set access list of " + h.Dir + " (current user only)", delegate { Directory.SetAccessControl(h.Dir, Access.ForFolder()); }, null);
             // First of all, because it marks the folder as ours if this run is cut off.
             if (PipeOf(h) == null) step("write " + h.Install,
-                delegate { WriteWhole(h.Install, Encoding.UTF8.GetBytes("{\"pipe\":\"firefox-companion-" + Crypto.Nonce(16) + "\"}")); }, delegate { File.Delete(h.Install); });
+                delegate { WriteWhole(h.Install, Encoding.UTF8.GetBytes("{\"pipe\":\"kitewarden-" + Crypto.Nonce(16) + "\"}")); }, delegate { File.Delete(h.Install); });
             if (File.Exists(Journal(h))) step("undo an installation that was interrupted", delegate { Recover(h); }, null);
 
             // A key that is not whole has never let anybody in, so it can go.
@@ -265,7 +265,7 @@ static class Setup
     static byte[] NativeManifest(Home h, string name, string id)
     {
         // One registration allows exactly one add-on.
-        return Encoding.UTF8.GetBytes(Bridge.Json("name", name, "description", "Firefox Companion helper", "path", Path.Combine(h.Dir, Exe), "type", "stdio", "allowed_extensions", new[] { id }));
+        return Encoding.UTF8.GetBytes(Bridge.Json("name", name, "description", "Kitewarden helper", "path", Path.Combine(h.Dir, Exe), "type", "stdio", "allowed_extensions", new[] { id }));
     }
 
     /// <summary>All new files are complete in the work folder before the first old one is touched. The journal says how to go back;
@@ -355,7 +355,7 @@ static class Setup
     static void ListInApps(Home h, Action<string, Action, Action> step)
     {
         string path = AppsKey(h), remove = "\"" + Path.Combine(h.Dir, Exe) + "\" uninstall --home \"" + h.Dir + "\"";
-        var values = Map("DisplayName", "Firefox Companion (working name)", "DisplayVersion", Program.Version, "InstallLocation", h.Dir,
+        var values = Map("DisplayName", "Kitewarden", "DisplayVersion", Program.Version, "InstallLocation", h.Dir,
             "UninstallString", remove + " --ask", "QuietUninstallString", remove, "NoModify", 1, "NoRepair", 1);
         var before = new Dictionary<string, object>();
         using (var k = Registry.CurrentUser.OpenSubKey(path)) if (k != null) foreach (var n in k.GetValueNames()) before[n] = k.GetValue(n);
@@ -454,7 +454,7 @@ static class Setup
 
     static int Uninstall(Home h, bool dry)
     {
-        if (!File.Exists(h.Install)) throw new Exception(h.Dir + " is not a Firefox Companion folder");
+        if (!File.Exists(h.Install)) throw new Exception(h.Dir + " is not a Kitewarden folder");
         Action<string, Action> step = delegate(string what, Action act)
         {
             Console.WriteLine((dry ? "would: " : "") + what);
@@ -492,7 +492,7 @@ static class Setup
     static void Delete(Home h, string file)
     {
         if (!string.Equals(file, Self, StringComparison.OrdinalIgnoreCase)) { File.Delete(file); return; }
-        string name = "firefox-companion-removed-" + Crypto.Nonce(4) + ".exe", temp = Path.GetTempPath();
+        string name = "kitewarden-removed-" + Crypto.Nonce(4) + ".exe", temp = Path.GetTempPath();
         // A running program can be moved only within its drive.
         string to = Path.Combine(string.Equals(Path.GetPathRoot(temp), Path.GetPathRoot(h.Dir), StringComparison.OrdinalIgnoreCase) ? temp : Path.GetDirectoryName(h.Dir), name);
         File.Move(file, to);

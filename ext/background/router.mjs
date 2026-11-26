@@ -12,7 +12,7 @@ const SUSPENDED = {
   permission: ['permission_required', 'Firefox no longer allows this site. Ask the user to approve it in the sidebar.'],
 };
 const WHY = {
-  paused: 'The user paused Firefox Companion.',
+  paused: 'The user paused Kitewarden.',
   no_grant: 'The user revoked this tab.',
   session_ended: 'The session ended.',
   stopped: 'The user stopped this.',
@@ -395,9 +395,9 @@ export class Router {
   }
 
   #open() {
-    if (this.unreadable) throw new ToolError('settings_unreadable', 'The stored settings of Firefox Companion cannot be read, so nothing is allowed. Ask the user to look into the sidebar.');
+    if (this.unreadable) throw new ToolError('settings_unreadable', 'The stored settings of Kitewarden cannot be read, so nothing is allowed. Ask the user to look into the sidebar.');
     if (this.paused) throw new ToolError('paused', WHY.paused);
-    if (this.halted) throw new ToolError('stopped', 'The user stopped Firefox Companion. Ask the user to press Resume work in the sidebar.');
+    if (this.halted) throw new ToolError('stopped', 'The user stopped Kitewarden. Ask the user to press Resume work in the sidebar.');
   }
 
   async group(name) {
@@ -571,9 +571,9 @@ export class Router {
       ...(this.backends && { optional_backends: this.backends.status() }),
       next_step: {
         settings_unreadable: 'The stored settings cannot be read. Ask the user to look into the sidebar.',
-        stopped: 'The user stopped Firefox Companion. Ask the user to press Resume work in the sidebar.',
-        paused: 'The user paused Firefox Companion. Ask the user to press Resume in the sidebar.',
-        connected: mine.length ? 'Call tabs_context.' : 'Ask the user to attach a tab to this session in the Firefox Companion sidebar, or call tab_request.',
+        stopped: 'The user stopped Kitewarden. Ask the user to press Resume work in the sidebar.',
+        paused: 'The user paused Kitewarden. Ask the user to press Resume in the sidebar.',
+        connected: mine.length ? 'Call tabs_context.' : 'Ask the user to attach a tab to this session in the Kitewarden sidebar, or call tab_request.',
       }[state],
     };
   }

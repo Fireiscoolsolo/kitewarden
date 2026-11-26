@@ -192,7 +192,7 @@ export class Schedules {
     }
     const { schedule: s, record, started, since, values } = this.run;
     if (started) return this.#watch();
-    if (this.router.halted || this.router.paused) return this.#end('missed', 'You had stopped or paused Firefox Companion.');
+    if (this.router.halted || this.router.paused) return this.#end('missed', 'You had stopped or paused Kitewarden.');
     if (this.now() - since > WAIT_MS) return this.#end('missed', record.message);
     let w;
     try {

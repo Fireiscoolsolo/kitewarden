@@ -24,7 +24,7 @@ if (!host) {
   process.exit(2);
 }
 
-// Keys. The folder has the access list of the Companion folder: the current user only.
+// Keys. The folder has the access list of Kitewarden folder: the current user only.
 const file = path.join(home, 'remote', 'clients.json');
 let clients = {};
 try {

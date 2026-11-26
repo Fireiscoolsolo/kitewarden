@@ -103,7 +103,7 @@ export const TOOLS = {
   },
   list_connected_browsers: {
     title: 'List Firefox profiles',
-    description: 'Lists the running Firefox profiles that have Firefox Companion, and the one that this client uses.',
+    description: 'Lists the running Firefox profiles that have Kitewarden, and the one that this client uses.',
     level: 'none',
     local: true,
     input: { properties: {} },
@@ -119,7 +119,7 @@ export const TOOLS = {
     title: 'List tabs',
     description:
       'Lists the tabs the user attached to this session and the tabs this session opened. Other tabs are only a number. ' +
-      'If the list is empty, call tab_request or ask the user to attach a tab in the Firefox Companion sidebar.',
+      'If the list is empty, call tab_request or ask the user to attach a tab in the Kitewarden sidebar.',
     level: 'none',
     input: {
       properties: {

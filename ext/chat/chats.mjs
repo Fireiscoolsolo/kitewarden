@@ -4,7 +4,7 @@ import { LIMITS, ToolError, oneLine, wrapFileText, wrapPageText } from '../share
 
 const UNDO_MS = 5000;
 const SAVE_MS = 500;
-const TOOL = /^mcp__firefox-companion__/;
+const TOOL = /^mcp__kitewarden__/;
 const CHAT_TOOLS = ['Bash', 'PowerShell', 'Read', 'Edit', 'Write', 'Glob', 'Grep', 'WebFetch', 'WebSearch']; // the same list is in Chat.cs
 const HIDDEN = /[\p{Cf}\p{Zl}\p{Zp}]|(?![\n\t])\p{Cc}/gu; // what a card could not show as it is
 const LOGIN =/not logged in|\/login|authentication|oauth|invalid api key|401/i;
@@ -420,7 +420,7 @@ export class Chats {
     if (e.type === 'system' && e.subtype === 'init') {
       c.started = true;
       if (e.apiKeySource && e.apiKeySource !== 'none') this.#note(c.id, 'warn', `Claude Code uses an API key from its own settings (${oneLine(e.apiKeySource, 40)}), not a claude.ai sign-in.`);
-      if (!e.mcp_servers?.some((s) => s.name === 'firefox-companion' && s.status === 'connected')) this.#note(c.id, 'warn', 'The browser tools did not connect in this run.');
+      if (!e.mcp_servers?.some((s) => s.name === 'kitewarden' && s.status === 'connected')) this.#note(c.id, 'warn', 'The browser tools did not connect in this run.');
       if (c.extras) {
         const names = (l) => (l ?? []).map((x) => oneLine(x?.name ?? x, 100));
         this.lists = { at: this.now(), model: oneLine(e.model, 60), skills: names(e.skills), agents: names(e.agents), plugins: names(e.plugins) };

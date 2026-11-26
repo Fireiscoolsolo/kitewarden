@@ -68,7 +68,7 @@ const keys = async (...values) => {
   await f.m.send('Marionette:SetContext', { value: 'chrome' });
   await f.m.send('WebDriver:PerformActions', { actions: [{ type: 'key', id: 'k', actions: values.flatMap((value) => [{ type: 'keyDown', value }, { type: 'keyUp', value }]) }] });
 };
-const hostPid = () => Number(powershell(`Get-CimInstance Win32_Process -Filter "Name='firefox-companion-host.exe'" | Where-Object { $_.ExecutablePath -eq '${home.exe}' } | ForEach-Object ProcessId`));
+const hostPid = () => Number(powershell(`Get-CimInstance Win32_Process -Filter "Name='kitewarden-host.exe'" | Where-Object { $_.ExecutablePath -eq '${home.exe}' } | ForEach-Object ProcessId`));
 const claudes = () => Number(powershell(`@(Get-CimInstance Win32_Process -Filter "Name='claude.exe'" | Where-Object { $_.ExecutablePath -like '${double.dir}*' }).Count`));
 const cards = () => sb.eval('return document.querySelectorAll("#cards .card").length');
 const replayState = () => sb.text('#wf-replay h3');
@@ -303,7 +303,7 @@ try {
     assert.equal(tabs.data.tabs.length, 1);
     assert.match((await client.call('read_page', { tabId: tabs.data.tabs[0].tabId })).text, /Second page 3000/);
     assert.equal(claudes(), 1, 'the run goes on');
-    const badge = await f.chrome('return document.getElementById("bridge_firefox-companion_invalid-BAP").getAttribute("badge")');
+    const badge = await f.chrome('return document.getElementById("firefox_kitewarden_com-BAP").getAttribute("badge")');
     assert.equal(badge, '?');
     n(`badge ${badge} while the sidebar is closed; the client read the page`);
     await sb.open();

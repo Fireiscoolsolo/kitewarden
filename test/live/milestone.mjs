@@ -38,7 +38,7 @@ try {
     }, 8000);
     await sb.click(`${part} button`, i.n);
   };
-  const helperPid = () => powershell(`Get-CimInstance Win32_Process -Filter "Name='firefox-companion-host.exe'" | Where-Object { $_.ExecutablePath -eq '${home.exe}' } | ForEach-Object ProcessId`);
+  const helperPid = () => powershell(`Get-CimInstance Win32_Process -Filter "Name='kitewarden-host.exe'" | Where-Object { $_.ExecutablePath -eq '${home.exe}' } | ForEach-Object ProcessId`);
   const claudes = () => Number(powershell(`@(Get-CimInstance Win32_Process -Filter "Name='claude.exe'" | Where-Object { $_.CommandLine -like '*${home.dir}*' }).Count`));
 
   result.firefox = f.version;

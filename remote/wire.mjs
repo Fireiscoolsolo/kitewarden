@@ -5,4 +5,4 @@ import { createHash } from 'node:crypto';
 export const TLS = { minVersion: 'TLSv1.2', maxVersion: 'TLSv1.2', ciphers: 'ECDHE-PSK-CHACHA20-POLY1305', ecdhCurve: 'X25519' };
 
 /** What the user compares on both computers. */
-export const fingerprint = (key) => createHash('sha256').update(`firefox-companion-remote|${key}`).digest('hex').slice(0, 24).replace(/(.{4})(?!$)/g, '$1-');
+export const fingerprint = (key) => createHash('sha256').update(`kitewarden-remote|${key}`).digest('hex').slice(0, 24).replace(/(.{4})(?!$)/g, '$1-');

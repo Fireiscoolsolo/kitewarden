@@ -73,7 +73,7 @@ test('run: the documented options in a folder of the helper, no shell, and the t
   const after1 = (n) => argv[argv.indexOf(n) + 1];
   assert.deepEqual(argv.slice(0, 7), ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--include-partial-messages']);
   assert.ok(argv.includes('--strict-mcp-config') && argv.includes('--disable-slash-commands') && !argv.includes('--bare') && !argv.some((a) => a.includes('dangerously')));
-  assert.deepEqual([after1('--setting-sources'), after1('--tools'), after1('--allowedTools'), after1('--permission-mode'), after1('--model'), after1('--session-id')], ['', '', 'mcp__firefox-companion', 'dontAsk', 'haiku', r.session]);
+  assert.deepEqual([after1('--setting-sources'), after1('--tools'), after1('--allowedTools'), after1('--permission-mode'), after1('--model'), after1('--session-id')], ['', '', 'mcp__kitewarden', 'dontAsk', 'haiku', r.session]);
   assert.deepEqual(JSON.parse(after1('--settings')), { disableAllHooks: true, disableSkillShellExecution: true });
   assert.match(after1('--disallowedTools'), /Bash,PowerShell,Read,Edit,Write/);
   assert.ok(!JSON.stringify(argv).includes(r.ticket));
@@ -92,7 +92,7 @@ test('file and shell tools: only for a chat that has them on, each call asks thr
   const on = JSON.parse((await say('args', { tools: true })).answer);
   const after1 = (n) => on.argv[on.argv.indexOf(n) + 1];
   assert.ok(on.tools.includes('chat_permission'));
-  assert.deepEqual([after1('--permission-prompt-tool'), after1('--permission-mode'), after1('--allowedTools'), after1('--disallowedTools'), after1('--setting-sources')], ['mcp__firefox-companion__chat_permission', 'manual', 'mcp__firefox-companion', 'NotebookEdit', '']);
+  assert.deepEqual([after1('--permission-prompt-tool'), after1('--permission-mode'), after1('--allowedTools'), after1('--disallowedTools'), after1('--setting-sources')], ['mcp__kitewarden__chat_permission', 'manual', 'mcp__kitewarden', 'NotebookEdit', '']);
   const list = after1('--tools').split(',');
   assert.deepEqual(list, ['Bash', 'PowerShell', 'Read', 'Edit', 'Write', 'Glob', 'Grep', 'WebFetch', 'WebSearch']);
   const settings = JSON.parse(after1('--settings'));

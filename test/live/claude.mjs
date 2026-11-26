@@ -32,14 +32,14 @@ try {
 
   // Part 1, with its own config folder, so that the user's Claude Code settings are not touched.
   const config = { CLAUDE_CONFIG_DIR: path.join(work, 'config') };
-  const add = claude(['mcp', 'add', '-s', 'user', 'firefox-companion', '--', 'node', home.server], config);
+  const add = claude(['mcp', 'add', '-s', 'user', 'kitewarden', '--', 'node', home.server], config);
   assert.equal(add.status, 0, add.stderr);
   const list = claude(['mcp', 'list'], config);
   const listed = list.stdout;
   assert.equal(list.status, 0, list.stderr);
-  result.health = listed.split(/\r?\n/).find((l) => l.startsWith('firefox-companion'))?.replace(/:.* - /, ': ');
+  result.health = listed.split(/\r?\n/).find((l) => l.startsWith('kitewarden'))?.replace(/:.* - /, ': ');
   console.log(`part 1: ${result.claude}; ${result.health}`);
-  assert.match(listed, /firefox-companion: .*Connected/);
+  assert.match(listed, /kitewarden: .*Connected/);
 
   // Part 2
   const auth = JSON.parse(claude(['auth', 'status']).stdout || '{}');
@@ -49,8 +49,8 @@ try {
     code = 3;
   } else {
     const mcp = path.join(work, 'mcp.json');
-    writeFileSync(mcp, JSON.stringify({ mcpServers: { 'firefox-companion': { command: 'node', args: [home.server] } } }));
-    const prompt = `Use only the firefox-companion tools, one call at a time.
+    writeFileSync(mcp, JSON.stringify({ mcpServers: { 'kitewarden': { command: 'node', args: [home.server] } } }));
+    const prompt = `Use only the kitewarden tools, one call at a time.
 1. Call connection_status.
 2. Call tabs_context. If it lists no tab, call it again, up to 20 times, because the user is attaching one now.
 3. Call read_page on that tab.
@@ -60,7 +60,7 @@ try {
     p = spawn('claude', [
       '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
       '--strict-mcp-config', '--mcp-config', mcp,
-      '--model', 'haiku', '--setting-sources', '', '--tools', '', '--allowedTools', 'mcp__firefox-companion', '--no-session-persistence', '--max-turns', '30',
+      '--model', 'haiku', '--setting-sources', '', '--tools', '', '--allowedTools', 'mcp__kitewarden', '--no-session-persistence', '--max-turns', '30',
     ], { cwd: work, env });
     const events = [];
     createInterface({ input: p.stdout }).on('line', (l) => {
@@ -94,15 +94,15 @@ try {
     const first = blocks('user').find((x) => x.type === 'tool_result' && x.tool_use_id === uses[0]?.id);
     result.model = init?.model;
     result.mcp_servers = init?.mcp_servers;
-    result.tools = uses.map((x) => x.name.replace('mcp__firefox-companion__', '') + (x.input.action ? ` ${x.input.action}` : ''));
+    result.tools = uses.map((x) => x.name.replace('mcp__kitewarden__', '') + (x.input.action ? ` ${x.input.action}` : ''));
     result.connection_status = JSON.parse([first?.content].flat().map((x) => x?.text ?? x).join(''));
     result.streamed_parts = events.filter((e) => e.type === 'stream_event').length;
     result.answer = last?.result;
     result.cost_usd = last?.total_cost_usd;
     result.page_reports = fx.reports;
     console.log(`part 2: ${result.model}; calls: ${result.tools.join(', ')}; answer: ${result.answer}; page: ${fx.reports.join(', ')}${stderr ? `; stderr: ${stderr.slice(0, 300)}` : ''}`);
-    assert.deepEqual(init.mcp_servers.map((s) => [s.name, s.status]), [['firefox-companion', 'connected']], 'only this MCP server');
-    assert.ok(init.tools.every((t) => t.startsWith('mcp__firefox-companion__')), `only its tools: ${init.tools}`);
+    assert.deepEqual(init.mcp_servers.map((s) => [s.name, s.status]), [['kitewarden', 'connected']], 'only this MCP server');
+    assert.ok(init.tools.every((t) => t.startsWith('mcp__kitewarden__')), `only its tools: ${init.tools}`);
     assert.equal(result.tools[0], 'connection_status');
     assert.equal(result.connection_status.state, 'connected');
     assert.match(result.connection_status.session.label, /^Client claude-code/);

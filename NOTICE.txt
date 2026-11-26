@@ -1,4 +1,4 @@
-Firefox Companion (working name)
+Kitewarden
 
 License
   This covers every file of this software, its icons and pictures included:
@@ -7,7 +7,7 @@ License
   distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 Source
-  https://github.com/Fireiscoolsolo/firefox-companion
+  https://github.com/Fireiscoolsolo/kitewarden
 
 Third-party code
   None. The add-ons, the helper, the MCP server and the optional programs are original code. They contain no library, font

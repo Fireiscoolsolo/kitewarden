@@ -13,7 +13,7 @@ import { serve } from './serve.mjs';
 import { TLS, fingerprint } from './wire.mjs';
 
 const CONNECT_MS = 10_000;
-const dir = process.env.FC_REMOTE_HOME ?? path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), '.local/share'), 'FirefoxCompanionRemote');
+const dir = process.env.FC_REMOTE_HOME ?? path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), '.local/share'), 'KitewardenRemote');
 const file = path.join(dir, 'link.json');
 
 /** A connection with a key. Both sides have proved it when this resolves. */

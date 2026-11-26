@@ -1,4 +1,4 @@
-// The packaged artifacts of release/, as a user gets them: FirefoxCompanionSetup on real Windows files, registry, processes and
+// The packaged artifacts of release/, as a user gets them: KitewardenSetup on real Windows files, registry, processes and
 // pipes. Firefox is played by the test; test/firefox/packaged.mjs has the real one. Claude Code is the installed one with an
 // empty configuration folder of its own; no model is called.
 import assert from 'node:assert/strict';
@@ -10,15 +10,14 @@ import path from 'node:path';
 import { after, afterEach, before, test } from 'node:test';
 import { bundleManifest, sha256, tree, zip } from '../../build/release.mjs';
 import { VERSION } from '../../shared/protocol.mjs';
-import { FakeFirefox, McpClient, buildAt, powershell, root, until } from '../helpers.mjs';
+import { EARLIER, FakeFirefox, McpClient, buildEarlier, powershell, root, until } from '../helpers.mjs';
 
 const release = path.join(root, 'release');
-const SETUP = path.join(release, `FirefoxCompanionSetup-${VERSION}.exe`);
-const BASELINE = '7bb7f27'; // version 0.4.0, the state before this installer
-const REG = 'HKCU\\Software\\Mozilla\\NativeMessagingHosts\\firefox_companion';
+const SETUP = path.join(release, `KitewardenSetup-${VERSION}.exe`);
+const REG = 'HKCU\\Software\\Mozilla\\NativeMessagingHosts\\kitewarden';
 const APPS = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall';
 const PROFILE = '11111111-2222-3333-4444-555555555555';
-const PROGRAM = ['NOTICE.txt', 'firefox-companion-host.exe', 'install.json', 'installed.json', 'key.bin', 'mcp/link.mjs', 'mcp/protocol.mjs', 'mcp/serve.mjs', 'mcp/server.mjs', 'native-manifest.json'];
+const PROGRAM = ['NOTICE.txt', 'install.json', 'installed.json', 'key.bin', 'kitewarden-host.exe', 'mcp/link.mjs', 'mcp/protocol.mjs', 'mcp/serve.mjs', 'mcp/server.mjs', 'native-manifest.json'];
 
 /** The registration. reg.exe prints in the code page of the console, which has not every letter. */
 const value = (key, name) => Buffer.from(powershell(`$v = [Microsoft.Win32.Registry]::GetValue('${key.replace('HKCU', 'HKEY_CURRENT_USER')}', '${name}', $null); if ($v) { [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($v)) }`), 'base64').toString('utf8') || null;
@@ -30,15 +29,15 @@ const open = [];
 const clean = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(CLAUDE|ANTHROPIC)/.test(k))), CLAUDE_CONFIG_DIR: path.join(base, 'claude') };
 const run = (exe, args, opts = {}) => spawnSync(exe, args, { encoding: 'utf8', env: clean, ...opts });
 const setup = (...args) => run(SETUP, args);
-const apps = () => (run('reg', ['query', APPS]).stdout ?? '').split(/\r?\n/).filter((l) => /\\FirefoxCompanion(-|$)/.test(l));
-const helpers = (dir) => Number(powershell(`@(Get-Process firefox-companion-host -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '${dir.replaceAll("'", "''")}\\*' }).Count`));
+const apps = () => (run('reg', ['query', APPS]).stdout ?? '').split(/\r?\n/).filter((l) => /\\Kitewarden(-|$)/.test(l));
+const helpers = (dir) => Number(powershell(`@(Get-Process kitewarden-host -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '${dir.replaceAll("'", "''")}\\*' }).Count`));
 const names = (dir) => tree(dir).map(([n]) => n).sort();
 const bytes = (dir) => Object.fromEntries(tree(dir).map(([n, d]) => [n, sha256(d)]));
 let count = 0;
 function place(name = 'Jörg Müller & Söhne') {
   const dir = path.join(base, `${++count}`, name, 'home');
   mkdirSync(path.dirname(dir), { recursive: true });
-  return { dir, exe: path.join(dir, 'firefox-companion-host.exe'), server: path.join(dir, 'mcp/server.mjs'), file: (n) => path.join(dir, n) };
+  return { dir, exe: path.join(dir, 'kitewarden-host.exe'), server: path.join(dir, 'mcp/server.mjs'), file: (n) => path.join(dir, n) };
 }
 function fresh(...more) {
   const h = place();
@@ -60,9 +59,9 @@ async function client(h, args = []) {
   return c;
 }
 let old; // dist/ of the version before
-before(() => (old = buildAt(BASELINE, path.join(base, 'before'))));
-const before040 = (h) => {
-  const r = run(path.join(old, 'host/firefox-companion-host.exe'), ['install', '--home', h.dir]);
+before(() => (old = buildEarlier(path.join(base, 'before'))));
+const beforeEarlier = (h) => {
+  const r = run(path.join(old, 'host/kitewarden-host.exe'), ['install', '--home', h.dir]);
   assert.equal(r.status, 0, r.stderr);
   return h;
 };
@@ -95,7 +94,7 @@ test('checksums name every file of the release, and a second packing of the same
   assert.deepEqual(sums.map(([, n]) => n).sort(), names(release).filter((n) => n !== 'SHA256SUMS.txt'));
   for (const [hash, n] of sums) assert.equal(sha256(readFileSync(path.join(release, n))), hash, n);
   const again = zip([...tree(path.join(root, 'dist/extension')), ['NOTICE.txt', readFileSync(path.join(root, 'NOTICE.txt'))]].reverse());
-  assert.ok(again.equals(readFileSync(path.join(release, `firefox-companion-${VERSION}-unsigned.xpi`))));
+  assert.ok(again.equals(readFileSync(path.join(release, `kitewarden-${VERSION}-unsigned.xpi`))));
 });
 
 const unpack = (file) => {
@@ -105,18 +104,18 @@ const unpack = (file) => {
 };
 
 test('Firefox package: exactly the everyday add-on, cookies optional, nothing of the developer build, Thunderbird or the optional programs', () => {
-  const dir = unpack(`firefox-companion-${VERSION}-unsigned.xpi`);
+  const dir = unpack(`kitewarden-${VERSION}-unsigned.xpi`);
   assert.deepEqual(names(dir), [...names(path.join(root, 'dist/extension')), 'NOTICE.txt'].sort());
   const m = JSON.parse(readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
   assert.ok(!m.permissions.includes('cookies') && m.optional_permissions.includes('cookies'));
-  assert.deepEqual([m.version, m.name, m.browser_specific_settings.gecko.id, m.browser_specific_settings.gecko.strict_min_version, m.browser_specific_settings.gecko.update_url], [VERSION, 'Firefox Companion (working name)', 'bridge@firefox-companion.invalid', '160.0', undefined]);
+  assert.deepEqual([m.version, m.name, m.browser_specific_settings.gecko.id, m.browser_specific_settings.gecko.strict_min_version, m.browser_specific_settings.gecko.update_url], [VERSION, 'Kitewarden', 'firefox@kitewarden.com', '160.0', undefined]);
   for (const [n, d] of tree(dir)) assert.ok(!/javascript_tool|pagescript|messagesRead|remote-debugging/.test(d) && !/thunderbird|isolated|gateway|input\.exe|pagescript/i.test(n), n);
-  const mail = JSON.parse(readFileSync(path.join(unpack(`optional/firefox-companion-mail-${VERSION}-unsigned.xpi`), 'manifest.json'), 'utf8'));
-  assert.equal(mail.browser_specific_settings.gecko.id, 'mail@firefox-companion.invalid');
+  const mail = JSON.parse(readFileSync(path.join(unpack(`optional/kitewarden-mail-${VERSION}-unsigned.xpi`), 'manifest.json'), 'utf8'));
+  assert.equal(mail.browser_specific_settings.gecko.id, 'thunderbird@kitewarden.com');
 });
 
 test('Claude Desktop bundle: fields of MCPB 0.3, the tools that the server has, and it starts as its manifest says', async () => {
-  const dir = unpack(`firefox-companion-${VERSION}.mcpb`);
+  const dir = unpack(`kitewarden-${VERSION}.mcpb`);
   const m = JSON.parse(readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
   assert.deepEqual(m, bundleManifest());
   // The schema of 0.3 is strict: an unknown field is an error.
@@ -134,11 +133,11 @@ test('Claude Desktop bundle: fields of MCPB 0.3, the tools that the server has, 
   assert.equal((await c.call('connection_status')).data.state, 'connected');
   assert.ok(!(await c.call('tabs_context')).isError);
   assert.equal(f.calls.at(-1).tool, 'tabs_context');
-  assert.equal(m.user_config.home.default.replace('${HOME}', os.homedir()).replaceAll('/', '\\'), path.join(process.env.LOCALAPPDATA, 'FirefoxCompanion'));
+  assert.equal(m.user_config.home.default.replace('${HOME}', os.homedir()).replaceAll('/', '\\'), path.join(process.env.LOCALAPPDATA, 'Kitewarden'));
 });
 
 test('optional package: each program reaches the installed helper, waits to be turned on, and nothing listens', async () => {
-  const dir = unpack(`optional/firefox-companion-optional-${VERSION}.zip`);
+  const dir = unpack(`optional/kitewarden-optional-${VERSION}.zip`);
   const h = fresh();
   const f = await connected(h);
   for (const [id, file] of [['input', 'backends/input.mjs'], ['remote', 'remote/gateway.mjs']]) {
@@ -192,7 +191,7 @@ test('fresh install: dry run changes nothing; then only its own files, one regis
   assert.deepEqual(bytes(h.dir), all);
   assert.equal(apps().length, 1);
   assert.equal(helpers(h.dir), 0, 'nothing runs until Firefox starts it');
-  assert.ok(!/fc-setup|FirefoxCompanion/.test(run('reg', ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run']).stdout), 'nothing starts at logon');
+  assert.ok(!/fc-setup|Kitewarden/.test(run('reg', ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run']).stdout), 'nothing starts at logon');
 });
 
 test('helper and server of the installation find each other by the shared key, and the doctor proves the key without a session', async () => {
@@ -220,7 +219,7 @@ test('a person who starts it can look, refuse and diagnose without any change', 
   assert.deepEqual([registered(), apps()], was);
 });
 
-const standard = path.join(process.env.LOCALAPPDATA, 'FirefoxCompanion');
+const standard = path.join(process.env.LOCALAPPDATA, 'Kitewarden');
 test('a person installs into the standard folder, and removes it from there', { skip: existsSync(standard) || earlier ? 'this user has an installation' : false }, () => {
   const config = mkdtempSync(path.join(base, 'config-'));
   const env = { ...clean, CLAUDE_CONFIG_DIR: config };
@@ -229,11 +228,11 @@ test('a person installs into the standard folder, and removes it from there', { 
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.deepEqual(names(standard), PROGRAM);
     assert.deepEqual(readdirSync(config), [], 'No to Claude Code leaves its settings alone');
-    assert.equal(value(`${APPS}\\FirefoxCompanion`, 'UninstallString'),`"${path.join(standard, 'firefox-companion-host.exe')}" uninstall --home "${standard}" --ask`);
-    assert.equal(run(path.join(standard, 'firefox-companion-host.exe'), ['uninstall', '--home', standard, '--ask'], { input: 'n\n' }).status, 1);
+    assert.equal(value(`${APPS}\\Kitewarden`, 'UninstallString'),`"${path.join(standard, 'kitewarden-host.exe')}" uninstall --home "${standard}" --ask`);
+    assert.equal(run(path.join(standard, 'kitewarden-host.exe'), ['uninstall', '--home', standard, '--ask'], { input: 'n\n' }).status, 1);
     assert.ok(existsSync(standard));
   } finally {
-    run(path.join(standard, 'firefox-companion-host.exe'), ['uninstall', '--home', standard, '--ask'], { input: 'y\n\n' });
+    run(path.join(standard, 'kitewarden-host.exe'), ['uninstall', '--home', standard, '--ask'], { input: 'y\n\n' });
   }
   assert.ok(!existsSync(standard));
   assert.deepEqual(apps(), []);
@@ -255,8 +254,8 @@ test('Claude Code: one entry by its own command, only when asked; another entry 
   for (let i = 0; i < 2; i++) {
     const r = run(SETUP, ['install', '--home', h.dir, '--claude-code'], { env });
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.deepEqual(Object.keys(servers()).sort(), ['firefox-companion', 'other']);
-    assert.deepEqual(servers()['firefox-companion'].args, [h.server.replaceAll('/', '\\')]);
+    assert.deepEqual(Object.keys(servers()).sort(), ['kitewarden', 'other']);
+    assert.deepEqual(servers()['kitewarden'].args, [h.server.replaceAll('/', '\\')]);
   }
   const d = run(SETUP, ['doctor', '--home', h.dir, '--claude-code'], { env });
   assert.match(d.stdout, /ok {4}claude code entry/, 'Claude Code itself starts the installed server and connects');
@@ -267,16 +266,16 @@ test('Claude Code: one entry by its own command, only when asked; another entry 
   assert.equal(r2.status, 3);
   assert.match(r2.stderr, /left as it is/);
   assert.equal(run(SETUP, ['uninstall', '--home', h2.dir], { env }).status, 0);
-  assert.deepEqual(Object.keys(servers()).sort(), ['firefox-companion', 'other']);
+  assert.deepEqual(Object.keys(servers()).sort(), ['kitewarden', 'other']);
   // An entry that the user changed since then is not ours any more.
   const h3 = place();
-  run('claude', ['mcp', 'remove', '-s', 'user', 'firefox-companion'], { env });
+  run('claude', ['mcp', 'remove', '-s', 'user', 'kitewarden'], { env });
   assert.equal(run(SETUP, ['install', '--home', h3.dir, '--claude-code'], { env }).status, 0);
-  run('claude', ['mcp', 'remove', '-s', 'user', 'firefox-companion'], { env });
-  run('claude', ['mcp', 'add', '-s', 'user', 'firefox-companion', '--', 'node', 'mine.mjs'], { env });
+  run('claude', ['mcp', 'remove', '-s', 'user', 'kitewarden'], { env });
+  run('claude', ['mcp', 'add', '-s', 'user', 'kitewarden', '--', 'node', 'mine.mjs'], { env });
   assert.equal(run(SETUP, ['uninstall', '--home', h3.dir], { env }).status, 0);
-  assert.deepEqual(servers()['firefox-companion'].args, ['mine.mjs']);
-  run('claude', ['mcp', 'remove', '-s', 'user', 'firefox-companion'], { env });
+  assert.deepEqual(servers()['kitewarden'].args, ['mine.mjs']);
+  run('claude', ['mcp', 'remove', '-s', 'user', 'kitewarden'], { env });
   assert.equal(run(SETUP, ['install', '--home', h.dir, '--claude-code'], { env }).status, 0);
   // The folder of the configuration is remembered, so removing works with another one.
   assert.equal(setup('uninstall', '--home', h.dir).status, 0);
@@ -285,18 +284,18 @@ test('Claude Code: one entry by its own command, only when asked; another entry 
 
 // ---- upgrade
 
-test('upgrade from 0.4.0 while the helper runs: key, pipe, pairings, profiles and Thunderbird stay, nothing is turned on, and it reconnects', async () => {
-  const h = before040(place());
-  assert.equal(run(path.join(old, 'host/firefox-companion-host.exe'), ['install', '--home', h.dir, '--thunderbird']).status, 0);
+test('upgrade from the previous version while the helper runs: key, pipe, pairings, profiles and Thunderbird stay, nothing is turned on, and it reconnects', async () => {
+  const h = beforeEarlier(place());
+  assert.equal(run(path.join(old, 'host/kitewarden-host.exe'), ['install', '--home', h.dir, '--thunderbird']).status, 0);
   mkdirSync(h.file('remote'));
   writeFileSync(h.file('remote/clients.json'), '{"a-client":{"key":"kept"}}');
   const f = await connected(h);
-  const c = await client(h); // a 0.4.0 server that its client keeps running
-  assert.equal((await c.call('connection_status')).data.mcp_server.version, '0.4.0');
+  const c = await client(h); // a server of the previous version that its client keeps running
+  assert.equal((await c.call('connection_status')).data.mcp_server.version, EARLIER);
   await c.call('tabs_context');
   const keep = ['key.bin', 'install.json', 'remote/clients.json', 'native-manifest-mail.json', `profiles/${PROFILE}.json`];
   const was = keep.slice(0, -1).map((n) => readFileSync(h.file(n)));
-  assert.equal(setup('doctor', '--home', h.dir).status, 1, 'the new doctor sees that this is not its own version');
+  assert.equal(setup('doctor', '--home', h.dir).status, 0, 'an older installation in order is no fault of it');
   const r = setup('install', '--home', h.dir);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /stop the running helper, process \d+/);
@@ -347,7 +346,7 @@ async function cut(h, ms, from = 'journal') {
 }
 
 test('an upgrade that is killed leaves something that the next run repairs, with the same key and pairings', { timeout: 300_000 }, async (t) => {
-  const h = before040(place());
+  const h = beforeEarlier(place());
   mkdirSync(h.file('remote'));
   writeFileSync(h.file('remote/clients.json'), '{"a-client":{"key":"kept"}}');
   const key = readFileSync(h.file('key.bin'));
@@ -378,7 +377,7 @@ test('an upgrade that is killed leaves something that the next run repairs, with
 
 /** Runs `fn` while the registration cannot be written. */
 function deny(fn) {
-  const acl = (on) => powershell(`$k = [Microsoft.Win32.Registry]::CurrentUser.${on ? "CreateSubKey('Software\\Mozilla\\NativeMessagingHosts\\firefox_companion')" : "OpenSubKey('Software\\Mozilla\\NativeMessagingHosts\\firefox_companion', 'ReadWriteSubTree', 'ChangePermissions,ReadKey')"}; $a = $k.GetAccessControl('Access'); $r = New-Object Security.AccessControl.RegistryAccessRule([Security.Principal.WindowsIdentity]::GetCurrent().User, 'SetValue', 'Deny'); $a.${on ? 'AddAccessRule' : 'RemoveAccessRule'}($r) | Out-Null; $k.SetAccessControl($a); $k.Dispose()`);
+  const acl = (on) => powershell(`$k = [Microsoft.Win32.Registry]::CurrentUser.${on ? "CreateSubKey('Software\\Mozilla\\NativeMessagingHosts\\kitewarden')" : "OpenSubKey('Software\\Mozilla\\NativeMessagingHosts\\kitewarden', 'ReadWriteSubTree', 'ChangePermissions,ReadKey')"}; $a = $k.GetAccessControl('Access'); $r = New-Object Security.AccessControl.RegistryAccessRule([Security.Principal.WindowsIdentity]::GetCurrent().User, 'SetValue', 'Deny'); $a.${on ? 'AddAccessRule' : 'RemoveAccessRule'}($r) | Out-Null; $k.SetAccessControl($a); $k.Dispose()`);
   acl(true);
   try {
     fn();
@@ -431,16 +430,16 @@ test('the registration cannot be written: nothing is left of a fresh install, an
   });
   assert.ok(!existsSync(h.dir));
   assert.deepEqual(apps(), []);
-  before040(h);
+  beforeEarlier(h);
   const was = bytes(h.dir);
   deny(() => assert.equal(setup('install', '--home', h.dir).status, 1));
   assert.deepEqual(bytes(h.dir), was);
   assert.equal(registered(), h.file('native-manifest.json'));
-  assert.equal((await connected(h)).messages.find((m) => m.type === 'hello').host, '0.4.0');
+  assert.equal((await connected(h)).messages.find((m) => m.type === 'hello').host, EARLIER);
 });
 
 test('a file that another program holds open: the upgrade is undone and says why', async () => {
-  const h = before040(place());
+  const h = beforeEarlier(place());
   const was = bytes(h.dir);
   const ps = spawn('powershell.exe', ['-NoProfile', '-Command', `$f = [IO.File]::Open('${h.file('mcp/serve.mjs').replaceAll("'", "''")}', 'Open', 'Read', 'Read'); 'held'; Start-Sleep 60`], { stdio: ['ignore', 'pipe', 'ignore'] });
   open.push({ child: ps, exit: new Promise((r) => ps.on('exit', r)) });
@@ -461,7 +460,7 @@ test('a key or an identity that was cut off while it was written is made again',
   const r = setup('install', '--home', h.dir);
   assert.equal(r.status, 0, r.stderr);
   assert.equal(readFileSync(h.file('key.bin')).length, 32);
-  assert.match(JSON.parse(readFileSync(h.file('install.json'), 'utf8')).pipe, /^firefox-companion-[0-9a-f]{32}$/);
+  assert.match(JSON.parse(readFileSync(h.file('install.json'), 'utf8')).pipe, /^kitewarden-[0-9a-f]{32}$/);
   assert.equal(setup('doctor', '--home', h.dir).status, 0);
   const h2 = place();
   mkdirSync(h2.dir);
@@ -523,14 +522,14 @@ test('uninstall by the installed program while it is connected: helper stopped, 
     assert.deepEqual(apps(), []);
     assert.equal(run('reg', ['query', other]).status, 0);
     assert.equal(helpers(h.dir), 0);
-    await until('the moved program is deleted', () => !readdirSync(os.tmpdir()).some((n) => /^firefox-companion-removed-/.test(n) && !leftBefore.includes(n)), 15_000, 300);
+    await until('the moved program is deleted', () => !readdirSync(os.tmpdir()).some((n) => /^kitewarden-removed-/.test(n) && !leftBefore.includes(n)), 15_000, 300);
   } finally {
     run('reg', ['delete', other, '/f']);
   }
   const c = await client({ server: path.join(root, 'dist/mcp/server.mjs') }, ['--home', h.dir]);
   const status = (await c.call('connection_status')).data;
   assert.equal(status.state, 'not_installed');
-  assert.match(status.next_step, /FirefoxCompanionSetup/);
+  assert.match(status.next_step, /KitewardenSetup/);
   assert.equal(setup('install', '--home', h.dir).status, 0);
   await connected(h);
   assert.ok(!(await c.call('tabs_context')).isError, 'the same client goes on after the new install');

@@ -48,7 +48,7 @@ beforeEach(() => {
 const runs = () => posted.filter((m) => m.type === 'chat_run');
 const event = (e, run = runs().at(-1).run) => chats.onHost({ type: 'chat_event', run, part: JSON.stringify(e), end: true });
 const exit = (o = {}, run = runs().at(-1).run) => chats.onHost({ type: 'chat_exit', run, error: null, code: 0, detail: '', stopped: false, ...o });
-const init = (o = {}) => event({ type: 'system', subtype: 'init', session_id: runs().at(-1).session, apiKeySource: 'none', mcp_servers: [{ name: 'firefox-companion', status: 'connected' }], ...o });
+const init = (o = {}) => event({ type: 'system', subtype: 'init', session_id: runs().at(-1).session, apiKeySource: 'none', mcp_servers: [{ name: 'kitewarden', status: 'connected' }], ...o });
 const delta = (text) => event({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text } } });
 function stream(id, ...texts) {
   event({ type: 'stream_event', event: { type: 'message_start', message: { id } } });
@@ -123,7 +123,7 @@ test('stop: calls end, the run is ended, later events do not count, and the note
   chats.send(c.id, 'click it');
   init();
   await router.grant({ sessionId: sidOf(c), tabId: 1, origin: A, level: 'act' });
-  event({ type: 'assistant', message: { id: 'm', content: [{ type: 'tool_use', id: 't1', name: 'mcp__firefox-companion__computer', input: { action: 'left_click' } }] } });
+  event({ type: 'assistant', message: { id: 'm', content: [{ type: 'tool_use', id: 't1', name: 'mcp__kitewarden__computer', input: { action: 'left_click' } }] } });
   const click = () => router.call(sidOf(c), 'p:1', 'computer', { action: 'left_click', tabId: 1, ref: 'r' });
 
   // a card that waits
@@ -236,7 +236,7 @@ test('tool steps show name, state and result; results are cut and pictures are d
   const c = chats.create();
   chats.send(c.id, 'x');
   init();
-  event({ type: 'assistant', message: { id: 'm', content: [{ type: 'tool_use', id: 't1', name: 'mcp__firefox-companion__read_page', input: { tabId: 1 } }, { type: 'tool_use', id: 't2', name: 'mcp__firefox-companion__computer', input: { action: 'screenshot', tabId: 1 } }] } });
+  event({ type: 'assistant', message: { id: 'm', content: [{ type: 'tool_use', id: 't1', name: 'mcp__kitewarden__read_page', input: { tabId: 1 } }, { type: 'tool_use', id: 't2', name: 'mcp__kitewarden__computer', input: { action: 'screenshot', tabId: 1 } }] } });
   assert.deepEqual(items().filter((i) => i.type === 'tool').map((i) => [i.name, i.state]), [['read_page', 'running'], ['computer', 'running']]);
   event({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', is_error: true, content: 'y'.repeat(5000) }, { type: 'tool_result', tool_use_id: 't2', content: [{ type: 'image', source: { data: 'PICTUREBYTES' } }, { type: 'text', text: 'meta' }] }] } });
   const [a, b] = items().filter((i) => i.type === 'tool');
@@ -253,7 +253,7 @@ test('restore: after a restart the chat is listed and goes on with its conversat
   reply('done');
   chats.send(c.id, 'long one');
   init();
-  event({ type: 'assistant', message: { id: 'm', content: [{ type: 'tool_use', id: 't1', name: 'mcp__firefox-companion__computer', input: {} }] } });
+  event({ type: 'assistant', message: { id: 'm', content: [{ type: 'tool_use', id: 't1', name: 'mcp__kitewarden__computer', input: {} }] } });
   await chats.flushStore();
   data['chat:orphan'] = [];
   assert.ok(!/ticket|[0-9a-f]{64}|grant|origins/.test(JSON.stringify(data)), 'no ticket and no grant is stored');
@@ -312,7 +312,7 @@ test('errors: signed out, missing, gone conversation, and Try again', () => {
   chats.retry(c.id);
   assert.equal(runs().at(-1).resume, false);
   assert.notEqual(runs().at(-1).session, before);
-  init({ apiKeySource: 'ANTHROPIC_API_KEY', mcp_servers: [{ name: 'firefox-companion', status: 'failed' }] });
+  init({ apiKeySource: 'ANTHROPIC_API_KEY', mcp_servers: [{ name: 'kitewarden', status: 'failed' }] });
   assert.match(texts('note').join(), /uses an API key.*did not connect/s);
   exit({ code: 3, detail: 'boom' });
   assert.match(texts('note').at(-1), /exit code 3.*boom/);

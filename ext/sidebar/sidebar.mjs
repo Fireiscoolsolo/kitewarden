@@ -14,14 +14,14 @@ const LINK = {
   connecting: ['Connecting', 'Starting the helper.'],
   connected: ['Connected', 'The helper is running.'],
   waiting: ['Helper stopped', 'It is started again by itself.'],
-  refused: ['The helper refused to start', 'Start FirefoxCompanionSetup and choose Diagnose.'],
+  refused: ['The helper refused to start', 'Start KitewardenSetup and choose Diagnose.'],
   version_mismatch: ['Versions differ', 'Update the older part, then press Retry now.'],
 };
 
 function drawLink() {
   const { link, paused } = ui.state;
   let [title, next] = LINK[link.state];
-  if (link.code === 'helper_missing') [title, next] = ['Helper not installed', 'Run the installer, FirefoxCompanionSetup. This page connects by itself after that.'];
+  if (link.code === 'helper_missing') [title, next] = ['Helper not installed', 'Run the installer, KitewardenSetup. This page connects by itself after that.'];
   if (paused) [title, next] = [`Paused (${title.toLowerCase()})`, 'Every call is refused until you press Resume.'];
   if (ui.state.unreadable) [title, next] = ['Settings cannot be read', 'Every call is refused. Restart Firefox. If it stays, reset the site rules below; nothing else is deleted.'];
   $('reset-rules').hidden = !ui.state.unreadable;

@@ -238,7 +238,7 @@ function drawGifs() {
       const of = { session: g.session, tabId: g.tabId };
       if (g.on) row.append(button('Stop', () => run('gif_stop', of), 'gif-stop'));
       else if (g.frames) row.append(button('Make GIF', () => run('gif_export', of, 'The GIF is ready. Review it before you share it.'), 'gif-export'));
-      if (g.file) row.append(el('a', { href: g.file.url, download: 'firefox-companion.gif', textContent: `Save GIF (${Math.ceil(g.file.bytes / 1024)} kB)` }));
+      if (g.file) row.append(el('a', { href: g.file.url, download: 'kitewarden.gif', textContent: `Save GIF (${Math.ceil(g.file.bytes / 1024)} kB)` }));
       row.append(button('Delete', () => run('gif_clear', of)));
       const who = ui.state.sessions.find((s) => s.id === g.session)?.label ?? 'ended session';
       return el('div', {}, el('p', { className: g.on ? 'note rec' : 'sub', textContent: `${g.on ? 'Recording pictures' : 'Recording'} for ${who}: ${g.frames} frames${g.missed ? `, ${g.missed} missed` : ''}. ${g.why ?? ''}` }), row, ...(g.file ? [el('img', { src: g.file.url, alt: 'Preview of the GIF' })] : []));

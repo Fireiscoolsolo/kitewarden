@@ -40,7 +40,7 @@ const check = (name, facts) => {
   result.checks.push({ name, ...facts });
   console.log(`ok  ${name}: ${JSON.stringify(facts)}`);
 };
-const claudes = () => Number(powershell(`@(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${home.dir.replaceAll("'", "''")}*' -and $_.Name -ne 'firefox-companion-host.exe' -and $_.Name -ne 'powershell.exe' }).Count`));
+const claudes = () => Number(powershell(`@(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${home.dir.replaceAll("'", "''")}*' -and $_.Name -ne 'kitewarden-host.exe' -and $_.Name -ne 'powershell.exe' }).Count`));
 
 try {
   await ff.wait('hello', (m) => m.type === 'hello');
@@ -59,8 +59,8 @@ try {
   assert.equal(a.exit.code, 0, a.exit.detail);
   assert.ok(a.deltas.length > 1, 'text arrives in parts');
   assert.equal(a.init.session_id, session);
-  assert.deepEqual(a.init.mcp_servers.map((s) => [s.name, s.status]), [['firefox-companion', 'connected']]);
-  assert.ok(a.init.tools.every((t) => t.startsWith('mcp__firefox-companion__')), `tools: ${a.init.tools}`);
+  assert.deepEqual(a.init.mcp_servers.map((s) => [s.name, s.status]), [['kitewarden', 'connected']]);
+  assert.ok(a.init.tools.every((t) => t.startsWith('mcp__kitewarden__')), `tools: ${a.init.tools}`);
   const hello = ff.messages.find((m) => m.type === 'from_client' && JSON.parse(m.body).ticket === a.ticket);
   assert.ok(hello, 'the MCP server of the run presented the ticket of the run');
   check('launch and streaming', { exit: a.exit.code, text_parts: a.deltas.length, ms: a.ms, apiKeySource: a.init.apiKeySource, tools: a.init.tools.length, ticket: true, cost_usd: a.last.total_cost_usd });
@@ -101,9 +101,9 @@ try {
 
   const x = await say('Say OK.', { extras: true });
   assert.ok(x.init.skills.length > 0 && x.init.agents.length > 0, 'skills and agents are reported');
-  const own = x.init.tools.filter((t) => !t.startsWith('mcp__firefox-companion__'));
+  const own = x.init.tools.filter((t) => !t.startsWith('mcp__kitewarden__'));
   assert.ok(own.every((t) => ['Skill', 'Task', 'Agent'].includes(t)), `only these built-in tools: ${own}`);
-  assert.deepEqual(x.init.mcp_servers.map((s) => s.name), ['firefox-companion'], 'no MCP server of a plugin');
+  assert.deepEqual(x.init.mcp_servers.map((s) => s.name), ['kitewarden'], 'no MCP server of a plugin');
   assert.ok(!x.events.some((ev) => /^hook_/.test(ev.subtype ?? '')), 'no hook of the user ran');
   check('a chat that may use skills and agents', { skills: x.init.skills.length, agents: x.init.agents.length, plugins: x.init.plugins.length, built_in_tools: own, answer: x.last.result, cost_usd: x.last.total_cost_usd });
 

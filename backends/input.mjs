@@ -6,11 +6,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Backend, before, homeOf, options, profileOf } from './link.mjs';
 
-const EXE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'firefox-companion-input.exe');
+const EXE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'kitewarden-input.exe');
 
 const o = options(process.argv.slice(2), { home: 'folder' });
 if (process.platform !== 'win32' || !existsSync(EXE)) {
-  console.error('This needs Windows and the built program firefox-companion-input.exe next to it.');
+  console.error('This needs Windows and the built program kitewarden-input.exe next to it.');
   process.exit(1);
 }
 

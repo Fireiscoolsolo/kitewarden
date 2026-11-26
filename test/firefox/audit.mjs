@@ -60,7 +60,7 @@ const message = () => sb.text('#message');
 const clear = () => sb.eval('document.querySelector("#message").textContent = ""');
 const open = (id) => sb.eval('for (let e = document.getElementById(arguments[0]); e; e = e.parentElement) if (e.tagName === "DETAILS") e.open = true', id);
 const reported = (what) => until(`report ${what}`, () => A.reports.includes(what), 4000);
-const badge = () => f.chrome('return document.getElementById("bridge_firefox-companion_invalid-BAP").getAttribute("badge")');
+const badge = () => f.chrome('return document.getElementById("firefox_kitewarden_com-BAP").getAttribute("badge")');
 const set = (sel, v) => sb.eval('const i = document.querySelector(arguments[0]); i.value = arguments[1]; i.dispatchEvent(new Event("input"))', sel, v);
 const rule = async (kind, host) => {
   await open('rule-add');
@@ -606,7 +606,7 @@ try {
     await d.close();
     const t = Date.now();
     await f.quit();
-    await until('no helper', () => !of().includes('firefox-companion-host.exe'), 5000, 200);
+    await until('no helper', () => !of().includes('kitewarden-host.exe'), 5000, 200);
     n(`before ${before.join()}; helper gone after ${Date.now() - t} ms (with the end of Firefox); ${of().join()} left`);
     assert.equal(await code(c.call('tabs_context')), 'not_connected');
     await c.close();

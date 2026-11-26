@@ -517,7 +517,7 @@ try {
     assert.equal(await sb.text('#lost'), '', 'memory only');
     await sb.attach('driver', 'act', null);
     const { execFileSync } = await import('node:child_process');
-    execFileSync('taskkill', ['/F', '/FI', `IMAGENAME eq firefox-companion-host.exe`, '/FI', `PID eq ${JSON.parse((await import('node:fs')).readFileSync(path.join(home.dir, 'state.json'), 'utf8')).pid}`]);
+    execFileSync('taskkill', ['/F', '/FI', `IMAGENAME eq kitewarden-host.exe`, '/FI', `PID eq ${JSON.parse((await import('node:fs')).readFileSync(path.join(home.dir, 'state.json'), 'utf8')).pid}`]);
     await until('connected', async () => (await sb.text('#link-title')) === 'Connected', 15_000);
     await c.call('connection_status');
     assert.equal((await call('read_page')).code, 'session_ended');

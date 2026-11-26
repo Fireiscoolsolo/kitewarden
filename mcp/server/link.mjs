@@ -13,18 +13,18 @@ delete process.env.FC_CHAT_TICKET;
 const PINNED = process.env.FC_PROFILE || null; // a chat run belongs to the profile that started it
 
 const NEXT = {
-  not_installed: 'Run the installer, FirefoxCompanionSetup, and then press Connect in the Firefox Companion sidebar.',
-  mail_not_running: 'Start Thunderbird, open Firefox Companion there and press Connect.',
-  never_connected: 'Open Firefox, open the Firefox Companion sidebar and press Connect.',
-  firefox_closed: 'Start Firefox, open the Firefox Companion sidebar and press Connect.',
-  disconnected_by_user: 'The user disconnected. Press Connect in the Firefox Companion sidebar.',
+  not_installed: 'Run the installer, KitewardenSetup, and then press Connect in the Kitewarden sidebar.',
+  mail_not_running: 'Start Thunderbird, open Kitewarden there and press Connect.',
+  never_connected: 'Open Firefox, open the Kitewarden sidebar and press Connect.',
+  firefox_closed: 'Start Firefox, open the Kitewarden sidebar and press Connect.',
+  disconnected_by_user: 'The user disconnected. Press Connect in the Kitewarden sidebar.',
   helper_stopped: 'The helper stopped. Firefox starts it again within 30 s; otherwise press Retry now in the sidebar.',
-  wrong_key: 'The helper and this server do not share a key. Run: firefox-companion-host.exe doctor',
+  wrong_key: 'The helper and this server do not share a key. Run: kitewarden-host.exe doctor',
   version_mismatch: 'Update the older part, then press Retry now in the sidebar.',
 };
 
 export const mac = (key, role, protocol, hostNonce, clientNonce) =>
-  createHmac('sha256', key).update(`firefox-companion|${role}|${protocol}|${hostNonce}|${clientNonce}`).digest('hex');
+  createHmac('sha256', key).update(`kitewarden|${role}|${protocol}|${hostNonce}|${clientNonce}`).digest('hex');
 
 const same = (a, b) => typeof a === 'string' && a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 

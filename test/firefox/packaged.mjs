@@ -1,5 +1,5 @@
 // The packaged artifacts of release/ in the installed Firefox: the .xpi as a temporary add-on (Firefox release takes an unsigned
-// one in no other way), FirefoxCompanionSetup, and the server of the .mcpb file. Disposable profiles, local pages, real clicks.
+// one in no other way), KitewardenSetup, and the server of the .mcpb file. Disposable profiles, local pages, real clicks.
 // node test/firefox/packaged.mjs "<part>" runs the setup and the checks whose name holds that part.
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -8,16 +8,16 @@ import os from 'node:os';
 import path from 'node:path';
 import { tree, zip } from '../../build/release.mjs';
 import { VERSION } from '../../shared/protocol.mjs';
-import { McpClient, buildAt, fakeClaude, powershell, registered, root, sleep, until } from '../helpers.mjs';
+import { McpClient, EARLIER, buildEarlier, fakeClaude, powershell, registered, root, sleep, until } from '../helpers.mjs';
 import { Firefox, Sidebar } from './firefox.mjs';
 import { fixture } from './fixtures.mjs';
 
 const only = process.argv[2];
 const results = [];
-const REG = 'HKCU\\Software\\Mozilla\\NativeMessagingHosts\\firefox_companion';
+const REG = 'HKCU\\Software\\Mozilla\\NativeMessagingHosts\\kitewarden';
 const release = path.join(root, 'release');
-const XPI = path.join(release, `firefox-companion-${VERSION}-unsigned.xpi`);
-const SETUP = path.join(release, `FirefoxCompanionSetup-${VERSION}.exe`);
+const XPI = path.join(release, `kitewarden-${VERSION}-unsigned.xpi`);
+const SETUP = path.join(release, `KitewardenSetup-${VERSION}.exe`);
 if (registered()) throw new Error('this user has an installation; this test needs the registration for itself');
 const work = mkdtempSync(path.join(os.tmpdir(), 'fc-packaged-'));
 const clean = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(CLAUDE|ANTHROPIC)/.test(k))), CLAUDE_CONFIG_DIR: path.join(work, 'claude') };
@@ -48,11 +48,11 @@ const place = (name) => {
   const dir = path.join(work, name, 'Jörg Müller & Söhne', 'home');
   mkdirSync(path.dirname(dir), { recursive: true });
   homes.push(dir);
-  return { dir, exe: path.join(dir, 'firefox-companion-host.exe'), server: path.join(dir, 'mcp/server.mjs') };
+  return { dir, exe: path.join(dir, 'kitewarden-host.exe'), server: path.join(dir, 'mcp/server.mjs') };
 };
 const link = () => sb.text('#link-title');
 const is = (title, ms = 10_000) => until(title, async () => (await link()) === title, ms, 100);
-const pids = () => powershell(`Get-CimInstance Win32_Process -Filter "Name='firefox-companion-host.exe'" | Where-Object { $_.ExecutablePath -eq '${h.exe}' } | ForEach-Object ProcessId`).split(/\s+/).filter(Boolean).map(Number);
+const pids = () => powershell(`Get-CimInstance Win32_Process -Filter "Name='kitewarden-host.exe'" | Where-Object { $_.ExecutablePath -eq '${h.exe}' } | ForEach-Object ProcessId`).split(/\s+/).filter(Boolean).map(Number);
 const storage = () => sb.eval('const s = await browser.storage.local.get(null); delete s.log; return s');
 const permissions = () => sb.eval('const p = await browser.permissions.getAll(); return { permissions: p.permissions.filter((x) => !x.startsWith("internal:")).sort(), origins: p.origins.sort() }');
 async function client(name, home = h, args = []) {
@@ -90,14 +90,14 @@ async function end() {
   f = null;
   await was?.quit();
 }
-/** An .xpi and a helper of an earlier commit. */
-function earlier(commit) {
-  const dist = buildAt(commit, path.join(work, commit));
-  const xpi = path.join(work, `${commit}.xpi`);
+/** An .xpi and a helper of the previous version: this code with the version number EARLIER. */
+function earlier() {
+  const dist = buildEarlier(path.join(work, 'earlier'));
+  const xpi = path.join(work, 'earlier.xpi');
   writeFileSync(xpi, zip(tree(path.join(dist, 'extension'))));
-  return { xpi, host: path.join(dist, 'host/firefox-companion-host.exe') };
+  return { xpi, host: path.join(dist, 'host/kitewarden-host.exe') };
 }
-const absent = () => f.chrome('return WebExtensionPolicy.getByID("bridge@firefox-companion.invalid") === null');
+const absent = () => f.chrome('return WebExtensionPolicy.getByID("firefox@kitewarden.com") === null');
 
 try {
   // ---- fresh installation, the add-on first
@@ -128,7 +128,7 @@ try {
     await sb.click('#connect');
     await is('Helper not installed');
     n(await sb.text('#link-detail'));
-    assert.match(await sb.text('#link-detail'), /FirefoxCompanionSetup/);
+    assert.match(await sb.text('#link-detail'), /KitewardenSetup/);
   });
 
   await check('FC-INST-03', 'the installer runs while Firefox is open: the add-on finds the helper by itself', async (n) => {
@@ -162,7 +162,7 @@ try {
   await check('FC-INST-14', 'Claude Desktop bundle: its server, started as the manifest says, reaches the same helper', async () => {
     const dir = path.join(work, 'mcpb');
     mkdirSync(dir);
-    execFileSync(path.join(process.env.SystemRoot, 'System32/tar.exe'), ['-xf', path.join(release, `firefox-companion-${VERSION}.mcpb`), '-C', dir]);
+    execFileSync(path.join(process.env.SystemRoot, 'System32/tar.exe'), ['-xf', path.join(release, `kitewarden-${VERSION}.mcpb`), '-C', dir]);
     const m = JSON.parse(readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
     const [server, ...args] = m.server.mcp_config.args.map((a) => a.replace('${__dirname}', dir).replace('${user_config.home}', h.dir.replaceAll('\\', '/')));
     const x = await client('desktop-bundle', { server }, args);
@@ -223,15 +223,15 @@ try {
   });
   await end();
 
-  // ---- upgrade from 0.4.0 with what a user set up
+  // ---- upgrade from the previous version with what a user set up
 
   h = place('upgrade');
-  const v4 = earlier('7bb7f27');
+  const v4 = earlier();
   let kept, allowed;
   await begin();
   await load(v4.xpi);
 
-  await check('FC-INST-12', 'version 0.4.0 with deliberate settings', async (n) => {
+  await check('FC-INST-12', `version ${EARLIER} with deliberate settings`, async (n) => {
     assert.equal(spawnSync(v4.host, ['install', '--home', h.dir], { env: clean }).status, 0);
     await sb.click('#connect');
     await is('Connected');
@@ -276,12 +276,12 @@ try {
     const r = setup('install', '--home', h.dir);
     assert.equal(r.status, 0, r.stderr);
     await until('helper of the release', async () => (await sb.text('#link-detail')).includes(`Helper ${VERSION}`), 15_000, 100);
-    n(`0.4.0 add-on with ${VERSION} helper after ${Date.now() - t} ms`);
+    n(`${EARLIER} add-on with ${VERSION} helper after ${Date.now() - t} ms`);
     assert.ok(readFileSync(path.join(h.dir, 'key.bin')).equals(key));
     assert.equal(readFileSync(path.join(h.dir, 'remote/clients.json'), 'utf8'), '{"p1":{"key":"kept"}}');
     assert.equal((await c.call('tabs_context')).code, 'session_ended');
     const s = (await c.call('connection_status')).data;
-    assert.deepEqual([s.mcp_server.version, s.extension.version, s.helper.version], ['0.4.0', '0.4.0', VERSION]);
+    assert.deepEqual([s.mcp_server.version, s.extension.version, s.helper.version], [EARLIER, EARLIER, VERSION]);
     assert.deepEqual(await storage(), kept);
   });
 
@@ -319,84 +319,6 @@ try {
     n('connected to the installed helper again');
     c = await client('after-restart');
     assert.deepEqual((await c.call('tabs_context')).data.tabs, []);
-  });
-  await end();
-
-  // ---- upgrade from 0.3.0, whose manifest required cookies
-
-  h = place('older');
-  const v3 = earlier('d34fba3');
-  await begin();
-  await load(v3.xpi);
-
-  await check('FC-INST-12', 'from 0.3.0: an older add-on says which part is older, and after the update cookies is not required', async (n) => {
-    assert.equal(spawnSync(v3.host, ['install', '--home', h.dir], { env: clean }).status, 0);
-    await sb.click('#connect');
-    await is('Connected');
-    assert.ok((await permissions()).permissions.includes('cookies'));
-    const was = await storage();
-    assert.equal(setup('install', '--home', h.dir).status, 0);
-    await is('Versions differ', 20_000);
-    n(`0.3.0 add-on: ${await sb.text('#link-detail')}`);
-    await load(XPI);
-    await is('Connected', 35_000);
-    const p = await permissions();
-    n(`after the update cookies is ${p.permissions.includes('cookies') ? 'still given' : 'not given'}`);
-    const now = await storage();
-    for (const k of Object.keys(was)) assert.deepEqual(now[k], was[k], k);
-    c = await client('driver');
-    await sb.attach('driver', 'act', true);
-    const r = await c.call('tabs_create', { container: 'Nowhere' });
-    n(`a container: ${r.code}`);
-    assert.ok(['permission_required', 'not_found'].includes(r.code));
-    assert.equal((await c.call('get_cookies', { tabId: await mine() })).code, 'tool_off');
-  });
-  await end();
-
-  // ---- upgrade from 0.5.0, the packages of Prompt 6
-
-  h = place('previous');
-  const v5 = earlier('8bfefbe');
-  await begin();
-  await load(v5.xpi);
-
-  await check('FC-INST-12', 'from 0.5.0: helper first, then the add-on; what the user set stays, and nothing new is on', async (n) => {
-    assert.equal(spawnSync(v5.host, ['install', '--home', h.dir], { env: clean }).status, 0);
-    const key = readFileSync(path.join(h.dir, 'key.bin')).toString('hex');
-    await sb.click('#connect');
-    await is('Connected');
-    await sb.eval('document.querySelector("#d-data").open = true');
-    await sb.click('#switch-console');
-    await until('switch', () => sb.eval('return document.querySelector("#switch-console").checked'));
-    const now = Date.now();
-    await sb.eval('await browser.storage.local.set(arguments[0])', { chats: [{ id: 'c5', title: 'Chat of 0.5.0', created: now, updated: now, claude: '11111111-2222-3333-4444-555555555555', started: true, model: null, extras: true, running: false }], 'chat:c5': [] });
-    await load(v5.xpi);
-    await is('Connected', 15_000);
-    const was = await storage();
-    const before = await permissions();
-    const t = Date.now();
-    assert.equal(setup('install', '--home', h.dir).status, 0);
-    await until('the new helper under the 0.5.0 add-on', async () => new RegExp(`Helper ${VERSION.replaceAll('.', '[.]')}`).test(await sb.text('#link-detail')), 35_000, 200);
-    n(`0.5.0 add-on with ${VERSION} helper after ${Date.now() - t} ms`);
-    c = await client('driver');
-    assert.equal((await c.call('connection_status')).data.state, 'connected');
-    await load(XPI);
-    await is('Connected', 35_000);
-    const after = await storage();
-    for (const k of Object.keys(was).filter((x) => x !== 'log')) assert.deepEqual(after[k], was[k], k);
-    assert.equal(readFileSync(path.join(h.dir, 'key.bin')).toString('hex'), key);
-    assert.deepEqual(await permissions(), before, 'no permission was added');
-    const s = await sb.eval('return [...document.querySelectorAll("#rules li")].map((e) => e.textContent)');
-    assert.deepEqual(s, ['None'], 'no site rule');
-    c = await client('driver-2');
-    const st = (await c.call('connection_status')).data;
-    n(`on: ${st.switches_on}; backends: ${st.optional_backends.map((b) => `${b.id} ${b.state}`).join(', ')}; ${st.extension.version}`);
-    assert.deepEqual(st.switches_on, ['console']);
-    assert.ok(st.optional_backends.every((b) => b.state === 'not running'));
-    assert.equal((await c.call('copy_to_clipboard', { action: 'text', text: 'x' })).code, 'tool_off');
-    await sb.choose('#chat-list', 'c5');
-    await until('the chat', () => sb.eval('return document.getElementById("chat-list").value === "c5"'));
-    assert.deepEqual(await sb.eval('return [document.getElementById("extras").checked, document.getElementById("tools").checked]'), [true, false], 'a chat of 0.5.0 has no file and shell tools');
   });
   await end();
 } finally {

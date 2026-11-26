@@ -83,9 +83,9 @@ Tools: `open-browser-tab`, `close-browser-tabs`, `get-list-of-open-tabs`, `get-r
 
 ## Firefox implementation notes
 
-- The active-tab screenshot design (18-F09, 18-F10) is the most Firefox-native part: it uses activeTab, which Firefox ties to a user gesture on the toolbar button and drops on navigation. A stable-Firefox Companion can reuse it and should check the drop-on-navigation behaviour on Firefox 160.
-- Per-site permissions (18-F05, 18-F07, 18-F11) use optional host permissions requested one origin at a time, which is the Firefox-enforced grant model. A Companion can use the same pattern for per-site consent.
+- The active-tab screenshot design (18-F09, 18-F10) is the most Firefox-native part: it uses activeTab, which Firefox ties to a user gesture on the toolbar button and drops on navigation. A stable-Kitewarden can reuse it and should check the drop-on-navigation behaviour on Firefox 160.
+- Per-site permissions (18-F05, 18-F07, 18-F11) use optional host permissions requested one origin at a time, which is the Firefox-enforced grant model. Kitewarden can use the same pattern for per-site consent.
 - find and highlight (18-F07) depends on the optional "find" permission and the browser.find API. Both are Firefox-specific, and the permission is requested at run time.
 - Tab groups (18-F08) depend on browser.tabGroups, which needs Firefox 139 or later.
-- The local WebSocket server with a shared secret (18-F14) runs in a separate Node process, which is not a stable-Firefox feature. A Companion can drop it for a native messaging host or a different local transport, and must not rely on an Origin check unless it is enforced by a verified transport.
-- The Companion must not use a single-slot connection model, which here lets the newest socket take all commands.
+- The local WebSocket server with a shared secret (18-F14) runs in a separate Node process, which is not a stable-Firefox feature. Kitewarden can drop it for a native messaging host or a different local transport, and must not rely on an Origin check unless it is enforced by a verified transport.
+- Kitewarden must not use a single-slot connection model, which here lets the newest socket take all commands.

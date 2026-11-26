@@ -76,13 +76,13 @@ test('installer: dry run changes nothing, install prints each change, a second r
   assert.equal(host('install', '--home', home.dir).status, 0);
   assert.deepEqual(readFileSync(path.join(home.dir, 'key.bin')), key);
   const manifest = JSON.parse(readFileSync(path.join(home.dir, 'native-manifest.json'), 'utf8'));
-  assert.deepEqual(manifest.allowed_extensions, ['bridge@firefox-companion.invalid']);
+  assert.deepEqual(manifest.allowed_extensions, ['firefox@kitewarden.com']);
 });
 
 test('installer refuses a folder that is not its own', () => {
   const r = host('install', '--home', os.tmpdir());
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /not a Firefox Companion folder/);
+  assert.match(r.stderr, /not a Kitewarden folder/);
 });
 
 test('AC-04 key file and folder name only the current user', () => {

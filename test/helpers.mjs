@@ -1,17 +1,17 @@
 // Shared by the integration, Firefox and live checks. Installs into a temporary home and restores the registry key.
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { frame, frameReader } from '../dist/mcp/link.mjs';
-import { PROTOCOL } from '../shared/protocol.mjs';
+import { PROTOCOL, VERSION } from '../shared/protocol.mjs';
 
 export const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-export const HOST = path.join(root, 'dist/host/firefox-companion-host.exe');
-export const EXTENSION_ID = 'bridge@firefox-companion.invalid';
-const REG = 'HKCU\\Software\\Mozilla\\NativeMessagingHosts\\firefox_companion';
+export const HOST = path.join(root, 'dist/host/kitewarden-host.exe');
+export const EXTENSION_ID = 'firefox@kitewarden.com';
+const REG = 'HKCU\\Software\\Mozilla\\NativeMessagingHosts\\kitewarden';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -45,7 +45,7 @@ export function installHome() {
   return {
     dir,
     output: r.stdout,
-    exe: path.join(dir, 'firefox-companion-host.exe'),
+    exe: path.join(dir, 'kitewarden-host.exe'),
     server: path.join(dir, 'mcp/server.mjs'),
     get pipe() {
       return JSON.parse(readFileSync(path.join(dir, 'install.json'), 'utf8')).pipe;
@@ -69,6 +69,28 @@ export function installHome() {
 export function buildAt(commit, src) {
   mkdirSync(src, { recursive: true });
   execFileSync('tar', ['-xf', '-'], { cwd: src, input: execFileSync('git', ['archive', commit], { cwd: root, maxBuffer: 1e8 }) });
+  execFileSync(process.execPath, ['build/build.mjs'], { cwd: src });
+  return path.join(src, 'dist');
+}
+
+/** A version number just below this one: what a user of the previous release has. */
+export const EARLIER = (() => {
+  const [a, b, c] = VERSION.split('.').map(Number);
+  return c ? `${a}.${b}.${c - 1}` : b ? `${a}.${b - 1}.99` : `${a - 1}.99.99`;
+})();
+const VERSION_FILES = ['shared/protocol.mjs', 'host/native/Host.cs', 'ext/manifest.json', 'thunderbird/manifest.json', 'package.json'];
+
+/** This working tree with the version number EARLIER, built. Returns its dist/. */
+export function buildEarlier(src) {
+  const files = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: root }).toString().split('\0').filter(Boolean);
+  for (const f of files) {
+    try { cpSync(path.join(root, f), path.join(src, f)); } catch (e) { if (e.code !== 'ENOENT') throw e; } // a deleted file that is still in the index
+  }
+  for (const f of VERSION_FILES) {
+    const t = readFileSync(path.join(src, f), 'utf8');
+    if (t.split(VERSION).length !== 2) throw new Error(`${f} names ${VERSION} not exactly once`);
+    writeFileSync(path.join(src, f), t.replace(VERSION, EARLIER));
+  }
   execFileSync(process.execPath, ['build/build.mjs'], { cwd: src });
   return path.join(src, 'dist');
 }

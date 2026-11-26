@@ -1,8 +1,8 @@
-# Firefox Companion
+# Kitewarden
 
 Lets Claude work with the Firefox tabs you choose, and nothing else. You attach a tab in the Firefox sidebar, Claude reads it or acts in it, and every action that changes something waits for your Allow.
 
-*Firefox Companion is a working name. It is not made, endorsed or supported by Mozilla or Anthropic.*
+*Kitewarden is not made, endorsed or supported by Mozilla or Anthropic.*
 
 ![The sidebar: an empty chat, an approval card for a click, and the Tabs panel](docs/images/sidebar.png)
 

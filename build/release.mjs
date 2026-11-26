@@ -55,12 +55,12 @@ export function zip(files) {
 /** The bundle for Claude Desktop, MCPB manifest 0.3. It holds the server; the helper comes with the installer. */
 export const bundleManifest = () => ({
   manifest_version: '0.3',
-  name: 'firefox-companion',
-  display_name: 'Firefox Companion (working name)',
+  name: 'kitewarden',
+  display_name: 'Kitewarden',
   version: VERSION,
   description: 'Works with the Firefox tabs that you attach.',
-  long_description: 'Needs the Firefox add-on and its helper for Windows (FirefoxCompanionSetup). Works only with tabs that you attach in the Firefox sidebar.',
-  author: { name: 'Firefox Companion' },
+  long_description: 'Needs the Firefox add-on and its helper for Windows (KitewardenSetup). Works only with tabs that you attach in the Firefox sidebar.',
+  author: { name: 'Kitewarden' },
   license: 'MPL-2.0',
   server: {
     type: 'node',
@@ -69,7 +69,7 @@ export const bundleManifest = () => ({
   },
   tools: mcpTools([]).map(({ name, description }) => ({ name, description })),
   compatibility: { platforms: ['win32'], runtimes: { node: '>=22.0.0' } },
-  user_config: { home: { type: 'directory', title: 'Folder of Firefox Companion', description: 'Where FirefoxCompanionSetup put the helper. Leave it as it is unless you chose another folder.', required: true, default: '${HOME}/AppData/Local/FirefoxCompanion' } },
+  user_config: { home: { type: 'directory', title: 'Folder of Kitewarden', description: 'Where KitewardenSetup put the helper. Leave it as it is unless you chose another folder.', required: true, default: '${HOME}/AppData/Local/Kitewarden' } },
 });
 
 function release() {
@@ -78,10 +78,10 @@ function release() {
   const notice = ['NOTICE.txt', readFileSync(path.join(root, 'NOTICE.txt'))];
   const at = (dir, part) => tree(path.join(dist, part)).map(([n, d]) => [`${dir}/${n}`, d]);
   const packages = {
-    [`firefox-companion-${VERSION}-unsigned.xpi`]: [...tree(path.join(dist, 'extension')), notice],
-    [`firefox-companion-${VERSION}.mcpb`]: [['manifest.json', Buffer.from(`${JSON.stringify(bundleManifest(), null, 2)}\n`)], ...at('server', 'mcp'), notice],
-    [`optional/firefox-companion-mail-${VERSION}-unsigned.xpi`]: [...tree(path.join(dist, 'thunderbird')), notice],
-    [`optional/firefox-companion-optional-${VERSION}.zip`]: [...at('backends', 'backends'), ...at('remote', 'remote'), ...at('mcp', 'mcp'), notice],
+    [`kitewarden-${VERSION}-unsigned.xpi`]: [...tree(path.join(dist, 'extension')), notice],
+    [`kitewarden-${VERSION}.mcpb`]: [['manifest.json', Buffer.from(`${JSON.stringify(bundleManifest(), null, 2)}\n`)], ...at('server', 'mcp'), notice],
+    [`optional/kitewarden-mail-${VERSION}-unsigned.xpi`]: [...tree(path.join(dist, 'thunderbird')), notice],
+    [`optional/kitewarden-optional-${VERSION}.zip`]: [...at('backends', 'backends'), ...at('remote', 'remote'), ...at('mcp', 'mcp'), notice],
   };
   const contents = [];
   for (const [name, files] of Object.entries(packages)) {
@@ -92,13 +92,13 @@ function release() {
   }
 
   // The installer is the helper's own program with the files inside it.
-  const inside = [['firefox-companion-host.exe', path.join(dist, 'host/firefox-companion-host.exe')], ['NOTICE.txt', path.join(root, 'NOTICE.txt')], ...tree(path.join(dist, 'mcp')).map(([n]) => [`mcp\\${n}`, path.join(dist, 'mcp', n)])];
+  const inside = [['kitewarden-host.exe', path.join(dist, 'host/kitewarden-host.exe')], ['NOTICE.txt', path.join(root, 'NOTICE.txt')], ...tree(path.join(dist, 'mcp')).map(([n]) => [`mcp\\${n}`, path.join(dist, 'mcp', n)])];
   const list = path.join(dist, 'payload.txt');
   writeFileSync(list, inside.map(([n, f]) => `${sha256(readFileSync(f))}  ${n}\n`).join(''));
-  const setup = `FirefoxCompanionSetup-${VERSION}.exe`;
+  const setup = `KitewardenSetup-${VERSION}.exe`;
   const sources = ['Host.cs', 'Setup.cs', 'Chat.cs', 'Files.cs'].map((f) => path.join(root, 'host/native', f));
-  compile(path.join(dist, 'FirefoxCompanionSetup.exe'), ['/r:System.Web.Extensions.dll', '/r:System.Core.dll', ...[['payload.txt', list], ...inside].map(([n, f]) => `/resource:${f},${n}`), ...sources]);
-  cpSync(path.join(dist, 'FirefoxCompanionSetup.exe'), path.join(out, setup));
+  compile(path.join(dist, 'KitewardenSetup.exe'), ['/r:System.Web.Extensions.dll', '/r:System.Core.dll', ...[['payload.txt', list], ...inside].map(([n, f]) => `/resource:${f},${n}`), ...sources]);
+  cpSync(path.join(dist, 'KitewardenSetup.exe'), path.join(out, setup));
   for (const [n, f] of inside) contents.push(`${sha256(readFileSync(f))}  ${setup}!${n}`);
 
   for (const f of ['LICENSE', 'NOTICE.txt', 'docs/SETUP.md']) cpSync(path.join(root, f), path.join(out, path.basename(f)));

@@ -18,7 +18,7 @@ export function options(argv, known) {
   return out;
 }
 
-export const homeOf = (o) => o.home ?? path.join(process.env.LOCALAPPDATA, 'FirefoxCompanion');
+export const homeOf = (o) => o.home ?? path.join(process.env.LOCALAPPDATA, 'Kitewarden');
 
 /** An error before anything was done. Anything else leaves the outcome open. */
 export const before = (code, message) => Object.assign(new Error(message), { code, before: true });
@@ -41,7 +41,7 @@ export class Backend {
   async run() {
     try {
       await this.link.connect();
-      console.log('Connected. Turn it on in the Firefox Companion sidebar under Advanced.');
+      console.log('Connected. Turn it on in the Kitewarden sidebar under Advanced.');
     } catch (e) {
       if (this.said !== e.message) console.log((this.said = e.message));
       this.retry = setTimeout(() => this.run(), RETRY_MS);

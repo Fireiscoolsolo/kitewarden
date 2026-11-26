@@ -112,7 +112,7 @@ Tools: `extension_status`, `thought`, `event_wait`, `tab_query`, `tab_check_acti
 - site/index.html, docs/amo-listing.md, docs/PLAN.md, GEMINI.md and the Cloudflare Worker (cloudflare/worker.mjs) make public and operational claims about the stats, feedback and download endpoints. These were not verified in this audit.
 ## Firefox implementation notes
 
-- Native messaging host (runtime.connectNative, native manifest with allowed_extensions, HKCU key on Windows) works on stable Firefox without signing the helper. The helper is a separate binary the user installs; a Firefox Companion that wants an MCP bridge without a native helper would need a different transport.
+- Native messaging host (runtime.connectNative, native manifest with allowed_extensions, HKCU key on Windows) works on stable Firefox without signing the helper. The helper is a separate binary the user installs; a Kitewarden that wants an MCP bridge without a native helper would need a different transport.
 - Manifest version 2 with persistent background scripts (manifest.json line 2 and lines 42-49). A new stable-Firefox 160 build should decide MV2 or MV3 on its own terms; this audit does not assess that.
 - Firefox-specific APIs in use: tabs.captureTab with a captureVisibleTab fallback (background.ts 699-704), tabs.updateMutedInfo (background.ts 1268-1271), cookies with firstPartyDomain, partitionKey and storeId (background.ts 985-1019, 1568-1595), downloads, sessions and bookmarks. Each is a standard WebExtension API on stable Firefox, but the cookie partition handling is Firefox-specific and must be reproduced.
 - Content script shadow access uses openOrClosedShadowRoot (ax.ts 84-87), a Firefox-only accessor for closed shadow roots; Chrome-only builds would need a different approach.

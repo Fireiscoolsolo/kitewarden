@@ -74,10 +74,10 @@ async function skill() {
   const before = A.reports.length;
 
   const mcp = path.join(work, 'mcp.json');
-  writeFileSync(mcp, JSON.stringify({ mcpServers: { 'firefox-companion': { command: 'node', args: [home.server] } } }));
+  writeFileSync(mcp, JSON.stringify({ mcpServers: { 'kitewarden': { command: 'node', args: [home.server] } } }));
   p = spawn('claude', [
     '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--mcp-config', mcp,
-    '--model', 'haiku', '--setting-sources', 'project', '--tools', '', '--allowedTools', 'mcp__firefox-companion', '--no-session-persistence', '--max-turns', '40',
+    '--model', 'haiku', '--setting-sources', 'project', '--tools', '', '--allowedTools', 'mcp__kitewarden', '--no-session-persistence', '--max-turns', '40',
   ], { cwd: work, env });
   const events = [];
   createInterface({ input: p.stdout }).on('line', (l) => {
@@ -115,10 +115,10 @@ async function skill() {
   }
   p.stdin.end();
   const init = events.find((e) => e.subtype === 'init');
-  const uses = events.filter((e) => e.type === 'assistant').flatMap((e) => e.message.content).filter((x) => x.type === 'tool_use').map((x) => x.name.replace('mcp__firefox-companion__', '') + (x.input.action ? ` ${x.input.action}` : ''));
+  const uses = events.filter((e) => e.type === 'assistant').flatMap((e) => e.message.content).filter((x) => x.type === 'tool_use').map((x) => x.name.replace('mcp__kitewarden__', '') + (x.input.action ? ` ${x.input.action}` : ''));
   Object.assign(result, { skill_tools: uses, skill_cards: cards, skill_answers: answers, skill_page: A.reports.slice(before), skill_stderr: stderr.slice(0, 300) });
   assert.ok([...(init.slash_commands ?? []), ...(init.skills ?? []).map((s) => s.name ?? s)].includes('audit-form'), 'Claude Code offers the exported skill');
-  assert.ok(init.tools.every((t) => t.startsWith('mcp__firefox-companion__')), `only its tools: ${init.tools}`);
+  assert.ok(init.tools.every((t) => t.startsWith('mcp__kitewarden__')), `only its tools: ${init.tools}`);
   assert.deepEqual(A.reports.slice(before), ['saved q=audit value 7;color=Red;urgent=false;pw=0'], 'the page confirms one save with the value that was asked for');
   assert.ok(answers.some((a) => /\?|value|provide|text/i.test(a)), 'it asked for the value');
   done('an exported skill, run by Claude Code in real Firefox', { tools: uses, cards, first_answer: answers[0], page: A.reports.slice(before), cost_usd: events.findLast((e) => e.type === 'result')?.total_cost_usd });

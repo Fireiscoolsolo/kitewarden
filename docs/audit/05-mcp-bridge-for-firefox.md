@@ -129,13 +129,13 @@ Tools: `list_windows`, `get_window`, `get_current_window`, `create_window`, `clo
 
 ## Firefox implementation notes
 
-- Real input (the window-input path and the BiDi fallback, 05-F18): a stable-Firefox Companion cannot rely on the Windows window-message path or on a remote-debugging port in a person's normal profile. The BiDi route also requires the browser to be started with remote control, which the cleaner script in 05-F37 exists to undo. Plan for scripted events, or a separate mechanism, and say so in the product.
+- Real input (the window-input path and the BiDi fallback, 05-F18): a stable-Kitewarden cannot rely on the Windows window-message path or on a remote-debugging port in a person's normal profile. The BiDi route also requires the browser to be started with remote control, which the cleaner script in 05-F37 exists to undo. Plan for scripted events, or a separate mechanism, and say so in the product.
 - Script execution in the page's realm (05-F15, page_realm) and the file-input hook (content.js#L1018-L1052, 05-F19) use wrappedJSObject, exportFunction and cloneInto. These are Firefox-only Xray facilities; they work in a Firefox WebExtension but must be re-verified on the target Firefox 160 build.
-- Native messaging host (05-F31): the host is a per-user Python program registered through a manifest and, on Windows, an HKCU registry value. It works without admin rights but is a second install component; the Companion can avoid it with its own pairing scheme.
+- Native messaging host (05-F31): the host is a per-user Python program registered through a manifest and, on Windows, an HKCU registry value. It works without admin rights but is a second install component; Kitewarden can avoid it with its own pairing scheme.
 - Blocking webRequest with filterResponseData (05-F23): depends on the blocking listener form of the webRequest API. Confirm support in the Manifest V3 path before choosing V3.
 - Tab group APIs (05-F04) need Firefox 138 and 139; both are earlier than Firefox 160.
 - Thunderbird (05-F07, 05-F08): uses a privileged experiment API and Thunderbird-only namespaces. Not applicable to stable Firefox.
 - Unsigned install (05-F33, scripts/install-xpi.sh): the user.js route is not a supported path on stable Firefox; signed packages are required.
 - Clipboard image write (browser.clipboard.setImageData) and paste (05-F20): paste into a non-textarea uses a temporary textarea and execCommand('paste'), a Firefox-specific limit recorded in the code.
-- Predefined scripts (05-F21): run a local program from the server side. The Companion, which has no such server, would need its own policy for any local program.
+- Predefined scripts (05-F21): run a local program from the server side. Kitewarden, which has no such server, would need its own policy for any local program.
 - Error reports (05-F34): rely on the data-collection permission API; the opt-in grant must be in place before any report is sent.

@@ -51,7 +51,7 @@ export class Shares {
 
 export function mailTools({ messenger, shares, parse }) {
   const need = (call, account) => {
-    if (!shares.of(call.session.id).has(account)) throw new ToolError('no_grant', 'The user has not shared that account with this session. Ask the user to do it in Firefox Companion in Thunderbird.');
+    if (!shares.of(call.session.id).has(account)) throw new ToolError('no_grant', 'The user has not shared that account with this session. Ask the user to do it in Kitewarden in Thunderbird.');
   };
   const header = (m) => ({ message: m.id, date: new Date(m.date).toISOString(), from: redactMail(oneLine(m.author, 200), ''), subject: redactMail(oneLine(m.subject, 300)), read: m.read, folder: m.folder?.path ?? null });
 
