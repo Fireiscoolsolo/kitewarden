@@ -24,10 +24,10 @@ using Microsoft.Win32.SafeHandles;
 static class Program
 {
     public const string HostName = "kitewarden";
-    public const string ExtensionId = "firefox@kitewarden.com";
+    public const string ExtensionId = "firefox@fireiscoolsolo.github.io";
     // The add-on for Thunderbird is another one, with a registration of its own that the user asks for.
     public const string MailHostName = "kitewarden_mail";
-    public const string MailExtensionId = "thunderbird@kitewarden.com";
+    public const string MailExtensionId = "thunderbird@fireiscoolsolo.github.io";
     public const string Version = "0.6.0";
     public const int Protocol = 4;
 

@@ -7,7 +7,7 @@ import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { FakeFirefox, HOST, McpClient, host, installHome } from '../helpers.mjs';
 
-const MAIL_ID = 'thunderbird@kitewarden.com';
+const MAIL_ID = 'thunderbird@fireiscoolsolo.github.io';
 const REG = 'HKCU\\Software\\Mozilla\\NativeMessagingHosts\\kitewarden_mail';
 const key = () => spawnSync('reg', ['query', REG, '/ve'], { encoding: 'utf8' }).status === 0;
 let home;
@@ -41,7 +41,7 @@ test('an installation without the option registers nothing for Thunderbird; with
   assert.equal(host('install', '--home', home.dir, '--thunderbird').status, 0);
   const m = JSON.parse(readFileSync(path.join(home.dir, 'native-manifest-mail.json'), 'utf8'));
   assert.deepEqual([m.name, m.allowed_extensions], ['kitewarden_mail', [MAIL_ID]]);
-  assert.deepEqual(JSON.parse(readFileSync(path.join(home.dir, 'native-manifest.json'), 'utf8')).allowed_extensions, ['firefox@kitewarden.com']);
+  assert.deepEqual(JSON.parse(readFileSync(path.join(home.dir, 'native-manifest.json'), 'utf8')).allowed_extensions, ['firefox@fireiscoolsolo.github.io']);
   assert.match(host('doctor', '--home', home.dir).stdout, /ok {4}thunderbird/);
   const r = host('uninstall', '--home', home.dir, '--dry-run');
   assert.match(r.stdout, /delete HKCU.*kitewarden_mail/);

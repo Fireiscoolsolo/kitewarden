@@ -4,7 +4,7 @@
   "version": "0.6.0",
   "description": "Lets clients on this computer read mail that you share, one message at a time after your approval.",
   "browser_specific_settings": {
-    "gecko": { "id": "thunderbird@kitewarden.com", "strict_min_version": "140.0" }
+    "gecko": { "id": "thunderbird@fireiscoolsolo.github.io", "strict_min_version": "140.0" }
   },
   "permissions": ["accountsRead", "messagesRead", "storage", "nativeMessaging"],
   "background": { "page": "thunderbird/index.html", "persistent": true },

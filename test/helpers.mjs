@@ -10,7 +10,7 @@ import { PROTOCOL, VERSION } from '../shared/protocol.mjs';
 
 export const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const HOST = path.join(root, 'dist/host/kitewarden-host.exe');
-export const EXTENSION_ID = 'firefox@kitewarden.com';
+export const EXTENSION_ID = 'firefox@fireiscoolsolo.github.io';
 const REG = 'HKCU\\Software\\Mozilla\\NativeMessagingHosts\\kitewarden';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

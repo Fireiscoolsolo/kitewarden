@@ -76,7 +76,7 @@ test('installer: dry run changes nothing, install prints each change, a second r
   assert.equal(host('install', '--home', home.dir).status, 0);
   assert.deepEqual(readFileSync(path.join(home.dir, 'key.bin')), key);
   const manifest = JSON.parse(readFileSync(path.join(home.dir, 'native-manifest.json'), 'utf8'));
-  assert.deepEqual(manifest.allowed_extensions, ['firefox@kitewarden.com']);
+  assert.deepEqual(manifest.allowed_extensions, ['firefox@fireiscoolsolo.github.io']);
 });
 
 test('installer refuses a folder that is not its own', () => {

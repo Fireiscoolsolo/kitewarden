@@ -97,7 +97,7 @@ function earlier() {
   writeFileSync(xpi, zip(tree(path.join(dist, 'extension'))));
   return { xpi, host: path.join(dist, 'host/kitewarden-host.exe') };
 }
-const absent = () => f.chrome('return WebExtensionPolicy.getByID("firefox@kitewarden.com") === null');
+const absent = () => f.chrome('return WebExtensionPolicy.getByID("firefox@fireiscoolsolo.github.io") === null');
 
 try {
   // ---- fresh installation, the add-on first

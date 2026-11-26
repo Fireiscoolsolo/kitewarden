@@ -108,10 +108,10 @@ test('Firefox package: exactly the everyday add-on, cookies optional, nothing of
   assert.deepEqual(names(dir), [...names(path.join(root, 'dist/extension')), 'NOTICE.txt'].sort());
   const m = JSON.parse(readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
   assert.ok(!m.permissions.includes('cookies') && m.optional_permissions.includes('cookies'));
-  assert.deepEqual([m.version, m.name, m.browser_specific_settings.gecko.id, m.browser_specific_settings.gecko.strict_min_version, m.browser_specific_settings.gecko.update_url], [VERSION, 'Kitewarden', 'firefox@kitewarden.com', '160.0', undefined]);
+  assert.deepEqual([m.version, m.name, m.browser_specific_settings.gecko.id, m.browser_specific_settings.gecko.strict_min_version, m.browser_specific_settings.gecko.update_url], [VERSION, 'Kitewarden', 'firefox@fireiscoolsolo.github.io', '160.0', undefined]);
   for (const [n, d] of tree(dir)) assert.ok(!/javascript_tool|pagescript|messagesRead|remote-debugging/.test(d) && !/thunderbird|isolated|gateway|input\.exe|pagescript/i.test(n), n);
   const mail = JSON.parse(readFileSync(path.join(unpack(`optional/kitewarden-mail-${VERSION}-unsigned.xpi`), 'manifest.json'), 'utf8'));
-  assert.equal(mail.browser_specific_settings.gecko.id, 'thunderbird@kitewarden.com');
+  assert.equal(mail.browser_specific_settings.gecko.id, 'thunderbird@fireiscoolsolo.github.io');
 });
 
 test('Claude Desktop bundle: fields of MCPB 0.3, the tools that the server has, and it starts as its manifest says', async () => {

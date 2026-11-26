@@ -6,7 +6,7 @@
   "incognito": "spanning",
   "browser_specific_settings": {
     "gecko": {
-      "id": "firefox@kitewarden.com",
+      "id": "firefox@fireiscoolsolo.github.io",
       "strict_min_version": "160.0",
       "data_collection_permissions": {
         "required": ["browsingActivity", "websiteContent", "websiteActivity"]

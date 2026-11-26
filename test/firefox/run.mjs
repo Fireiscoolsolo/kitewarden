@@ -374,7 +374,7 @@ try {
   const image = (r) => r.content.find((x) => x.type === 'image')?.data;
   const toolbar = () =>
     f.chrome(`
-      const r = document.getElementById('firefox_kitewarden_com-BAP').getBoundingClientRect();
+      const r = document.getElementById('firefox_fireiscoolsolo_github_io-BAP').getBoundingClientRect();
       for (const t of ['mousemove', 'mousedown', 'mouseup']) window.synthesizeMouseEvent(t, r.left + r.width / 2, r.top + r.height / 2, { button: 0, clickCount: t === 'mousemove' ? 0 : 1 });`);
 
   await check('FC-SHOT', 'a grant alone gives no picture; the toolbar button on the tab does, until it navigates', async (note) => {
@@ -680,7 +680,7 @@ try {
     const asked = ['<all_urls>', 'activeTab', 'alarms', 'bookmarks', 'browserSettings', 'browsingData', 'captivePortal', 'clipboardRead', 'clipboardWrite', 'contextualIdentities', 'cookies', 'devtools', 'downloads', 'downloads.open', 'find', 'geolocation', 'history', 'idle', 'management', 'menus', 'menus.overrideContext', 'nativeMessaging', 'notifications', 'pageCapture', 'pkcs11', 'privacy', 'proxy', 'scripting', 'search', 'sessions', 'storage', 'tabGroups', 'tabHide', 'tabs', 'theme', 'topSites', 'unlimitedStorage', 'userScripts', 'webNavigation', 'webRequest', 'webRequestBlocking', 'webRequestFilterResponse'];
     const dir = path.join(home.dir, '..', 'optional');
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({ manifest_version: 2, name: 'optional probe', version: '1', browser_specific_settings: { gecko: { id: 'optional@kitewarden.com' } }, optional_permissions: asked }));
+    writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({ manifest_version: 2, name: 'optional probe', version: '1', browser_specific_settings: { gecko: { id: 'optional@fireiscoolsolo.github.io' } }, optional_permissions: asked }));
     const id = await f.install(dir);
     const got = await f.chrome('return WebExtensionPolicy.getByID(arguments[0]).extension.manifest.optional_permissions', id);
     note(`accepted: ${got.join(', ')}`);
@@ -691,7 +691,7 @@ try {
   await check('D2', 'another add-on cannot start the helper', async (note) => {
     const dir = path.join(home.dir, '..', 'other');
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({ manifest_version: 2, name: 'other', version: '1', browser_specific_settings: { gecko: { id: 'other@kitewarden.com' } }, permissions: ['nativeMessaging'], background: { scripts: ['b.js'] } }));
+    writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({ manifest_version: 2, name: 'other', version: '1', browser_specific_settings: { gecko: { id: 'other@fireiscoolsolo.github.io' } }, permissions: ['nativeMessaging'], background: { scripts: ['b.js'] } }));
     writeFileSync(path.join(dir, 'b.js'), `browser.runtime.connectNative('kitewarden').onDisconnect.addListener((p) => fetch('${A.origin}/report?other=' + encodeURIComponent(p.error?.message), { mode: 'no-cors' }));`);
     const pids = hostPids().join();
     await f.install(dir);

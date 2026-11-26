@@ -60,7 +60,7 @@ const message = () => sb.text('#message');
 const clear = () => sb.eval('document.querySelector("#message").textContent = ""');
 const open = (id) => sb.eval('for (let e = document.getElementById(arguments[0]); e; e = e.parentElement) if (e.tagName === "DETAILS") e.open = true', id);
 const reported = (what) => until(`report ${what}`, () => A.reports.includes(what), 4000);
-const badge = () => f.chrome('return document.getElementById("firefox_kitewarden_com-BAP").getAttribute("badge")');
+const badge = () => f.chrome('return document.getElementById("firefox_fireiscoolsolo_github_io-BAP").getAttribute("badge")');
 const set = (sel, v) => sb.eval('const i = document.querySelector(arguments[0]); i.value = arguments[1]; i.dispatchEvent(new Event("input"))', sel, v);
 const rule = async (kind, host) => {
   await open('rule-add');

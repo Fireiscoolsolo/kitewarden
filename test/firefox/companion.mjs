@@ -303,7 +303,7 @@ try {
     assert.equal(tabs.data.tabs.length, 1);
     assert.match((await client.call('read_page', { tabId: tabs.data.tabs[0].tabId })).text, /Second page 3000/);
     assert.equal(claudes(), 1, 'the run goes on');
-    const badge = await f.chrome('return document.getElementById("firefox_kitewarden_com-BAP").getAttribute("badge")');
+    const badge = await f.chrome('return document.getElementById("firefox_fireiscoolsolo_github_io-BAP").getAttribute("badge")');
     assert.equal(badge, '?');
     n(`badge ${badge} while the sidebar is closed; the client read the page`);
     await sb.open();
